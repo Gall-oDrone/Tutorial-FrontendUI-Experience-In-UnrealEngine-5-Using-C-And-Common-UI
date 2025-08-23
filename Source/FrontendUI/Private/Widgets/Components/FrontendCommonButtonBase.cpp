@@ -34,7 +34,7 @@ void UFrontendCommonButtonBase::NativeOnHovered()
 {
 	Super::NativeOnHovered();
 
-	if (ButtonDescriptionText.IsEmpty())
+	if (!ButtonDescriptionText.IsEmpty())
 	{
 		UFrontendUISubsystem::Get(this)->OnButtonDescriptionTextUpdated.Broadcast(this, ButtonDescriptionText);
 	}
