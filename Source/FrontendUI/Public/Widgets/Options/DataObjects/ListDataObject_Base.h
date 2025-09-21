@@ -1,0 +1,44 @@
+// Diego Gallo All Rights Reserved
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "UObject/NoExportTypes.h"
+#include "ListDataObject_Base.generated.h"
+
+#define LIST_DATA_ACCESOR(DataType,PropertyName) \
+	FORECINLINE DataType Get##PropertyName() const { return PropertyName; } \
+	void Set##PropertyName(DataType In##PropertyName) { PropertyName = In##PropertyName; }
+
+/**
+ * 
+ */
+UCLASS()
+class FRONTENDUI_API UListDataObject_Base : public UObject
+{
+	GENERATED_BODY()
+	
+public:
+	LIST_DATA_ACCESOR(FName, DataID)
+		LIST_DATA_ACCESOR(FText, DataDisplayName)
+		LIST_DATA_ACCESOR(FText, DescriptionRichText)
+		LIST_DATA_ACCESOR(FText, DisableRichText)
+		LIST_DATA_ACCESOR(TSoftObjectPtr<UTexture2D>, SoftDescriptionImage)
+		LIST_DATA_ACCESOR(UListDataObject_Base*, ParentData)
+
+		//Empty in the base class. Child class ListDataObject_Collection should override it. The function should return all the child data a tab has. 
+		virtual TArray<UListDataObject_Base*> GetChildSettingData() const {
+		return TArray<UListDataObject_Base*>
+			();
+	}
+
+private:
+	FName DataID;
+	FText DataDisplayName;
+	FText DescriptionRichText;
+	FText DisableRichText;
+	TSoftObjectPtr<UTexture2D> SoftDescriptionImage;
+
+	UPROPERTY(Transient)
+	UListDataObject_Base* ParentData;
+};
