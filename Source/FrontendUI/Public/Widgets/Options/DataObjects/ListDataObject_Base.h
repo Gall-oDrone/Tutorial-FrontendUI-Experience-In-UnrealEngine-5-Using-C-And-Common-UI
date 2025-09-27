@@ -7,8 +7,8 @@
 #include "ListDataObject_Base.generated.h"
 
 #define LIST_DATA_ACCESOR(DataType,PropertyName) \
-	FORECINLINE DataType Get##PropertyName() const { return PropertyName; } \
-	void Set##PropertyName(DataType In##PropertyName) { PropertyName = In##PropertyName; }
+	FORCEINLINE DataType Get##PropertyName() const { return PropertyName;} \
+	void Set##PropertyName(DataType In##PropertyName) { PropertyName = In##PropertyName;}
 
 /**
  * 
@@ -26,11 +26,15 @@ public:
 		LIST_DATA_ACCESOR(TSoftObjectPtr<UTexture2D>, SoftDescriptionImage)
 		LIST_DATA_ACCESOR(UListDataObject_Base*, ParentData)
 
-		//Empty in the base class. Child class ListDataObject_Collection should override it. The function should return all the child data a tab has. 
-		virtual TArray<UListDataObject_Base*> GetChildSettingData() const {
-		return TArray<UListDataObject_Base*>
-			();
-	}
+	void InitDataObject();
+
+	//Empty in the base class. Child class ListDataObject_Collection should override it. The function should return all the child data a tab has. 
+	virtual TArray<UListDataObject_Base*> GetAllChildListData() const { return TArray<UListDataObject_Base*>(); }
+	virtual bool HasAnyChildListData() const { return false; }
+
+protected:
+	//Empty in base class. The child classes should override it to handle the initialized needed accordingly
+	virtual void OnDataObjectInitialized();
 
 private:
 	FName DataID;
