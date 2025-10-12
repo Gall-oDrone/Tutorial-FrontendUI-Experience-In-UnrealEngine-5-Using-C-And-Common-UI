@@ -7,6 +7,7 @@
 #include "Widgets/Options/OptionsDataRegistry.h"
 #include "Widgets/Components/FrontendTabListWidgetBase.h"
 #include "Widgets/Options/DataObjects/ListDataObject_Collection.h"
+#include "Widgets/Components/FrontendCommonListView.h"
 
 #include "FrontendDebugHelper.h"
 
@@ -83,5 +84,15 @@ void UWidget_OptionsScreen::OnBackBoundActionTriggered()
 
 void UWidget_OptionsScreen::OnOptionsTabSelected(FName TabId)
 {
-	Debug::Print(TEXT("New Tab Selected. Tab ID: ") + TabId.ToString());
+	/*Debug::Print(TEXT("New Tab Selected. Tab ID: ") + TabId.ToString());*/
+	TArray<UListDataObject_Base*> FoundListSourceItems = GetOrCreateDataRegistry()->GetListSourceItemsBySelectedTabID(TabId);
+
+	CommonListView_OptionsList->SetListItems(FoundListSourceItems);
+	CommonListView_OptionsList->RequestRefresh();
+
+	if (CommonListView_OptionsList->GetNumItems() != 0)
+	{
+		CommonListView_OptionsList->NavigateToIndex(0);
+		CommonListView_OptionsList->SetSelectedIndex(0);
+	}
 }
