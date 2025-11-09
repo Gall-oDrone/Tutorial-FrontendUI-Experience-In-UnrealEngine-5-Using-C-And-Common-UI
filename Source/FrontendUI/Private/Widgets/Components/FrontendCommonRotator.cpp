@@ -19,6 +19,6 @@ void UFrontendCommonRotator::SetSelectedOptionByText(const FText& InTextOption)
 	}
 	else
 	{
-		MyText->SetText(InTextOption)
+		MyText->SetText(InTextOption);
 	}
 }

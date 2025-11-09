@@ -30,6 +30,8 @@ void UListDataObject_String::AdvanceToNextOption()
 	}
 
 	TrySetDisplayTextFromStringValue(CurrentStringValue);
+
+	NotifyListDataModified(this);
 }
 
 void UListDataObject_String::BackToPreviousOption()
@@ -53,6 +55,8 @@ void UListDataObject_String::BackToPreviousOption()
 	}
 
 	TrySetDisplayTextFromStringValue(CurrentStringValue);
+
+	NotifyListDataModified(this);
 }
 
 void UListDataObject_String::OnDataObjectInitialized()
