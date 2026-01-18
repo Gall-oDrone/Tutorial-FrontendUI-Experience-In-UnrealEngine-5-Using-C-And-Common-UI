@@ -9,6 +9,7 @@
 #include "Widgets/Options/DataObjects/ListDataObject_Collection.h"
 #include "Widgets/Components/FrontendCommonListView.h"
 #include "FrontendSettings/FrontendGameUserSettings.h"
+#include "Widgets/Options/ListEntries/Widget_ListEntry_Base.h"
 
 #include "FrontendDebugHelper.h"
 
@@ -67,7 +68,7 @@ void UWidget_OptionsScreen::NativeOnDeactivated()
 {
 	Super::NativeOnDeactivated();
 
-	UFrontendGameUserSettings::Get()->ApplySettings(true)
+	UFrontendGameUserSettings::Get()->ApplySettings(true);
 }
 
 UOptionsDataRegistry* UWidget_OptionsScreen::GetOrCreateDataRegistry()
@@ -115,11 +116,11 @@ void UWidget_OptionsScreen::OnListViewItemHovered(UObject* InHoveredItem, bool b
 		return;
 	}
 
-	const FString DebugString =
-	CastChecked<UListDataObject_Base>(InHoveredItem)->GetDataDisplayName().ToString() +
-	TEXT(" was ") +
-	(bWasHovered ? TEXT("hovered") : TEXT("unhovered"));
-	Debug::Print(DebugString);
+	UWidget_ListEntry_Base* HoveredEntryWidget = CommonListView_OptionsList->GetEntryWidgetFromItem<UWidget_ListEntry_Base>(InHoveredItem);
+
+	check(HoveredEntryWidget);
+
+	HoveredEntryWidget->NativeOnListEntryWidgetHovered(bWasHovered);
 }
 
 void UWidget_OptionsScreen::OnListviewItemSelected(UObject* InSelectedItem)
@@ -128,9 +129,4 @@ void UWidget_OptionsScreen::OnListviewItemSelected(UObject* InSelectedItem)
 	{
 		return;
 	}
-
-	const FString DebugString =
-	CastChecked<UListDataObject_Base>(InSelectedItem)->GetDataDisplayName().ToString() +
-	TEXT(" was selected");
-	Debug::Print(DebugString);
 }

@@ -22,8 +22,8 @@ public:
 	FString GetCurrentGameDifficulty() const { return CurrentGameDifficulty; }
 
 	UFUNCTION()
-	void SetCurrentGameDifficulty(const FString& InNewDifficulty) { CurrentGameDifficulty = InNewDifficulty; )
-	//***** Gameplay Collection Tab ***** //
+	void SetCurrentGameDifficulty(const FString& InNewDifficulty) { CurrentGameDifficulty = InNewDifficulty; }
+		//***** Gameplay Collection Tab ***** //
 
 private:
 	UPROPERTY(Config)
