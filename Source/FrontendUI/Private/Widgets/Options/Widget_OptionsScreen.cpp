@@ -97,6 +97,8 @@ void UWidget_OptionsScreen::OnBackBoundActionTriggered()
 
 void UWidget_OptionsScreen::OnOptionsTabSelected(FName TabId)
 {
+	DetailsView_ListEntryInfo->ClearDetailsViewInfo();
+
 	/*Debug::Print(TEXT("New Tab Selected. Tab ID: ") + TabId.ToString());*/
 	TArray<UListDataObject_Base*> FoundListSourceItems = GetOrCreateDataRegistry()->GetListSourceItemsBySelectedTabID(TabId);
 
