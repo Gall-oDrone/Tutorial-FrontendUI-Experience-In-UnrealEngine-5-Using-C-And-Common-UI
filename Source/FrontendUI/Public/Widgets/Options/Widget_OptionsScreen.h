@@ -9,6 +9,7 @@
 class UOptionsDataRegistry;
 class UFrontendTabListWidgetBase;
 class UFrontendCommonListView;
+class UWidget_OptionsDetailsView;
 /**
  * 
  */
@@ -37,7 +38,9 @@ private:
 	void OnOptionsTabSelected(FName TabId);
 
 	void OnListViewItemHovered(UObject* InHoveredItem, bool bWasHovered);
-	void OnListviewItemSelected(UObject* InSelectedItem);
+	void OnListViewItemSelected(UObject* InSelectedItem);
+
+	FString TryGetEntryWidgetClassName(UObject* InOwningListItem) const;
 
 	//****** Bound Widgets ****** //
 	UPROPERTY(meta = (BindWidget))
@@ -45,6 +48,9 @@ private:
 
 	UPROPERTY(meta = (BindWidget))
 	UFrontendCommonListView* CommonListView_OptionsList;
+
+	UPROPERTY(meta = (BindWidget))
+	UWidget_OptionsDetailsView* DetailsView_ListEntryInfo;
 	//****** Bound Widgets ****** //
 	
 
