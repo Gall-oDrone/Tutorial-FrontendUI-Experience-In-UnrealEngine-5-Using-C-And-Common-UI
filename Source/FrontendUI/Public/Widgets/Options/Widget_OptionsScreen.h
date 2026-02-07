@@ -70,4 +70,6 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<UListDataObject_Base*> ResettableDataArray;
+
+	bool bIsResettingData = false;
 };
