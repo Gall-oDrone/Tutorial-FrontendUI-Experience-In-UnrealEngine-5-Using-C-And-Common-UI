@@ -16,8 +16,12 @@ class FRONTENDUI_API UFrontendCommonButtonBase : public UCommonButtonBase
 	GENERATED_BODY()
 	
 public:
+	
 	UFUNCTION(BlueprintCallable)
 	void SetButtonText(FText InText);
+
+	UFUNCTION(BlueprintCallable)
+	FText GetButtonDisplayText() const;
 
 private:
 	//~ Begin UUserWidget Interface
