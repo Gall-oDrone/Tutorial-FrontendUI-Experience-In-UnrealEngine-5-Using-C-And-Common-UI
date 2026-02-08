@@ -247,7 +247,7 @@ FString UWidget_OptionsScreen::TryGetEntryWidgetClassName(UObject* InOwningListI
 {
 	if (UUserWidget* FoundEntryWidget = CommonListView_OptionsList->GetEntryWidgetFromItem(InOwningListItem))
 	{
-		FoundEntryWidget->GetClass()->GetName();
+		return FoundEntryWidget->GetClass()->GetName();
 	}
 	return TEXT("Entry Widget Not Valid");
 }
