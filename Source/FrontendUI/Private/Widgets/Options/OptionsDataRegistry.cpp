@@ -6,6 +6,8 @@
 #include "Widgets/Options/DataObjects/ListDataObject_String.h"
 #include "Widgets/Options/OptionsDataInteractionHelper.h"
 #include "FrontendSettings/FrontendGameUserSettings.h"
+#include "FrontendFunctionLibrary.h"
+#include "FrontendGameplayTags.h"
 
 #define MAKE_OPTIONS_DATA_CONTROL(SetterOrGetterFuncName) \
 	MakeShared<FOptionsDataInteractionHelper>(GET_FUNCTION_NAME_STRING_CHECKED(UFrontendGameUserSettings,SetterOrGetterFuncName)
@@ -67,7 +69,9 @@ void UOptionsDataRegistry::InitGameplayCollectionTab()
 	{
 		UListDataObject_String* TestItem = NewObject<UListDataObject_String>();
 		TestItem->SetDataID(FName("TestItem"));
-		TestItem->SetDataDisplayName(FText::FromString(TEXT("Test Item")));
+		TestItem->SetDataDisplayName(FText::FromString(TEXT("Test Image Item")));
+		TestItem->SetSoftDescriptionImage(UFrontendFunctionLibrary::GetOptionsSoftImageByTag(FrontendGameplayTags::Frontend_Image_TestImage));
+		TestItem->SetDescriptionRichText(FText::FromString(TEXT("The image to display can be specified in the project settings. It can be anything the developer assigned in there")));
 
 		GameplayTabCollection->AddChildListData(TestItem);
 	}

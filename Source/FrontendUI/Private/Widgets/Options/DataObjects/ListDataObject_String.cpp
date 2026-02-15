@@ -107,7 +107,7 @@ void UListDataObject_String::OnRotatorInitiatedValueChange(const FText& InNewSel
 	const int32 FoundIndex = AvailableOptionsTextArray.IndexOfByPredicate(
 		[InNewSelectedText](const FText& AvailableText)->bool
 		{
-			AvailableText.EqualTo(InNewSelectedText);
+			return AvailableText.EqualTo(InNewSelectedText);
 		}
 	);
 
