@@ -20,18 +20,23 @@ void UWidget_OptionsDetailsView::UpdateDetailsViewInfo(UListDataObject_Base* InD
 	{
 		CommonLazyImage_DescriptionImage->SetBrushFromLazyTexture(InDataObject->GetSoftDescriptionImage());
 		CommonLazyImage_DescriptionImage->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-		CommonRichText_Description->SetText(InDataObject->GetDescriptionRichText());
-		
-		const FString DynamicDetails = FString::Printf(
-			TEXT("Data Object Class: <Bold>%s</>\n\nEntry Widget Class:<Bold>%s</>"),
-			*InDataObject->GetClass()->GetName(),
-			*InEntryWidgetClassName
-		);
-
-		CommonRichText_DynamicDetails->SetText(FText::FromString(DynamicDetails));
-
-		CommonRichText_DisabledReason->SetText(InDataObject->GetDisableRichText());
 	}
+	else
+	{
+		CommonLazyImage_DescriptionImage->SetVisibility(ESlateVisibility::Collapsed);
+	}
+		
+	CommonRichText_Description->SetText(InDataObject->GetDescriptionRichText());
+	
+	const FString DynamicDetails = FString::Printf(
+		TEXT("Data Object Class: <Bold>%s</>\n\nEntry Widget Class:<Bold>%s</>"),
+		*InDataObject->GetClass()->GetName(),
+		*InEntryWidgetClassName
+	);
+
+	CommonRichText_DynamicDetails->SetText(FText::FromString(DynamicDetails));
+
+	CommonRichText_DisabledReason->SetText(InDataObject->GetDisableRichText());
 }
 
 void UWidget_OptionsDetailsView::ClearDetailsViewInfo()
