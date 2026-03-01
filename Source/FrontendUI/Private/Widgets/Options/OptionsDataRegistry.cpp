@@ -156,7 +156,9 @@ void UOptionsDataRegistry::InitAudioCollectionTab()
 			OverallVolume->SetDefaultValueFromString(LexToString(1.f));
 			OverallVolume->SetDisplayNumericType(ECommonNumericType::Percentage);
 			OverallVolume->SetNumberFormattingOptions(UListDataObject_Scalar::NoDecimal()); //No Decimal: 50% //One Decimal: 50.5%
-			//TODO:: Set data dynamic getter and setter for the data object
+			OverallVolume->SetDataDynamicGetter(MAKE_OPTIONS_DATA_CONTROL(GetOverallVolume));
+			OverallVolume->SetDataDynamicSetter(MAKE_OPTIONS_DATA_CONTROL(OverallVolume));
+			OverallVolume->SetShouldApplySettingsImmediately(true);
 
 			VolumeCategoryCollection->AddChildListData(OverallVolume);
 		}
