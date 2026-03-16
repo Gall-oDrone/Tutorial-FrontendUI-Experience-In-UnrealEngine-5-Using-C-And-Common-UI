@@ -150,13 +150,12 @@ void UOptionsDataRegistry::InitAudioCollectionTab()
 			OverallVolume->SetDataID(FName("OverallVolume"));
 			OverallVolume->SetDataDisplayName(FText::FromString(TEXT("Overall Volume")));
 			OverallVolume->SetDescriptionRichText(FText::FromString(TEXT("This is description for Overall Volume")));
-			OverallVolume->SetDisplayValueRange(TRange<float>(0.5f, 1.f));
+			OverallVolume->SetDisplayValueRange(TRange<float>(0.f, 1.f));
 			OverallVolume->SetOutputValueRange(TRange<float>(0.f, 2.f));
 			OverallVolume->SetSliderStepSize(0.01f);
 			OverallVolume->SetDefaultValueFromString(LexToString(1.f));
 			OverallVolume->SetDisplayNumericType(ECommonNumericType::Percentage);
 			OverallVolume->SetNumberFormattingOptions(UListDataObject_Scalar::NoDecimal()); //No Decimal: 50% //One Decimal: 50.5%
-
 			OverallVolume->SetDataDynamicGetter(MAKE_OPTIONS_DATA_CONTROL(GetOverallVolume));
 			OverallVolume->SetDataDynamicSetter(MAKE_OPTIONS_DATA_CONTROL(SetOverallVolume));
 			OverallVolume->SetShouldApplySettingsImmediately(true);
@@ -164,6 +163,25 @@ void UOptionsDataRegistry::InitAudioCollectionTab()
 			VolumeCategoryCollection->AddChildListData(OverallVolume);
 		}
 
+		//Music Volume
+		{
+			UListDataObject_Scalar* MusicVolume = NewObject<UListDataObject_Scalar>();
+			MusicVolume->SetDataID(FName("MusicVolume"));
+			MusicVolume->SetDataDisplayName(FText::FromString(TEXT("Music Volume")));
+			MusicVolume->SetDescriptionRichText(FText::FromString(TEXT("This is description for Music Volume")));
+			MusicVolume->SetDisplayValueRange(TRange<float>(0.f, 1.f));
+			MusicVolume->SetOutputValueRange(TRange<float>(0.f, 2.f));
+			MusicVolume->SetSliderStepSize(0.01f);
+			MusicVolume->SetDefaultValueFromString(LexToString(1.f));
+			MusicVolume->SetDisplayNumericType(ECommonNumericType::Percentage);
+			MusicVolume->SetNumberFormattingOptions(UListDataObject_Scalar::NoDecimal()); //No Decimal: 50% //One Decimal: 50.5%
+			MusicVolume->SetDataDynamicGetter(MAKE_OPTIONS_DATA_CONTROL(GetMusicVolume));
+			MusicVolume->SetDataDynamicSetter(MAKE_OPTIONS_DATA_CONTROL(SetMusicVolume));
+			MusicVolume->SetShouldApplySettingsImmediately(true);
+
+			VolumeCategoryCollection->AddChildListData(MusicVolume);
+		}
+		 
 		//Test Item
 		{
 			UListDataObject_String* TestItem = NewObject<UListDataObject_String>();
