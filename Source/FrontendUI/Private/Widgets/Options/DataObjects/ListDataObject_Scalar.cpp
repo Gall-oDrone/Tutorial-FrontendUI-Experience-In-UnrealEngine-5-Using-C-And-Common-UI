@@ -45,7 +45,7 @@ float UListDataObject_Scalar::StringToFloat(const FString& InString) const
 	return OutConvertedValue;
 }
 
-float UListDataObject_Scalar::GetCurrenValue() const
+float UListDataObject_Scalar::GetCurrentValue() const
 {
 	if (DataDynamicGetter)
 	{

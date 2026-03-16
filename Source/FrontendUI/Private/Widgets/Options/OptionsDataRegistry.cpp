@@ -11,7 +11,7 @@
 #include "Widgets/Options/DataObjects/ListDataObject_Scalar.h"
 
 #define MAKE_OPTIONS_DATA_CONTROL(SetterOrGetterFuncName) \
-	MakeShared<FOptionsDataInteractionHelper>(GET_FUNCTION_NAME_STRING_CHECKED(UFrontendGameUserSettings,SetterOrGetterFuncName)
+	MakeShared<FOptionsDataInteractionHelper>(GET_FUNCTION_NAME_STRING_CHECKED(UFrontendGameUserSettings,SetterOrGetterFuncName))
 
 void UOptionsDataRegistry::InitOptionsDataRegistry(ULocalPlayer* InOwningLocalPlayer)
 {
@@ -100,8 +100,8 @@ void UOptionsDataRegistry::InitGameplayCollectionTab()
 		GameDifficulty->AddDynamicOption(TEXT("Hard"), FText::FromString(TEXT("Hard")));
 		GameDifficulty->AddDynamicOption(TEXT("Very Hard"), FText::FromString(TEXT("Very Hard")));
 		GameDifficulty->SetDefaultValueFromString(TEXT("Normal"));
-		GameDifficulty->SetDataDynamicGetter(MAKE_OPTIONS_DATA_CONTROL(GetCurrentGameDifficulty)));
-		GameDifficulty->SetDataDynamicSetter(MAKE_OPTIONS_DATA_CONTROL(SetCurrentGameDifficulty)));
+		GameDifficulty->SetDataDynamicGetter(MAKE_OPTIONS_DATA_CONTROL(GetCurrentGameDifficulty));
+		GameDifficulty->SetDataDynamicSetter(MAKE_OPTIONS_DATA_CONTROL(SetCurrentGameDifficulty));
 		GameDifficulty->SetShouldApplySettingsImmediately(true);
 
 		GameplayTabCollection->AddChildListData(GameDifficulty);
@@ -156,11 +156,23 @@ void UOptionsDataRegistry::InitAudioCollectionTab()
 			OverallVolume->SetDefaultValueFromString(LexToString(1.f));
 			OverallVolume->SetDisplayNumericType(ECommonNumericType::Percentage);
 			OverallVolume->SetNumberFormattingOptions(UListDataObject_Scalar::NoDecimal()); //No Decimal: 50% //One Decimal: 50.5%
+
 			OverallVolume->SetDataDynamicGetter(MAKE_OPTIONS_DATA_CONTROL(GetOverallVolume));
-			OverallVolume->SetDataDynamicSetter(MAKE_OPTIONS_DATA_CONTROL(OverallVolume));
+			OverallVolume->SetDataDynamicSetter(MAKE_OPTIONS_DATA_CONTROL(SetOverallVolume));
 			OverallVolume->SetShouldApplySettingsImmediately(true);
 
 			VolumeCategoryCollection->AddChildListData(OverallVolume);
+		}
+
+		//Test Item
+		{
+			UListDataObject_String* TestItem = NewObject<UListDataObject_String>();
+			TestItem->SetDataID(FName("TestItem"));
+			TestItem->SetDataDisplayName(FText::FromString(TEXT("Test Image Item")));
+			TestItem->SetSoftDescriptionImage(UFrontendFunctionLibrary::GetOptionsSoftImageByTag(FrontendGameplayTags::Frontend_Image_TestImage));
+			TestItem->SetDescriptionRichText(FText::FromString(TEXT("The image to display can be specified in the project settings. It can be anything the developer assigned in there")));
+
+			VolumeCategoryCollection->AddChildListData(TestItem);
 		}
 	}
 

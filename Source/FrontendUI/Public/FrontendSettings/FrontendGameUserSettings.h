@@ -28,11 +28,11 @@ public:
 	//***** Gameplay Collection Tab ***** //
 
 	//***** Audio Collection Tab ***** //
-	UPROPERTY()
+	UFUNCTION()
 	float GetOverallVolume() const { return OverallVolume; }
 
-	UPROPERTY()
-	float SetOverallVolume(float InVolume);
+	UFUNCTION()
+	void SetOverallVolume(float InVolume);
 	//***** Audio Collection Tab ***** //
 
 private:

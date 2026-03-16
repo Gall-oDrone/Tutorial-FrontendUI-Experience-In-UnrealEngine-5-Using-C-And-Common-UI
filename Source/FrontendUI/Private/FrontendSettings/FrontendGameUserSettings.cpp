@@ -18,7 +18,7 @@ UFrontendGameUserSettings* UFrontendGameUserSettings::Get()
 	return nullptr;
 }
 
-float UFrontendGameUserSettings::SetOverallVolume(float InVolume)
+void UFrontendGameUserSettings::SetOverallVolume(float InVolume)
 {
 	OverallVolume = InVolume;
 
