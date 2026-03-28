@@ -46,6 +46,12 @@ public:
 	UFUNCTION()
 	void SetSoundFXVolume(float InVolume);
 
+	UFUNCTION()
+	bool GetAllowBackgroundAudio() const { return bAllowBackgroundAudio; }
+	
+	UFUNCTION()
+	void SetAllowBackgroundAudio(bool bIsAllowed);
+
 	//***** Audio Collection Tab ***** //
 private:
 	//***** Gameplay Collection Tab ***** //
@@ -62,5 +68,8 @@ private:
 	
 	UPROPERTY(Config)
 	float SoundFXVolume;
+
+	UPROPERTY(Config)
+	bool bAllowBackgroundAudio;
 	//***** Audio Collection Tab ***** //
 };
