@@ -212,7 +212,7 @@ void UOptionsDataRegistry::InitAudioCollectionTab()
 
 		//Allow Background Audio
 		{
-			UListDataObject_StringBool AllowBackgroundAudio = NewObject<UListDataObject_StringBool>();
+			UListDataObject_StringBool* AllowBackgroundAudio = NewObject<UListDataObject_StringBool>();
 			AllowBackgroundAudio->SetDataID(FName("AllowBackgroundAudio"));
 			AllowBackgroundAudio->SetDataDisplayName(FText::FromString(TEXT("Allow Background Audio")));
 			AllowBackgroundAudio->OverrideTrueDisplayText(FText::FromString(TEXT("Enabled")));
@@ -227,7 +227,7 @@ void UOptionsDataRegistry::InitAudioCollectionTab()
 
 		//Use HDR Audio
 		{
-			UListDataObject_StringBool UseHDRAudioMode = NewObject<UListDataObject_StringBool>();
+			UListDataObject_StringBool* UseHDRAudioMode = NewObject<UListDataObject_StringBool>();
 			UseHDRAudioMode->SetDataID(FName("UseHDRAudioMode"));
 			UseHDRAudioMode->SetDataDisplayName(FText::FromString(TEXT("Use HDR Audio Mode")));
 			UseHDRAudioMode->OverrideTrueDisplayText(FText::FromString(TEXT("Enabled")));

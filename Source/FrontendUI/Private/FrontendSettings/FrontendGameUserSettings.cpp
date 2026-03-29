@@ -7,7 +7,7 @@ UFrontendGameUserSettings::UFrontendGameUserSettings()
 	: OverallVolume(1.f)
 	, MusicVolume(1.f)
 	, SoundFXVolume(1.f)
-	, bAllowBackgroundAudio(false),
+	, bAllowBackgroundAudio(false)
 	, bUseHDRAudioMode(false)
 {
 }
