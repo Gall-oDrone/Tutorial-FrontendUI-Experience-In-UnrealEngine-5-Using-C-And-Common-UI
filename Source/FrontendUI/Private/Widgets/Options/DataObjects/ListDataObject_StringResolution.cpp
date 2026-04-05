@@ -11,7 +11,7 @@ void UListDataObject_StringResolution::InitResolutionValues()
 {
 	TArray<FIntPoint> AvailableResolutions;
 
-	UKismetSystemLibrary::GetSuppoertedFullscreenResolutions();
+	UKismetSystemLibrary::GetSupportedFullscreenResolutions(AvailableResolutions);
 
 	for (const FIntPoint& Resolution : AvailableResolutions)
 	{
