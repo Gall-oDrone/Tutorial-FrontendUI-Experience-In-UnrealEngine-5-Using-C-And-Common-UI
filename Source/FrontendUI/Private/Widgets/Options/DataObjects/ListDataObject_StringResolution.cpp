@@ -17,7 +17,7 @@ void UListDataObject_StringResolution::InitResolutionValues()
 	AvailableResolutions.Sort(
 		[](const FIntPoint& A, const FIntPoint& B)->bool
 		{
-			A.SizeSquared() < B.SizeSquared();
+			return A.SizeSquared() < B.SizeSquared();
 		}
 	);
 

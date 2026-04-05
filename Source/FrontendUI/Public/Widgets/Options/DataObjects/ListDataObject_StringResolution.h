@@ -26,5 +26,5 @@ private:
 	FString ResToValueString(const FIntPoint& InResolution) const;
 	FText ResToDisplayText(const FIntPoint& InResolution) const;
 
-	FStirng MaximumAllowedResolution;
+	FString MaximumAllowedResolution;
 };
