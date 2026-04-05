@@ -21,4 +21,10 @@ protected:
 	//~ Begin UListDataObject_String Interface
 	virtual void OnDataObjectInitialized() override;
 	//~ End UListDataObject_String Interface
+
+private:
+	FString ResToValueString(const FIntPoint& InResolution) const;
+	FText ResToDisplayText(const FIntPoint& InResolution) const;
+
+	FStirng MaximumAllowedResolution;
 };
