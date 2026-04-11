@@ -51,7 +51,7 @@ public:
 
 	void SetDisabledForcedStringValue(const FString& InForcedValue)
 	{
-		DisabledForcedStringValue = InForcedValue
+		DisabledForcedStringValue = InForcedValue;
 	}
 
 private:
