@@ -23,6 +23,7 @@ class FRONTENDUI_API UListDataObject_Base : public UObject
 public:
 	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnListDataModifiedDelegate, UListDataObject_Base*,EOptionsListDataModifyReason)
 	FOnListDataModifiedDelegate OnListDataModified;
+	FOnListDataModifiedDelegate OnDependencyDataModified;
 
 	LIST_DATA_ACCESOR(FName, DataID)
 		LIST_DATA_ACCESOR(FText, DataDisplayName)
@@ -47,6 +48,9 @@ public:
 	//Gets called from OptionsDataRegister for adding in edit conditions for the constructed  list data objects
 	void AddEditCondition(FOptionsDataEditConditionDescriptor& InEditCondition);
 
+	//Gets called from OptionsDataRegistry to add in dependency data
+	void AddEditDependencyData(UListDataObject_Base* InDependencyData);
+
 	bool IsDataCurrentlyEditable();
 
 protected:
@@ -60,6 +64,8 @@ protected:
 
 	//The child class should override this to specify how to set the current value to the forced value
 	virtual void OnSetToForcedStringValue(const FString& InForcedValue) {}
+
+	virtual void OnEditDependencyDataModified(UListDataObject_Base* ModifiedDependencyData, EOptionsListDataModifyReason ModifyReason);
 
 private:
 	FName DataID;
