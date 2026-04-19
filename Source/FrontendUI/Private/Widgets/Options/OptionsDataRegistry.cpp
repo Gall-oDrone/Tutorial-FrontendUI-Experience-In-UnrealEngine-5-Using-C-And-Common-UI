@@ -391,6 +391,28 @@ void UOptionsDataRegistry::InitVideoCollectionTab()
 
 			GraphicsCategoryCollection->AddChildListData(ResolutionScale);
 		}
+
+		//Global Illumination Quality
+		{
+			UListDataObject_StringInteger* GlobalIlluminationQuality = NewObject<UListDataObject_StringInteger>();
+			GlobalIlluminationQuality->SetDataID(FName("GlobalIlluminationQuality"));
+			GlobalIlluminationQuality->SetDataDisplayName(FText::FromString(TEXT("Global Illumination")));
+			GlobalIlluminationQuality->SetDescriptionRichText(FText::FromString(TEXT("This is description for GlobalIlluminationQuality")));
+			GlobalIlluminationQuality->AddIntegerOption(0, FText::FromString(TEXT("Low")));
+			GlobalIlluminationQuality->AddIntegerOption(1, FText::FromString(TEXT("Normal")));
+			GlobalIlluminationQuality->AddIntegerOption(2, FText::FromString(TEXT("High")));
+			GlobalIlluminationQuality->AddIntegerOption(3, FText::FromString(TEXT("Epic")));
+			GlobalIlluminationQuality->AddIntegerOption(4, FText::FromString(TEXT("Cinematic")));
+			GlobalIlluminationQuality->SetDataDynamicGetter(MAKE_OPTIONS_DATA_CONTROL(GetGlobalIlluminationQuality));
+			GlobalIlluminationQuality->SetDataDynamicSetter(MAKE_OPTIONS_DATA_CONTROL(SetGlobalIlluminationQuality));
+			GlobalIlluminationQuality->SetShouldApplySettingsImmediately(true);
+
+			GlobalIlluminationQuality->AddEditDependencyData(CreatedOverallQuality);
+
+			CreatedOverallQuality->AddEditDependencyData(GlobalIlluminationQuality);
+
+			GraphicsCategoryCollection->AddChildListData(GlobalIlluminationQuality);
+		}
 	}
 
 	RegisteredOptionsTabCollections.Add(VideoTabCollection);

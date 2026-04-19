@@ -99,7 +99,7 @@ public:
 };
 
 UCLASS()
-class FRONTEND_API UListDataObject_StringInteger : public UListDataObject_String
+class FRONTENDUI_API UListDataObject_StringInteger : public UListDataObject_String
 {
 	GENERATED_BODY()
 

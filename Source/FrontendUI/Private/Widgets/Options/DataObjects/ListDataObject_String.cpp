@@ -255,7 +255,12 @@ void UListDataObject_StringInteger::OnEditDependencyDataModified(UListDataObject
 {
 	if (DataDynamicGetter)
 	{
-		CurrentStringValue = DataDynamicGetter->GetValueString();
+		if (CurrentStringValue == DataDynamicGetter->GetValueAsString())
+		{
+			return;
+		}
+
+		CurrentStringValue = DataDynamicGetter->GetValueAsString();
 
 		if (TrySetDisplayTextFromStringValue(CurrentStringValue))
 		{
