@@ -63,6 +63,6 @@ void UFrontendGameUserSettings::SetCurrentDisplayGamma(float InNewGamma)
 {
 	if (GEngine)
 	{
-		GEngine->DisplayGamma = InNewGamma
+		GEngine->DisplayGamma = InNewGamma;
 	}
 }

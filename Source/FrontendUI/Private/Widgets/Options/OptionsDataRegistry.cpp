@@ -350,6 +350,24 @@ void UOptionsDataRegistry::InitVideoCollectionTab()
 
 			GraphicsCategoryCollection->AddChildListData(DisplayGamma);
 		}
+
+		//Overall Quality
+		{
+			UListDataObject_StringInteger* OverallQuality = NewObject<UListDataObject_StringInteger>();
+			OverallQuality->SetDataID(FName("OverallQuality"));
+			OverallQuality->SetDataDisplayName(FText::FromString(TEXT("Overall Quality")));
+			OverallQuality->SetDescriptionRichText(FText::FromString(TEXT("This is description for Overall Quality")));
+			OverallQuality->AddIntegerOption(0, FText::FromString(TEXT("Low")));
+			OverallQuality->AddIntegerOption(1, FText::FromString(TEXT("Normal")));
+			OverallQuality->AddIntegerOption(2, FText::FromString(TEXT("High")));
+			OverallQuality->AddIntegerOption(3, FText::FromString(TEXT("Epic")));
+			OverallQuality->AddIntegerOption(4, FText::FromString(TEXT("Cinematic")));
+			OverallQuality->SetDataDynamicGetter(MAKE_OPTIONS_DATA_CONTROL(GetOverallScalabilityLevel));
+			OverallQuality->SetDataDynamicSetter(MAKE_OPTIONS_DATA_CONTROL(SetOverallScalabilityLevel));
+			OverallQuality->SetShouldApplySettingsImmediately(true);
+
+			GraphicsCategoryCollection->AddChildListData(OverallQuality);
+		}
 	}
 
 	RegisteredOptionsTabCollections.Add(VideoTabCollection);
