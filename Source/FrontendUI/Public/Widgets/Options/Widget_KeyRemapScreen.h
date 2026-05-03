@@ -25,6 +25,6 @@ protected:
 private:
 	//***** bound Widget ***** //
 	UPROPERTY(meta = (BindWidget))
-	UCommonRichTextBlock* CommonRichTextBlock_RemapMessage;
+	UCommonRichTextBlock* CommonRichText_RemapMessage;
 	//***** bound Widget ***** //
 };
