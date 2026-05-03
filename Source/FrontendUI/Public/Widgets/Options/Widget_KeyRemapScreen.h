@@ -1,0 +1,30 @@
+// Diego Gallo All Rights Reserved
+
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Widgets/Widget_ActivatableBase.h"
+#include "Widget_KeyRemapScreen.generated.h"
+
+class UCommonRichTextBlock;
+/**
+ * 
+ */
+UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+class FRONTENDUI_API UWidget_KeyRemapScreen : public UWidget_ActivatableBase
+{
+	GENERATED_BODY()
+	
+protected:
+
+	//~ Begin UCommonActivatableWidget Interface
+	virtual void NativeOnActivated() override;
+	virtual void NativeOnDeactivated() override;
+	//~ End UCommonActivatableWidget Interface
+
+private:
+	//***** bound Widget ***** //
+	UPROPERTY(meta = (BindWidget))
+	UCommonRichTextBlock* CommonRichTextBlock_RemapMessage;
+	//***** bound Widget ***** //
+};
