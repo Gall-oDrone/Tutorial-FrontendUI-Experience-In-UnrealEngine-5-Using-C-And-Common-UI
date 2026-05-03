@@ -102,8 +102,32 @@ void UWidget_KeyRemapScreen::NativeOnActivated()
 	Super::NativeOnActivated();
 
 	CachedInputPreprocessor = MakeShared<FKeyRemapScreenInputPreprocessor>(CachedDesiredInputType);
+	CachedInputPreprocessor->OnInputPreProcessorKeyPressed.BindUObject(this, &ThisClass::OnValidKeyPressedDetected);
+	CachedInputPreprocessor->OnInputPreProcessorKeySelectCanceled.BindUObject(this, &ThisClass::OnKeySelectCanceled);
 
 	FSlateApplication::Get().RegisterInputPreProcessor(CachedInputPreprocessor, -1);
+
+	FString InputDeviceName;
+
+	switch (CachedDesiredInputType)
+	{
+	case ECommonInputType::MouseAndKeyboard:
+		InputDeviceName = TEXT("Mouse & Keyboard");
+		break;
+
+	case ECommonInputType::Gamepad:
+		InputDeviceName = TEXT("Gamepad");
+		break;
+
+	default:
+		break;
+	}
+
+	const FString DisplayRichMessage = FString::Printf(
+		TEXT("<KeyRemapDefault>Press any</> <KeyRemapHighlight>&s</> <KeyRemapDefault>key.</>"), *InputDeviceName
+	);
+
+	CommonRichText_RemapMessage->SetText(FText::FromString(DisplayRichMessage));
 }
 
 void UWidget_KeyRemapScreen::NativeOnDeactivated()
@@ -116,4 +140,13 @@ void UWidget_KeyRemapScreen::NativeOnDeactivated()
 
 		CachedInputPreprocessor.Reset();
 	}
+}
+
+void UWidget_KeyRemapScreen::OnValidKeyPressedDetected(const FKey& PressedKey)
+{
+
+}
+
+void UWidget_KeyRemapScreen::OnKeySelectCanceled(const FString& CanceledReason)
+{
 }
