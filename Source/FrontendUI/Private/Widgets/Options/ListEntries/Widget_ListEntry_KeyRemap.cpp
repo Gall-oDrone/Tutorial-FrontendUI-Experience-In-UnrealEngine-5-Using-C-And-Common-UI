@@ -9,7 +9,7 @@ void UWidget_ListEntry_KeyRemap::OnOwningListDataObjectSet(UListDataObject_Base*
 {
 	Super::OnOwningListDataObjectSet(InOwningListDataObject);
 
-	CachedOwningKeyRemapDataObject = CastCheck<UListDataObject_KeyRemap>(InOwningListDataObject);
+	CachedOwningKeyRemapDataObject = CastChecked<UListDataObject_KeyRemap>(InOwningListDataObject);
 
 	CommonButton_RemapKey->SetButtonDisplayImage(CachedOwningKeyRemapDataObject->GetIconFromCurrentKey());
 }
