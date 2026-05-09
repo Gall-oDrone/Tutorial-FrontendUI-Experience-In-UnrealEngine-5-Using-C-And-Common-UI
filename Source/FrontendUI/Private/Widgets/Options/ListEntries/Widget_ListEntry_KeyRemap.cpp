@@ -47,6 +47,8 @@ void UWidget_ListEntry_KeyRemap::OnRemapKeyButtonClicked()
 			if (PushState == EAsyncPushWidgetState::OnCreatedBeforePush)
 			{
 				UWidget_KeyRemapScreen* CreatedKeyRemapScreen = CastChecked<UWidget_KeyRemapScreen>(PushedWidget);
+				CreatedKeyRemapScreen->OnKeyRemapScreenKeyPressed.BindUObject(this, &ThisClass::OnKeyToRemapPressed);
+				CreatedKeyRemapScreen->OnKeyRemapScreenKeySelectCanceled.BindUObject(this, &ThisClass::OnKeyRemapCanceled);
 
 				if (CachedOwningKeyRemapDataObject)
 				{
@@ -60,4 +62,19 @@ void UWidget_ListEntry_KeyRemap::OnRemapKeyButtonClicked()
 void UWidget_ListEntry_KeyRemap::OnResetKeyBindingButtonClicked()
 {
 	Debug::Print(TEXT("Reset Key Binding Button Clicked"));
+}
+
+void UWidget_ListEntry_KeyRemap::OnKeyToRemapPressed(const FKey& PressedKey)
+{
+	Debug::Print(TEXT("Valid key to remap detected. Key: ") + PressedKey.GetDisplayName().ToString());
+}
+
+void UWidget_ListEntry_KeyRemap::OnKeyRemapCanceled(const FString& CanceledReason)
+{
+	UFrontendUISubsystem::Get(this)->PushConfirmScreenToModalStackAsync(
+		EConfirmScreenType::Ok,
+		FText::FromString(TEXT("Key Remap")),
+		FText::FromString(CanceledReason),
+		[](EConfirmScreenButtonType ClickedButton) {}
+	);
 }
