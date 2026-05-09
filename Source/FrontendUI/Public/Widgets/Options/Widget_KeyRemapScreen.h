@@ -20,6 +20,12 @@ class FRONTENDUI_API UWidget_KeyRemapScreen : public UWidget_ActivatableBase
 public:
 	void SetDesiredInputTypeToFilter(ECommonInputType InDesiredInputType);
 
+	DECLARE_DELEGATE_OneParam(FOnKeyRemapScreenKeyPressedDelegate, const FKey& /*PressedKey*/)
+	FOnKeyRemapScreenKeyPressedDelegate OnKeyRemapScreenKeyPressed;
+
+	DECLARE_DELEGATE_OneParam(FOnKeyRemapScreenKeySelectCanceledDelegate, const FString& /*CanceledReason*/)
+	FOnKeyRemapScreenKeySelectCanceledDelegate OnKeyRemapScreenKeySelectCanceled;
+
 protected:
 
 	//~ Begin UCommonActivatableWidget Interface
@@ -30,6 +36,9 @@ protected:
 private:
 	void OnValidKeyPressedDetected(const FKey& PressedKey);
 	void OnKeySelectCanceled(const FString& CanceledReason);
+	
+	//Delay a tick to make sure the input key is captured properly before calling the PreDeactivateCallback and deactivating the widget
+	void RequestDeactivateWidget(TFunction<void()> PreDeactivateCallback);
 
 	//***** bound Widget ***** //
 	UPROPERTY(meta = (BindWidget))
