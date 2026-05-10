@@ -701,7 +701,54 @@ void UOptionsDataRegistry::InitControlCollectionTab(ULocalPlayer* InOwningLocalP
 				}
 			}
 		}
+
 	}
 
+	//Gamepad Category
+	{
+		UListDataObject_Collection* GamepadCategoryCollection = NewObject<UListDataObject_Collection>();
+		GamepadCategoryCollection->SetDataID(FName("GamepadCategoryCollection"));
+		GamepadCategoryCollection->SetDataDisplayName(FText::FromString(TEXT("Gamepad")));
+
+		ControlTabCollection->AddChildListData(GamepadCategoryCollection);
+
+		//Gamepad inputs
+		{
+			FPlayerMappableKeyQueryOptions GamepadOnly;
+			GamepadOnly.KeyToMatch = EKeys::Gamepad_FaceButton_Bottom;
+			GamepadOnly.bMatchBasicKeyTypes = true;
+
+			for (const TPair<FGameplayTag, UEnhancedPlayerMappableKeyProfile*>& ProfilePair : EIUserSettings->GetAllSavedKeyProfiles())
+			{
+				UEnhancedPlayerMappableKeyProfile* MappableKeyProfile = ProfilePair.Value;
+
+				check(MappableKeyProfile);
+
+				for (const TPair<FName, FKeyMappingRow>& MappingRowPair : MappableKeyProfile->GetPlayerMappingRows())
+				{
+					for (const FPlayerKeyMapping& KeyMapping : MappingRowPair.Value.Mappings)
+					{
+						if (MappableKeyProfile->DoesMappingPassQueryOptions(KeyMapping, GamepadOnly))
+						{
+							/*Debug::Print(
+								TEXT(" Mpaiing ID: ") + KeyMapping.GetMappingName().ToString() +
+								TEXT(" Display Name: ") + KeyMapping.GetDisplayName().ToString() +
+								TEXT(" Bound Key: ") + KeyMapping.GetCurrentKey().GetDisplayName().ToString()
+							);*/
+
+							UListDataObject_KeyRemap* KeyRemapDataObject = NewObject<UListDataObject_KeyRemap>();
+							KeyRemapDataObject->SetDataID(KeyMapping.GetMappingName());
+							KeyRemapDataObject->SetDataDisplayName(KeyMapping.GetDisplayName());
+							KeyRemapDataObject->InitKeyRemapData(EIUserSettings, MappableKeyProfile, ECommonInputType::Gamepad, KeyMapping);
+
+							GamepadCategoryCollection->AddChildListData(KeyRemapDataObject);
+						}
+					}
+				}
+			}
+		}
+
+
+	}
 	RegisteredOptionsTabCollections.Add(ControlTabCollection);
 }
