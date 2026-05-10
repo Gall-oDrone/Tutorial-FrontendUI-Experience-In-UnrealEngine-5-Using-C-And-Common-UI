@@ -54,6 +54,12 @@ public:
 	//Gets called outside of the class when this widget is constructed and before it's pushed to the module stack
 	void InitConfirmScreen(UConfirmScreenInfoObject* InScreenInfoObject, TFunction<void(EConfirmScreenButtonType)> ClickedButtonCallback);
 
+protected:
+	
+	//~ Begin UCommonActivatableWidget Interface
+	virtual UWidget* NativeGetDesiredFocusTarget() const override;
+	//~ End UCommonActivatableWidget Interface
+
 private:
 	UPROPERTY(meta = (BindWidget))
 	UCommonTextBlock* CommonTextBlock_Title;
