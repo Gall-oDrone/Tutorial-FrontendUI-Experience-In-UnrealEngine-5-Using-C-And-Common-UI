@@ -85,7 +85,7 @@ protected:
 
 			if (CurrentInputType == ECommonInputType::Gamepad && InPressedKey == EKeys::LeftMouseButton)
 			{
-				FCommonInputActionDatabase* InputActionData = ICommonInputModule::GetSettings().GetDefaultBackAction().GetRow<FCommonInputActionDatabase>(TEXT(""));
+				FCommonInputActionDatabase* InputActionData = ICommonInputModule::GetSettings().GetDefaultClickAction().GetRow<FCommonInputActionDatabase>(TEXT(""));
 
 				check(InputActionData);
 
