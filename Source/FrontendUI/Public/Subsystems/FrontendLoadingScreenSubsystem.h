@@ -10,7 +10,7 @@
  * 
  */
 UCLASS()
-class FRONTENDUI_API UFrontendLoadingScreenSubsystem : public UGameInstanceSubsystem
+class FRONTENDUI_API UFrontendLoadingScreenSubsystem : public UGameInstanceSubsystem, public FTickableGameObject
 {
 	GENERATED_BODY()
 	
@@ -20,6 +20,14 @@ public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection);
 	virtual void Deinitialize();
 	//~ End USubsystem Interface
+
+	//~ Begin FTickableGameObject Interface
+	virtual UWorld* GetTickableGameObjectWorld() const override;
+	virtual void Tick(float DeltaTime) override;
+	virtual ETickableTickType GetTickableTickType() const override;
+	virtual bool IsTickable() const override;
+	virtual TStatId GetStatId() const override;
+	//~ End FTickableGameObject Interface
 
 private:
 	void OnMapPreloaded(const FWorldContext& WorldContext, const FString& MapName);
