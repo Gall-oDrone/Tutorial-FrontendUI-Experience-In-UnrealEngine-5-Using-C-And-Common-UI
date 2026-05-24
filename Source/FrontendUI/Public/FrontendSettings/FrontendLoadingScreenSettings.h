@@ -24,6 +24,6 @@ public:
 	float HoldLoadingScreenExtraSeconds = 3.f;
 
 	UPROPERTY(Config, EditAnywhere, Category = "Loading Screen Settings")
-	bool bShouldLoadingScreenInEditor = false;
+	bool bShouldShowLoadingScreenInEditor = false;
 
 };
