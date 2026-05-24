@@ -2,6 +2,7 @@
 
 
 #include "Subsystems/FrontendLoadingScreenSubsystem.h"
+#include "PreLoadScreenManager.h"
 
 #include "FrontendDebugHelper.h"
 
@@ -24,7 +25,7 @@ void UFrontendLoadingScreenSubsystem::Initialize(FSubsystemCollectionBase& Colle
 	FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &ThisClass::OnMapPostLoaded);
 }
 
-bool UFrontendLoadingScreenSubsystem::Deinitialize()
+void UFrontendLoadingScreenSubsystem::Deinitialize()
 {
 	FCoreUObjectDelegates::PreLoadMapWithContext.RemoveAll(this);
 	FCoreUObjectDelegates::PostLoadMapWithWorld.RemoveAll(this);
@@ -95,6 +96,10 @@ void UFrontendLoadingScreenSubsystem::OnMapPostLoaded(UWorld* LoadedWorld)
 void UFrontendLoadingScreenSubsystem::TryUpdateLoadingScreen()
 {
 	//Check if there's any start up loading screen that's currently active
+	if (IsPreLoadScreenActive())
+	{
+		return;
+	}
 
 	//Check if we should show the loading screen
 	if (true)
@@ -110,4 +115,14 @@ void UFrontendLoadingScreenSubsystem::TryUpdateLoadingScreen()
 		//Disable the ticking
 		SetTickableTickType(ETickableTickType::Never);
 	}
+}
+
+bool UFrontendLoadingScreenSubsystem::IsPreLoadScreenActive() const
+{
+	if (FPreLoadScreenManager* PreLoadScreenManager = FPreLoadScreenManager::Get())
+	{
+		return PreLoadScreenManager->HasValidActivePreLoadScreen();
+	}
+
+	return false;
 }
