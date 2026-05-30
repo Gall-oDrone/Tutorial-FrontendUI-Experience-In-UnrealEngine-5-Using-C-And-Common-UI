@@ -66,7 +66,7 @@ bool UFrontendLoadingScreenSubsystem::IsTickable() const
 
 TStatId UFrontendLoadingScreenSubsystem::GetStatId() const
 {
-	RETURN_QUICK_DECLARE_CYCLE_STAT(UFrontendLoadingScreenSubsystem,FStatGroup_STATGROUP_Tickables);
+	RETURN_QUICK_DECLARE_CYCLE_STAT(UFrontendLoadingScreenSubsystem,STATGROUP_Tickables);
 }
 
 void UFrontendLoadingScreenSubsystem::OnMapPreloaded(const FWorldContext& WorldContext, const FString& MapName)
@@ -114,6 +114,9 @@ void UFrontendLoadingScreenSubsystem::TryUpdateLoadingScreen()
 	else
 	{
 		//Try remove the current active loading screen
+		TryRemoveLoadingScreen();
+
+		HoldLoadingScreenStartUpTime = -1.f;
 
 		//Notify the loading is complete
 
@@ -231,4 +234,16 @@ void UFrontendLoadingScreenSubsystem::TryDisplayLoadingScreenIfNone()
 		CachedCreatedLoadingScreenWidget.ToSharedRef(),
 		1000
 	);
+}
+
+void UFrontendLoadingScreenSubsystem::TryRemoveLoadingScreen()
+{
+	if (!CachedCreatedLoadingScreenWidget)
+	{
+		return;
+	}
+
+	GetGameInstance()->GetGameViewportClient()->RemoveViewportWidgetContent(CachedCreatedLoadingScreenWidget.ToSharedRef());
+
+	CachedCreatedLoadingScreenWidget.Reset();
 }
