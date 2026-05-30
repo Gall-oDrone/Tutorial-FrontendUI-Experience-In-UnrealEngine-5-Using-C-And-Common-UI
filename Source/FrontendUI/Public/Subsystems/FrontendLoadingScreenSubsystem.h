@@ -51,6 +51,8 @@ private:
 
 	void TryRemoveLoadingScreen();
 
+	void NotifyLoadingScreenVisibilityChange(bool bIsVisible);
+
 	bool bIsCurrentlyLoadingMap = false;
 
 	float HoldLoadingScreenStartUpTime = -1.f;
