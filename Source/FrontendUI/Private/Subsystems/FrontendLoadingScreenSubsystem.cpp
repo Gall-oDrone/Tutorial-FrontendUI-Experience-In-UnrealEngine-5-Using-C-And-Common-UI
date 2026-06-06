@@ -279,7 +279,7 @@ void UFrontendLoadingScreenSubsystem::NotifyLoadingScreenVisibilityChange(bool b
 
 			if (APawn* OwningPawn = PC->GetPawn())
 			{
-				if (PC->Implements<UFrontendLoadingScreenInterface>())
+				if (OwningPawn->Implements<UFrontendLoadingScreenInterface>())
 				{
 					if (bIsVisible)
 					{
