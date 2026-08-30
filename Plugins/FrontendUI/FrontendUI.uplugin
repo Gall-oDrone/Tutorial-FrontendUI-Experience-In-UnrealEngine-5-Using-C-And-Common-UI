@@ -17,8 +17,6 @@
 	],
 	"Plugins": [
 		{ "Name": "CommonUI", "Enabled": true },
-		{ "Name": "GameplayTags", "Enabled": true },
-		{ "Name": "EnhancedInput", "Enabled": true },
-		{ "Name": "CommonInput", "Enabled": true }
+		{ "Name": "EnhancedInput", "Enabled": true }
 	]
 }
