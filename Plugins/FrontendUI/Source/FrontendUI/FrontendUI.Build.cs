@@ -18,6 +18,7 @@ public class FrontendUI : ModuleRules
 			"UMG",
             "CommonUI",
             "CommonInput",
+            "DeveloperSettings",
             "PropertyPath",
             "PreLoadScreen"
         });
