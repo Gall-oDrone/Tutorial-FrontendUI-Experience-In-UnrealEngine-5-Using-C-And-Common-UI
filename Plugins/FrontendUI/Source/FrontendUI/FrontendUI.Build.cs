@@ -16,6 +16,7 @@ public class FrontendUI : ModuleRules
 			"EnhancedInput",
             "GameplayTags",
 			"UMG",
+            "CommonUI",
             "CommonInput",
             "PropertyPath",
             "PreLoadScreen"
