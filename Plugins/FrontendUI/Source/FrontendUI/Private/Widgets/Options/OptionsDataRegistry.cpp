@@ -20,7 +20,7 @@
 #define MAKE_OPTIONS_DATA_CONTROL(SetterOrGetterFuncName) \
 	MakeShared<FOptionsDataInteractionHelper>(GET_FUNCTION_NAME_STRING_CHECKED(UFrontendGameUserSettings,SetterOrGetterFuncName))
 
-#define GET_DESCRIPTION(InKey) LOCTABLE("/Game/UI/StringTables/ST_OptionsScreenDescription.ST_OptionsScreenDescription", InKey)
+#define GET_DESCRIPTION(InKey) LOCTABLE("/FrontendUI/UI/StringTables/ST_OptionsScreenDescription.ST_OptionsScreenDescription", InKey)
 
 void UOptionsDataRegistry::InitOptionsDataRegistry(ULocalPlayer* InOwningLocalPlayer)
 {
@@ -282,7 +282,7 @@ void UOptionsDataRegistry::InitVideoCollectionTab()
 
 		//Window Mode
 		{
-			/*const FText WindowModeDesc = LOCTABLE("/Game/UI/StringTables/ST_OptionsScreenDescription.ST_OptionsScreenDescription", "WindowModeDescKey");*/
+			/*const FText WindowModeDesc = LOCTABLE("/FrontendUI/UI/StringTables/ST_OptionsScreenDescription.ST_OptionsScreenDescription", "WindowModeDescKey");*/
 
 			UListDataObject_StringEnum* WindowMode = NewObject<UListDataObject_StringEnum>();
 			WindowMode->SetDataID(FName("WindowMode"));
