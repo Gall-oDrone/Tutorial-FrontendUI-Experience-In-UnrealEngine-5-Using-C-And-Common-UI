@@ -1,0 +1,22 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Frontend UI",
+	"Description": "CommonUI-based frontend/menu framework: widget stack, gameplay-tag-driven screen routing, options system, async push actions.",
+	"Category": "UI",
+	"CreatedBy": "Diego Gallo",
+	"CanContainContent": true,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "FrontendUI",
+			"Type": "Runtime",
+			"LoadingPhase": "PreDefault"
+		}
+	],
+	"Plugins": [
+		{ "Name": "CommonUI", "Enabled": true },
+		{ "Name": "EnhancedInput", "Enabled": true }
+	]
+}
