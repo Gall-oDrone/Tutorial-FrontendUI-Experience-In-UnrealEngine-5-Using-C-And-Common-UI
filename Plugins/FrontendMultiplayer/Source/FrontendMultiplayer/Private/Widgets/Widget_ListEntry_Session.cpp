@@ -2,7 +2,6 @@
 
 
 #include "Widgets/Widget_ListEntry_Session.h"
-#include "Blueprint/UserListEntryLibrary.h"
 #include "CommonButtonBase.h"
 #include "CommonTextBlock.h"
 #include "Components/ListView.h"
@@ -45,7 +44,7 @@ void UWidget_ListEntry_Session::OnJoinButtonClicked()
 	}
 
 	int32 SessionIndex = INDEX_NONE;
-	if (const UListView* OwningListView = Cast<UListView>(UUserListEntryLibrary::GetOwningListView(this)))
+	if (const UListView* OwningListView = Cast<UListView>(GetOwningListView()))
 	{
 		SessionIndex = OwningListView->GetIndexForItem(CachedSessionData);
 	}
