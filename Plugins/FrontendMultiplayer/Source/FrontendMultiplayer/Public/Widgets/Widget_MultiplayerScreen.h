@@ -9,7 +9,7 @@
 class UCommonButtonBase;
 
 /**
- * Hub screen for the multiplayer menu flow (host / join / back).
+ * Hub screen for the multiplayer menu flow (host / join).
  */
 UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
 class FRONTENDMULTIPLAYER_API UWidget_MultiplayerScreen : public UWidget_ActivatableBase
@@ -24,7 +24,6 @@ protected:
 private:
 	void OnHostButtonClicked();
 	void OnJoinButtonClicked();
-	void OnBackButtonClicked();
 
 	//****** Bound Widgets ****** //
 	UPROPERTY(meta = (BindWidget))
@@ -32,8 +31,5 @@ private:
 
 	UPROPERTY(meta = (BindWidget))
 	UCommonButtonBase* Button_Join;
-
-	UPROPERTY(meta = (BindWidget))
-	UCommonButtonBase* Button_Back;
 	//****** Bound Widgets ****** //
 };

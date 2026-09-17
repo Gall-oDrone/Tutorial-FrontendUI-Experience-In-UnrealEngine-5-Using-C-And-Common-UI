@@ -12,7 +12,6 @@ void UWidget_HostSessionScreen::NativeOnInitialized()
 	Super::NativeOnInitialized();
 
 	Button_Create->OnClicked().AddUObject(this, &ThisClass::OnCreateButtonClicked);
-	Button_Back->OnClicked().AddUObject(this, &ThisClass::OnBackButtonClicked);
 }
 
 void UWidget_HostSessionScreen::OnCreateButtonClicked()
@@ -24,9 +23,4 @@ void UWidget_HostSessionScreen::OnCreateButtonClicked()
 	{
 		MultiplayerSubsystem->CreateSession(FName(*SessionNameString), MaxPlayers);
 	}
-}
-
-void UWidget_HostSessionScreen::OnBackButtonClicked()
-{
-	UE_LOG(LogTemp, Log, TEXT("[stub] HostSessionScreen Back clicked"));
 }

@@ -12,7 +12,6 @@ void UWidget_ServerBrowserScreen::NativeOnInitialized()
 	Super::NativeOnInitialized();
 
 	Button_Refresh->OnClicked().AddUObject(this, &ThisClass::OnRefreshButtonClicked);
-	Button_Back->OnClicked().AddUObject(this, &ThisClass::OnBackButtonClicked);
 
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
 	{
@@ -27,11 +26,6 @@ void UWidget_ServerBrowserScreen::OnRefreshButtonClicked()
 	{
 		MultiplayerSubsystem->FindSessions();
 	}
-}
-
-void UWidget_ServerBrowserScreen::OnBackButtonClicked()
-{
-	UE_LOG(LogTemp, Log, TEXT("[stub] ServerBrowserScreen Back clicked"));
 }
 
 void UWidget_ServerBrowserScreen::HandleSessionListUpdated(const TArray<UFrontendSessionListEntryData*>& Sessions)

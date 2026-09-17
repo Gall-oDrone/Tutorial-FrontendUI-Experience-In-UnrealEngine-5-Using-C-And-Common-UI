@@ -6,7 +6,6 @@
 #include "Widgets/Widget_ActivatableBase.h"
 #include "Widget_APIDebugScreen.generated.h"
 
-class UCommonButtonBase;
 class UCommonTextBlock;
 class UScrollBox;
 
@@ -24,8 +23,6 @@ protected:
 	//~ End UUserWidget Interface
 
 private:
-	void OnBackButtonClicked();
-
 	UFUNCTION()
 	void HandleAPIDebugLogUpdated(const FString& LogLine);
 
@@ -35,8 +32,5 @@ private:
 
 	UPROPERTY(meta = (BindWidget))
 	UCommonTextBlock* Text_DebugLog;
-
-	UPROPERTY(meta = (BindWidget))
-	UCommonButtonBase* Button_Back;
 	//****** Bound Widgets ****** //
 };

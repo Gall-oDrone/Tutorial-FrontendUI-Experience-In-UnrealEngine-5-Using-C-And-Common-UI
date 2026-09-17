@@ -25,7 +25,6 @@ protected:
 
 private:
 	void OnCreateButtonClicked();
-	void OnBackButtonClicked();
 
 	//****** Bound Widgets ****** //
 	UPROPERTY(meta = (BindWidget))
@@ -36,8 +35,5 @@ private:
 
 	UPROPERTY(meta = (BindWidget))
 	UCommonButtonBase* Button_Create;
-
-	UPROPERTY(meta = (BindWidget))
-	UCommonButtonBase* Button_Back;
 	//****** Bound Widgets ****** //
 };

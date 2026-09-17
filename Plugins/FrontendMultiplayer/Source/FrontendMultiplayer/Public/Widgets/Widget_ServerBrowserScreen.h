@@ -25,7 +25,6 @@ protected:
 
 private:
 	void OnRefreshButtonClicked();
-	void OnBackButtonClicked();
 
 	UFUNCTION()
 	void HandleSessionListUpdated(const TArray<UFrontendSessionListEntryData*>& Sessions);
@@ -36,8 +35,5 @@ private:
 
 	UPROPERTY(meta = (BindWidget))
 	UCommonButtonBase* Button_Refresh;
-
-	UPROPERTY(meta = (BindWidget))
-	UCommonButtonBase* Button_Back;
 	//****** Bound Widgets ****** //
 };
