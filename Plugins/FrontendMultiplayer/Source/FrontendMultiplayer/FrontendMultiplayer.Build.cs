@@ -7,7 +7,7 @@ public class FrontendMultiplayer : ModuleRules
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
 		PublicDependencyModuleNames.AddRange(new string[] {
-			"Core", "CoreUObject", "Engine", "UMG", "CommonUI",
+			"Core", "CoreUObject", "Engine", "UMG", "CommonUI", "CommonInput",
 			"GameplayTags", "DeveloperSettings", "FrontendUI"
 		});
 

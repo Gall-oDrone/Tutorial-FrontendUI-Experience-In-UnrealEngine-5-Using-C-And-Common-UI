@@ -25,6 +25,7 @@ protected:
 
 private:
 	void OnRefreshButtonClicked();
+	void OnBackBoundActionTriggered();
 
 	UFUNCTION()
 	void HandleSessionListUpdated(const TArray<UFrontendSessionListEntryData*>& Sessions);

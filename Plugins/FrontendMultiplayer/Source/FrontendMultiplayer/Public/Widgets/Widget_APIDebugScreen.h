@@ -23,6 +23,8 @@ protected:
 	//~ End UUserWidget Interface
 
 private:
+	void OnBackBoundActionTriggered();
+
 	UFUNCTION()
 	void HandleAPIDebugLogUpdated(const FString& LogLine);
 

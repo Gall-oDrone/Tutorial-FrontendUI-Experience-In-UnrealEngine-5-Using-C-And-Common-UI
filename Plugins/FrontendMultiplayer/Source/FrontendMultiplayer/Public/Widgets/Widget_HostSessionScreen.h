@@ -25,6 +25,7 @@ protected:
 
 private:
 	void OnCreateButtonClicked();
+	void OnBackBoundActionTriggered();
 
 	//****** Bound Widgets ****** //
 	UPROPERTY(meta = (BindWidget))
