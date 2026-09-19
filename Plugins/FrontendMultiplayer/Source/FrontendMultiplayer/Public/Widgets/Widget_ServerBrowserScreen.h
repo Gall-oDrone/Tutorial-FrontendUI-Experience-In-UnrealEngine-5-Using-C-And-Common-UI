@@ -6,7 +6,7 @@
 #include "Widgets/Widget_ActivatableBase.h"
 #include "Widget_ServerBrowserScreen.generated.h"
 
-class UCommonButtonBase;
+class UFrontendCommonButtonBase;
 class UCommonListView;
 class UFrontendSessionListEntryData;
 
@@ -34,6 +34,6 @@ private:
 	UCommonListView* CommonListView_Sessions;
 
 	UPROPERTY(meta = (BindWidget))
-	UCommonButtonBase* CommonButton_Refresh;
+	UFrontendCommonButtonBase* CommonButton_Refresh;
 	//****** Bound Widgets ****** //
 };

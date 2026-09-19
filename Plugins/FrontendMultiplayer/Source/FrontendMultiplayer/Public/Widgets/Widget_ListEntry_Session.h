@@ -7,8 +7,8 @@
 #include "Blueprint/IUserObjectListEntry.h"
 #include "Widget_ListEntry_Session.generated.h"
 
-class UCommonButtonBase;
 class UCommonTextBlock;
+class UFrontendCommonButtonBase;
 class UFrontendSessionListEntryData;
 
 /**
@@ -37,7 +37,7 @@ private:
 	UCommonTextBlock* CommonText_SessionInfo;
 
 	UPROPERTY(meta = (BindWidget))
-	UCommonButtonBase* CommonButton_Join;
+	UFrontendCommonButtonBase* CommonButton_Join;
 	//***** Bound Widgets ***** //
 
 	UPROPERTY(Transient)

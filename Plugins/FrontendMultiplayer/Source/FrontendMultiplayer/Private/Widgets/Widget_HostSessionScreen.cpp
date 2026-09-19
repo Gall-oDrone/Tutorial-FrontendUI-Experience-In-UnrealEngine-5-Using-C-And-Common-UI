@@ -2,7 +2,7 @@
 
 
 #include "Widgets/Widget_HostSessionScreen.h"
-#include "CommonButtonBase.h"
+#include "Widgets/Components/FrontendCommonButtonBase.h"
 #include "Components/EditableTextBox.h"
 #include "Components/SpinBox.h"
 #include "FrontendMultiplayerSubsystem.h"

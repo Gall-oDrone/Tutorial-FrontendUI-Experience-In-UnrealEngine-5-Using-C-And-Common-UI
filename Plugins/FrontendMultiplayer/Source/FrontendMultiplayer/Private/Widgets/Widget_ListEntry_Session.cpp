@@ -2,8 +2,8 @@
 
 
 #include "Widgets/Widget_ListEntry_Session.h"
-#include "CommonButtonBase.h"
 #include "CommonTextBlock.h"
+#include "Widgets/Components/FrontendCommonButtonBase.h"
 #include "Components/ListView.h"
 #include "FrontendMultiplayerSubsystem.h"
 #include "FrontendSessionListEntryData.h"

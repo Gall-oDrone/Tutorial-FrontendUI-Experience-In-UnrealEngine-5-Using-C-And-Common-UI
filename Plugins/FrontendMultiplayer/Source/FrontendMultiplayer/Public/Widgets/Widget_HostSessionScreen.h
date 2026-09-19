@@ -6,7 +6,7 @@
 #include "Widgets/Widget_ActivatableBase.h"
 #include "Widget_HostSessionScreen.generated.h"
 
-class UCommonButtonBase;
+class UFrontendCommonButtonBase;
 class UEditableTextBox;
 class USpinBox;
 
@@ -34,6 +34,6 @@ private:
 	USpinBox* SpinBox_MaxPlayers;
 
 	UPROPERTY(meta = (BindWidget))
-	UCommonButtonBase* CommonButton_Create;
+	UFrontendCommonButtonBase* CommonButton_Create;
 	//****** Bound Widgets ****** //
 };

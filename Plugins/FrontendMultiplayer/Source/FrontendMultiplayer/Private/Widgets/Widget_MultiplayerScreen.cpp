@@ -2,7 +2,7 @@
 
 
 #include "Widgets/Widget_MultiplayerScreen.h"
-#include "CommonButtonBase.h"
+#include "Widgets/Components/FrontendCommonButtonBase.h"
 
 void UWidget_MultiplayerScreen::NativeOnInitialized()
 {

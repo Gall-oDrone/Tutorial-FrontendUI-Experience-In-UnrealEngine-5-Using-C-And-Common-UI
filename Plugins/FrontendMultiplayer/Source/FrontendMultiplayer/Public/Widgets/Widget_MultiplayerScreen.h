@@ -6,7 +6,7 @@
 #include "Widgets/Widget_ActivatableBase.h"
 #include "Widget_MultiplayerScreen.generated.h"
 
-class UCommonButtonBase;
+class UFrontendCommonButtonBase;
 
 /**
  * Hub screen for the multiplayer menu flow (host / join).
@@ -27,9 +27,9 @@ private:
 
 	//****** Bound Widgets ****** //
 	UPROPERTY(meta = (BindWidget))
-	UCommonButtonBase* CommonButton_Host;
+	UFrontendCommonButtonBase* CommonButton_Host;
 
 	UPROPERTY(meta = (BindWidget))
-	UCommonButtonBase* CommonButton_Join;
+	UFrontendCommonButtonBase* CommonButton_Join;
 	//****** Bound Widgets ****** //
 };

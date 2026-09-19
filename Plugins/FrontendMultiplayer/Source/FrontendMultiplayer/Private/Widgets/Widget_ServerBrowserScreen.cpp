@@ -2,7 +2,7 @@
 
 
 #include "Widgets/Widget_ServerBrowserScreen.h"
-#include "CommonButtonBase.h"
+#include "Widgets/Components/FrontendCommonButtonBase.h"
 #include "CommonListView.h"
 #include "FrontendMultiplayerSubsystem.h"
 #include "FrontendSessionListEntryData.h"
