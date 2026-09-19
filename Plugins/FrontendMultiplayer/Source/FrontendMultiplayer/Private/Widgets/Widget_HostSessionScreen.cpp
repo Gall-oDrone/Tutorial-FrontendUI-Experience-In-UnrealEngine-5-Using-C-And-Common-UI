@@ -11,7 +11,7 @@ void UWidget_HostSessionScreen::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 
-	Button_Create->OnClicked().AddUObject(this, &ThisClass::OnCreateButtonClicked);
+	CommonButton_Create->OnClicked().AddUObject(this, &ThisClass::OnCreateButtonClicked);
 }
 
 void UWidget_HostSessionScreen::OnCreateButtonClicked()

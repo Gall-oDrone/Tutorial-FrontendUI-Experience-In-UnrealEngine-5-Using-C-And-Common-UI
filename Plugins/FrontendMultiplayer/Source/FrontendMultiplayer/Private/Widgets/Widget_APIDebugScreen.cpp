@@ -18,11 +18,11 @@ void UWidget_APIDebugScreen::NativeOnInitialized()
 
 void UWidget_APIDebugScreen::HandleAPIDebugLogUpdated(const FString& LogLine)
 {
-	const FString ExistingLog = Text_DebugLog->GetText().ToString();
+	const FString ExistingLog = CommonTextBlock_DebugLog->GetText().ToString();
 	const FString UpdatedLog = ExistingLog.IsEmpty()
 		? LogLine
 		: ExistingLog + LINE_TERMINATOR + LogLine;
 
-	Text_DebugLog->SetText(FText::FromString(UpdatedLog));
+	CommonTextBlock_DebugLog->SetText(FText::FromString(UpdatedLog));
 	ScrollBox_DebugLog->ScrollToEnd();
 }

@@ -12,7 +12,7 @@ void UWidget_ListEntry_Session::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 
-	Button_Join->OnClicked().AddUObject(this, &ThisClass::OnJoinButtonClicked);
+	CommonButton_Join->OnClicked().AddUObject(this, &ThisClass::OnJoinButtonClicked);
 }
 
 void UWidget_ListEntry_Session::NativeOnListItemObjectSet(UObject* ListItemObject)

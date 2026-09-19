@@ -34,6 +34,6 @@ private:
 	UCommonListView* CommonListView_Sessions;
 
 	UPROPERTY(meta = (BindWidget))
-	UCommonButtonBase* Button_Refresh;
+	UCommonButtonBase* CommonButton_Refresh;
 	//****** Bound Widgets ****** //
 };

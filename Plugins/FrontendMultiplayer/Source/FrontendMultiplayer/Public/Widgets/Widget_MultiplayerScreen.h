@@ -27,9 +27,9 @@ private:
 
 	//****** Bound Widgets ****** //
 	UPROPERTY(meta = (BindWidget))
-	UCommonButtonBase* Button_Host;
+	UCommonButtonBase* CommonButton_Host;
 
 	UPROPERTY(meta = (BindWidget))
-	UCommonButtonBase* Button_Join;
+	UCommonButtonBase* CommonButton_Join;
 	//****** Bound Widgets ****** //
 };

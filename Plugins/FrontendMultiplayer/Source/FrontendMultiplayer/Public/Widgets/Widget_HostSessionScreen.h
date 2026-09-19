@@ -34,6 +34,6 @@ private:
 	USpinBox* SpinBox_MaxPlayers;
 
 	UPROPERTY(meta = (BindWidget))
-	UCommonButtonBase* Button_Create;
+	UCommonButtonBase* CommonButton_Create;
 	//****** Bound Widgets ****** //
 };

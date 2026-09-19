@@ -37,7 +37,7 @@ private:
 	UCommonTextBlock* CommonText_SessionInfo;
 
 	UPROPERTY(meta = (BindWidget))
-	UCommonButtonBase* Button_Join;
+	UCommonButtonBase* CommonButton_Join;
 	//***** Bound Widgets ***** //
 
 	UPROPERTY(Transient)

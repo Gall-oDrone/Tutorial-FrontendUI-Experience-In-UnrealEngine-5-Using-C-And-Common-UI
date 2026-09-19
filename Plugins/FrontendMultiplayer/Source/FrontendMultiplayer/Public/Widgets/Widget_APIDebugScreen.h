@@ -31,6 +31,6 @@ private:
 	UScrollBox* ScrollBox_DebugLog;
 
 	UPROPERTY(meta = (BindWidget))
-	UCommonTextBlock* Text_DebugLog;
+	UCommonTextBlock* CommonTextBlock_DebugLog;
 	//****** Bound Widgets ****** //
 };

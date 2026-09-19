@@ -8,8 +8,8 @@ void UWidget_MultiplayerScreen::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 
-	Button_Host->OnClicked().AddUObject(this, &ThisClass::OnHostButtonClicked);
-	Button_Join->OnClicked().AddUObject(this, &ThisClass::OnJoinButtonClicked);
+	CommonButton_Host->OnClicked().AddUObject(this, &ThisClass::OnHostButtonClicked);
+	CommonButton_Join->OnClicked().AddUObject(this, &ThisClass::OnJoinButtonClicked);
 }
 
 void UWidget_MultiplayerScreen::OnHostButtonClicked()

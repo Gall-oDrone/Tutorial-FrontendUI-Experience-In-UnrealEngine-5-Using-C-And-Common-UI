@@ -11,7 +11,7 @@ void UWidget_ServerBrowserScreen::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 
-	Button_Refresh->OnClicked().AddUObject(this, &ThisClass::OnRefreshButtonClicked);
+	CommonButton_Refresh->OnClicked().AddUObject(this, &ThisClass::OnRefreshButtonClicked);
 
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
 	{
