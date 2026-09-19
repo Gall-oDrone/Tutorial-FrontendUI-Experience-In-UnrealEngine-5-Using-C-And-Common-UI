@@ -6,7 +6,6 @@
 #include "Widgets/Widget_ActivatableBase.h"
 #include "Widget_ServerBrowserScreen.generated.h"
 
-class UFrontendCommonButtonBase;
 class UCommonListView;
 class UFrontendSessionListEntryData;
 
@@ -24,7 +23,7 @@ protected:
 	//~ End UUserWidget Interface
 
 private:
-	void OnRefreshButtonClicked();
+	void OnRefreshBoundActionTriggered();
 	void OnBackBoundActionTriggered();
 
 	UFUNCTION()
@@ -33,8 +32,10 @@ private:
 	//****** Bound Widgets ****** //
 	UPROPERTY(meta = (BindWidget))
 	UCommonListView* CommonListView_Sessions;
-
-	UPROPERTY(meta = (BindWidget))
-	UFrontendCommonButtonBase* CommonButton_Refresh;
 	//****** Bound Widgets ****** //
+
+	UPROPERTY(EditDefaultsOnly, Category = "Frontend Server Browser Screen", meta = (RowType = "/Script/CommonUI.CommonInputActionDataBase"))
+	FDataTableRowHandle RefreshAction;
+
+	FUIActionBindingHandle RefreshActionHandle;
 };

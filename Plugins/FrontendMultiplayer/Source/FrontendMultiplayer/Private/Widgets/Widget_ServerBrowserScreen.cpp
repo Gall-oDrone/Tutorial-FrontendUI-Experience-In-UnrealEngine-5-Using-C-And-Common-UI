@@ -2,7 +2,6 @@
 
 
 #include "Widgets/Widget_ServerBrowserScreen.h"
-#include "Widgets/Components/FrontendCommonButtonBase.h"
 #include "CommonListView.h"
 #include "ICommonInputModule.h"
 #include "Input/CommonUIInputTypes.h"
@@ -13,6 +12,17 @@ void UWidget_ServerBrowserScreen::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 
+	if (!RefreshAction.IsNull())
+	{
+		RefreshActionHandle = RegisterUIActionBinding(
+			FBindUIActionArgs(
+				RefreshAction,
+				true,
+				FSimpleDelegate::CreateUObject(this, &ThisClass::OnRefreshBoundActionTriggered)
+			)
+		);
+	}
+
 	RegisterUIActionBinding(
 		FBindUIActionArgs(
 			ICommonInputModule::GetSettings().GetDefaultBackAction(),
@@ -21,8 +31,6 @@ void UWidget_ServerBrowserScreen::NativeOnInitialized()
 		)
 	);
 
-	CommonButton_Refresh->OnClicked().AddUObject(this, &ThisClass::OnRefreshButtonClicked);
-
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
 	{
 		MultiplayerSubsystem->OnSessionListUpdated.AddDynamic(this, &ThisClass::HandleSessionListUpdated);
@@ -30,7 +38,7 @@ void UWidget_ServerBrowserScreen::NativeOnInitialized()
 	}
 }
 
-void UWidget_ServerBrowserScreen::OnRefreshButtonClicked()
+void UWidget_ServerBrowserScreen::OnRefreshBoundActionTriggered()
 {
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
 	{
