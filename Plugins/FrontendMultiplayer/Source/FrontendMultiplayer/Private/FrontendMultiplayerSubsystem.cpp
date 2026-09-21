@@ -2,6 +2,7 @@
 
 
 #include "FrontendMultiplayerSubsystem.h"
+#include "FrontendLeaderboardEntryData.h"
 #include "FrontendSessionListEntryData.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
@@ -66,4 +67,48 @@ void UFrontendMultiplayerSubsystem::JoinSession(int32 SessionIndex)
 {
 	BroadcastDebugLog(FString::Printf(TEXT("[stub] JoinSession(%d) called"), SessionIndex));
 	BroadcastDebugLog(TEXT("[stub] Session joined (simulated)"));
+}
+
+void UFrontendMultiplayerSubsystem::FetchLeaderboard()
+{
+	BroadcastDebugLog(TEXT("[stub] FetchLeaderboard() called"));
+
+	// Rows arrive already ranked. Ordering is the backend's responsibility, so the
+	// screen stays a pure renderer and never re-sorts what it is handed.
+	struct FSimulatedLeaderboardRow
+	{
+		const TCHAR* PlayerDisplayName;
+		int32 Score;
+		bool bIsLocalPlayer;
+	};
+
+	static const FSimulatedLeaderboardRow SimulatedRows[] =
+	{
+		{ TEXT("Valkyrie"),    18420, false },
+		{ TEXT("Ronin"),       16075, false },
+		{ TEXT("Cinder"),      14930, false },
+		{ TEXT("You"),         13115, true  },
+		{ TEXT("Longshot"),    11860, false },
+		{ TEXT("Nomad"),        9540, false }
+	};
+
+	const int32 SimulatedRowCount = static_cast<int32>(UE_ARRAY_COUNT(SimulatedRows));
+
+	TArray<UFrontendLeaderboardEntryData*> FakeEntries;
+	FakeEntries.Reserve(SimulatedRowCount);
+
+	for (int32 RowIndex = 0; RowIndex < SimulatedRowCount; ++RowIndex)
+	{
+		const FSimulatedLeaderboardRow& SimulatedRow = SimulatedRows[RowIndex];
+
+		UFrontendLeaderboardEntryData* Entry = NewObject<UFrontendLeaderboardEntryData>(this);
+		Entry->Rank = RowIndex + 1;
+		Entry->PlayerDisplayName = SimulatedRow.PlayerDisplayName;
+		Entry->Score = SimulatedRow.Score;
+		Entry->bIsLocalPlayer = SimulatedRow.bIsLocalPlayer;
+		FakeEntries.Add(Entry);
+	}
+
+	OnLeaderboardUpdated.Broadcast(FakeEntries);
+	BroadcastDebugLog(FString::Printf(TEXT("[stub] FetchLeaderboard returned %d simulated entr(ies)"), FakeEntries.Num()));
 }
