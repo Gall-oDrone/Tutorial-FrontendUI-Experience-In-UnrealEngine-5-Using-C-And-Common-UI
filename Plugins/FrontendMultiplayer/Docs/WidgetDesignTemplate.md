@@ -1,6 +1,6 @@
 # FrontendMultiplayer — Widget design template
 
-Authoring spec for the five multiplayer Blueprints. Every convention here was taken
+Authoring spec for the seven multiplayer Blueprints. Every convention here was taken
 from the existing FrontendUI screens (`WBP_CAW_MainMenu`, `WBP_CAW_StoryScreen`,
 `WBP_CAW_OptionScreen`, `WBP_DetailsView_Options`, `WBP_ListEntry_InvalidRow`,
 `WBP_Template_Layout`) rather than from general CommonUI convention.
@@ -44,7 +44,7 @@ Create two new reusable modules, both parented to `User Widget` the way
 `WBP_Text_ButtonDescription` is:
 
 - **`WBP_Text_EmptyState`** — `Overlay` → `CommonTextBlock_EmptyStateMessage`, with the
-  message exposed as a variable. Used by the server browser now, by any future list later.
+  message exposed as a variable. Used by the server browser and the leaderboard.
 - **`WBP_Form_LabeledField`** — `Vertical Box` → `CommonTextBlock_FieldLabel` +
   `NamedSlot_FieldInputExtendPoint`. Host Session uses it twice, and it keeps label and
   input spacing consistent as more forms appear.
@@ -68,6 +68,7 @@ shows buttons and pushes screens, which is exactly what Main Menu does with no n
       └─ Grid Panel
          ├─ Button_Host          (WBP_Button_Default)
          ├─ Button_ServerBrowser (WBP_Button_Default)
+         ├─ Button_Leaderboard   (WBP_Button_Default)
          └─ Button_APIDebug      (WBP_Button_Default)
 ```
 
@@ -158,7 +159,75 @@ out not to be enough, the fix is to extract a smaller generic base out of
 `Widget_ListEntry_Base` inside FrontendUI — splitting the hover/gamepad behaviour from the
 `UListDataObject_Base` specifics — rather than reaching back into the options types here.
 
-## 5. `WBP_CAW_APIDebugScreen`
+## 5. `WBP_CAW_LeaderboardScreen`
+
+Parent class `Widget_LeaderboardScreen`. Reading-dense, so the blur wrapper is on. This is
+the server browser's structural twin — same list view in `NamedSlot_MainLeftExtendPoint`,
+same empty state, same Refresh-as-bound-action. Build it by duplicating the server browser
+and replacing the list view and its entry class.
+
+```
+[WBP_CAW_LeaderboardScreen]
+└─ Border
+   └─ Overlay
+      ├─ Background Blur
+      └─ WBP_Template_Layout
+         ├─ NamedSlot_BoundActionExtendPoint
+         │  └─ Common Bound Action Bar
+         └─ NamedSlot_MainLeftExtendPoint
+            └─ Vertical Box
+               ├─ CommonTextBlock_ScreenTitle   (Style_Text_OptionsDetailsView_Title)
+               ├─ Horizontal Box                — column headers, Style_Text_Default
+               │  ├─ CommonTextBlock_HeaderRank    "#"      — Fixed, matches row width
+               │  ├─ CommonTextBlock_HeaderPlayer  "Player" — Fill
+               │  └─ CommonTextBlock_HeaderScore   "Score"  — Fixed, matches row width
+               └─ Overlay
+                  ├─ CommonListView_Leaderboard [BIND] (Common List View)
+                  └─ WBP_Text_EmptyState        "No scores yet"
+```
+
+- On `CommonListView_Leaderboard`: **Entry Widget Class** `WBP_ListEntry_Leaderboard`,
+  **Num Designer Preview Entries** 5.
+- The header row is plain Blueprint decoration, not bound to C++. Its three cells must use
+  the same widths and padding as the row below or the columns will not line up; that is the
+  one thing to get right here.
+- Bind the empty-state Visibility to the list's item count being zero.
+- `BP Get Desired Focus Target` → `CommonListView_Leaderboard`.
+- Refresh is a bound action, not a button. Set the **Refresh Action** handle under
+  "Frontend Leaderboard Screen" in class defaults to the same `RefreshAction` row the
+  server browser uses.
+- Same note as the server browser: use a plain `Common List View`, not
+  `UFrontendCommonListView`, which would assert on leaderboard rows.
+
+## 6. `WBP_ListEntry_Leaderboard`
+
+Parent class `Widget_ListEntry_Leaderboard`. Root is the shared size box, as with
+`WBP_ListEntry_Session`.
+
+```
+[WBP_ListEntry_Leaderboard]
+└─ SizeBox_ListEntry
+   └─ Horizontal Box
+      ├─ CommonText_Rank        [BIND] — Fixed, right aligned, Style_Text_ListEntry_Default
+      ├─ CommonText_PlayerName  [BIND] — Fill, left aligned,  Style_Text_ListEntry_Default
+      └─ CommonText_Score       [BIND] — Fixed, right aligned, Style_Text_ListEntry_Default
+```
+
+Rank and score are right aligned so the digits stack; the name fills the space between
+them. Widths must match the header row in the screen above.
+
+The C++ parent fires `BP On Local Player State Changed` after populating the text, once per
+row. Implement it to highlight the viewer's own row — recolouring the three text blocks is
+enough. It is an event rather than a hard-coded colour in C++ specifically so the highlight
+is authored alongside the rest of the styling. Handle the `false` branch too: rows are
+recycled as the list scrolls, so a row that is not reset will keep the highlight from
+whichever entry it displayed last.
+
+There is no Join button here, so unlike the session row this one has no interactive
+element at all. The same caveat about lacking `Widget_ListEntry_Base`'s hover and gamepad
+hooks applies, and the same fix would resolve it for both.
+
+## 7. `WBP_CAW_APIDebugScreen`
 
 Parent class `Widget_APIDebugScreen`. A log wall, so blur on. Push this one to
 `Frontend.WidgetStack.Modal` rather than the Frontend stack: it is a panel over whatever
@@ -184,12 +253,12 @@ Entry Size Rule `Auto`, Entry Box Type `Horizontal`, Max Element Size `0`.
 
 Back needs no per-screen configuration. `InputData_Default` sets its Default Back Action to
 `DT_CommonInputKeyMapping`'s `BackAction` row globally, and every screen's action bar picks
-it up. The three C++ screens register that action in `NativeOnInitialized`; the
+it up. The four C++ screens register that action in `NativeOnInitialized`; the
 Blueprint-only hub gets it from the **Is Back Handler** checkbox.
 
 ## Data setup
 
-Add all four `Frontend.Widget.*` multiplayer tags to `FrontendWidgetMap` in Project
+Add all five `Frontend.Widget.*` multiplayer tags to `FrontendWidgetMap` in Project
 Settings once the Blueprints exist.
 
 For Refresh, add a second row to `DT_CommonInputKeyMapping` alongside `BackAction`:
@@ -201,8 +270,9 @@ For Refresh, add a second row to `DT_CommonInputKeyMapping` alongside `BackActio
 | Keyboard Input Type Info → Key | `R` |
 | Default Gamepad Input Type Info → Key | a free face button |
 
-Then select that row in the server browser's Refresh Action handle. Until it exists the
-binding is skipped, so the screen still works — Refresh is simply unavailable.
+One row serves both the server browser and the leaderboard; select it in each screen's
+Refresh Action handle. Until it exists the binding is skipped, so the screens still work —
+Refresh is simply unavailable.
 
 ## Required bind names, by screen
 
@@ -212,14 +282,18 @@ binding is skipped, so the screen still works — Refresh is simply unavailable.
 | `WBP_CAW_HostSessionScreen` | `EditableTextBox_SessionName`, `SpinBox_MaxPlayers`, `CommonButton_Create` |
 | `WBP_CAW_ServerBrowserScreen` | `CommonListView_Sessions` |
 | `WBP_ListEntry_Session` | `CommonText_SessionInfo`, `CommonButton_Join` |
+| `WBP_CAW_LeaderboardScreen` | `CommonListView_Leaderboard` |
+| `WBP_ListEntry_Leaderboard` | `CommonText_Rank`, `CommonText_PlayerName`, `CommonText_Score` |
 | `WBP_CAW_APIDebugScreen` | `ScrollBox_DebugLog`, `CommonTextBlock_DebugLog` |
 
 ## Suggested order
 
 Create the two reusable modules, then `WBP_ListEntry_Session`, then the server browser
-(which needs the row asset to exist), then Host Session and API Debug, then the hub last
-since it pushes all of them. Add the `RefreshAction` data table row before compiling the
-server browser if you want Refresh working on the first run.
+(which needs the row asset to exist), then `WBP_ListEntry_Leaderboard` and the leaderboard
+(duplicated from the server browser, so build it while that one is fresh), then Host
+Session and API Debug, then the hub last since it pushes all of them. Add the
+`RefreshAction` data table row before compiling either list screen if you want Refresh
+working on the first run.
 
 ## One thing to confirm
 
