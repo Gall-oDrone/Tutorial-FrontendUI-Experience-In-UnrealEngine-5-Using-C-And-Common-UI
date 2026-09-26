@@ -34,13 +34,13 @@ protected:
 
 private:
 	//***** Bound Widgets ***** //
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidget, AllowPrivateAccess = "true"))
 	UCommonTextBlock* CommonText_Rank;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidget, AllowPrivateAccess = "true"))
 	UCommonTextBlock* CommonText_PlayerName;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidget, AllowPrivateAccess = "true"))
 	UCommonTextBlock* CommonText_Score;
 	//***** Bound Widgets ***** //
 };
