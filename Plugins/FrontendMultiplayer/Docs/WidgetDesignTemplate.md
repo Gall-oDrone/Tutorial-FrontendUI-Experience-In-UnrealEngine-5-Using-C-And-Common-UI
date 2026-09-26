@@ -41,13 +41,32 @@ Reuse unchanged: `WBP_Template_Layout`, `Common Bound Action Bar`,
 `Style_Text_OptionsDetailsView_Title`, `Style_Button_Clear`, `Style_Button_Clear_Menu`.
 
 Create two new reusable modules, both parented to `User Widget` the way
-`WBP_Text_ButtonDescription` is:
+`WBP_Text_ButtonDescription` is. Their graph work is in
+[EventGraph work, by Blueprint](#eventgraph-work-by-blueprint).
 
-- **`WBP_Text_EmptyState`** — `Overlay` → `CommonTextBlock_EmptyStateMessage`, with the
-  message exposed as a variable. Used by the server browser and the leaderboard.
-- **`WBP_Form_LabeledField`** — `Vertical Box` → `CommonTextBlock_FieldLabel` +
-  `NamedSlot_FieldInputExtendPoint`. Host Session uses it twice, and it keeps label and
-  input spacing consistent as more forms appear.
+**`WBP_Text_EmptyState`** — used by the server browser and the leaderboard.
+
+```
+[WBP_Text_EmptyState]
+└─ Overlay
+   └─ CommonTextBlock_EmptyStateMessage   (Is Variable)
+```
+
+- Overlay Slot: Horizontal Alignment **Center**, Vertical Alignment **Center**. With Fill /
+  Fill the text pins to the top-left of whatever list it sits over.
+- Appearance → Justification: **Center**, so a message that wraps stays centred.
+- Common Text → Style: `Style_Text_Default`, the same style `WBP_Text_ButtonDescription` uses.
+- Is Scrolling Enabled can stay on, matching `WBP_Text_ButtonDescription`.
+
+**`WBP_Form_LabeledField`** — Host Session uses it twice, and it keeps label and input
+spacing consistent as more forms appear.
+
+```
+[WBP_Form_LabeledField]
+└─ Vertical Box
+   ├─ CommonTextBlock_FieldLabel          (Is Variable, Style_Text_Default)
+   └─ NamedSlot_FieldInputExtendPoint
+```
 
 Bind targets must live in the screen itself, so put the real input widget into the named
 slot from the screen rather than inside the module.
@@ -72,13 +91,13 @@ shows buttons and pushes screens, which is exactly what Main Menu does with no n
          └─ Button_APIDebug      (WBP_Button_Default)
 ```
 
-- Class defaults: tick **Is Back Handler**.
+- Class defaults, under Back: tick **Is Back Handler** and
+  **Is Back Action Displayed In Action Bar**.
 - Per button, set `Button Display Text` and `Button Description Text`. The latter is what
   populates the description slot on hover.
-- Bind `Button_APIDebug` Visibility to `ShouldShowAPIDebugPanel`.
-- Implement `BP Get Desired Focus Target` returning `Button_Host`.
-- Each click calls `Push Soft Widget` with stack tag `Frontend.WidgetStack.Frontend` and
-  the matching `Frontend.Widget.*` tag.
+- Button clicks, the API debug button's visibility, and the focus target are all graph
+  work — see [EventGraph work, by Blueprint](#eventgraph-work-by-blueprint). This is the one
+  screen whose buttons the graph can reference directly, because it has no C++ parent.
 
 ## 2. `WBP_CAW_HostSessionScreen`
 
@@ -107,7 +126,9 @@ Parent class `Widget_HostSessionScreen`. A form, so it takes the blur wrapper.
 ```
 
 - `SpinBox_MaxPlayers`: Min 2, Max 8, Delta 1, with the slider range matching.
-- `BP Get Desired Focus Target` → `EditableTextBox_SessionName`.
+- Set each `WBP_Form_LabeledField` instance's **Field Label** in Details.
+- Focus is handled in C++ (`NativeGetDesiredFocusTarget` returns
+  `EditableTextBox_SessionName`), so there is no Blueprint focus step.
 
 ## 3. `WBP_CAW_ServerBrowserScreen`
 
@@ -125,13 +146,15 @@ closely, including putting the list view in `NamedSlot_MainLeftExtendPoint`.
          └─ NamedSlot_MainLeftExtendPoint
             └─ Overlay
                ├─ CommonListView_Sessions          [BIND] (Common List View)
-               └─ WBP_Text_EmptyState              "No sessions found"
+               └─ EmptyState_Sessions              (WBP_Text_EmptyState) "No sessions found"
 ```
 
 - On `CommonListView_Sessions`: **Entry Widget Class** `WBP_ListEntry_Session`,
   **Num Designer Preview Entries** 5 (what Options uses, and how you see rows at design time).
-- Bind the empty-state Visibility to the list's item count being zero.
-- `BP Get Desired Focus Target` → `CommonListView_Sessions`.
+- On `EmptyState_Sessions`: tick **Is Variable**, set Visibility to **Collapsed**, and set
+  **Empty State Message** to "No sessions found". The graph shows it when the list comes
+  back empty — see [EventGraph work, by Blueprint](#eventgraph-work-by-blueprint).
+- Focus is handled in C++: the selected row's entry widget, otherwise the list view.
 - There is no Refresh button. Refresh is a bound action; set the **Refresh Action** handle
   under "Frontend Server Browser Screen" in class defaults once the data table row exists.
 
@@ -183,7 +206,7 @@ and replacing the list view and its entry class.
                │  └─ CommonTextBlock_HeaderScore   "Score"  — Fixed, matches row width
                └─ Overlay
                   ├─ CommonListView_Leaderboard [BIND] (Common List View)
-                  └─ WBP_Text_EmptyState        "No scores yet"
+                  └─ EmptyState_Leaderboard     (WBP_Text_EmptyState) "No scores yet"
 ```
 
 - On `CommonListView_Leaderboard`: **Entry Widget Class** `WBP_ListEntry_Leaderboard`,
@@ -191,8 +214,10 @@ and replacing the list view and its entry class.
 - The header row is plain Blueprint decoration, not bound to C++. Its three cells must use
   the same widths and padding as the row below or the columns will not line up; that is the
   one thing to get right here.
-- Bind the empty-state Visibility to the list's item count being zero.
-- `BP Get Desired Focus Target` → `CommonListView_Leaderboard`.
+- On `EmptyState_Leaderboard`: tick **Is Variable**, set Visibility to **Collapsed**, and
+  set **Empty State Message** to "No scores yet". Toggled from the graph, as on the server
+  browser.
+- Focus is handled in C++: the selected row's entry widget, otherwise the list view.
 - Refresh is a bound action, not a button. Set the **Refresh Action** handle under
   "Frontend Leaderboard Screen" in class defaults to the same `RefreshAction` row the
   server browser uses.
@@ -217,11 +242,13 @@ Rank and score are right aligned so the digits stack; the name fills the space b
 them. Widths must match the header row in the screen above.
 
 The C++ parent fires `BP On Local Player State Changed` after populating the text, once per
-row. Implement it to highlight the viewer's own row — recolouring the three text blocks is
-enough. It is an event rather than a hard-coded colour in C++ specifically so the highlight
-is authored alongside the rest of the styling. Handle the `false` branch too: rows are
-recycled as the list scrolls, so a row that is not reset will keep the highlight from
-whichever entry it displayed last.
+row. Implement it to highlight the viewer's own row by swapping the three text blocks
+between `Style_Text_ListEntry_Highlight` and `Style_Text_ListEntry_Default` — both already
+exist in FrontendUI for exactly this. It is an event rather than a hard-coded colour in C++
+specifically so the highlight is authored alongside the rest of the styling. Handle the
+`false` branch too: rows are recycled as the list scrolls, so a row that is not reset will
+keep the highlight from whichever entry it displayed last. The three text blocks are
+`BlueprintReadOnly`, so the graph can reference them.
 
 There is no Join button here, so unlike the session row this one has no interactive
 element at all. The same caveat about lacking `Widget_ListEntry_Base`'s hover and gamepad
@@ -254,7 +281,8 @@ Entry Size Rule `Auto`, Entry Box Type `Horizontal`, Max Element Size `0`.
 Back needs no per-screen configuration. `InputData_Default` sets its Default Back Action to
 `DT_CommonInputKeyMapping`'s `BackAction` row globally, and every screen's action bar picks
 it up. The four C++ screens register that action in `NativeOnInitialized`; the
-Blueprint-only hub gets it from the **Is Back Handler** checkbox.
+Blueprint-only hub gets it from the **Is Back Handler** and
+**Is Back Action Displayed In Action Bar** checkboxes.
 
 ## Data setup
 
@@ -285,6 +313,116 @@ Refresh is simply unavailable.
 | `WBP_CAW_LeaderboardScreen` | `CommonListView_Leaderboard` |
 | `WBP_ListEntry_Leaderboard` | `CommonText_Rank`, `CommonText_PlayerName`, `CommonText_Score` |
 | `WBP_CAW_APIDebugScreen` | `ScrollBox_DebugLog`, `CommonTextBlock_DebugLog` |
+
+## EventGraph work, by Blueprint
+
+Six of the nine Blueprints (the seven screens and rows, plus the two reusable modules)
+need graph work, and all of it is small. Everything else — button clicks on the C++
+screens, Back, Refresh, list population, focus — is already done in the C++ parent.
+
+A rule that explains most of this: on the C++-backed screens, the bound widgets are
+private `BindWidget` properties, so the graph cannot reference them. That is deliberate
+and matches FrontendUI's Options and Confirm screens. Where a Blueprint does need to react,
+the C++ parent fires a `BP On …` event instead.
+
+| Blueprint | Graph work |
+|---|---|
+| `WBP_Text_EmptyState` | Yes — expose the message |
+| `WBP_Form_LabeledField` | Yes — expose the label |
+| `WBP_CAW_MultiplayerScreen` | Yes — clicks, API debug visibility, focus |
+| `WBP_CAW_ServerBrowserScreen` | Yes — empty state |
+| `WBP_CAW_LeaderboardScreen` | Yes — empty state |
+| `WBP_ListEntry_Leaderboard` | Yes — local-player highlight |
+| `WBP_CAW_HostSessionScreen` | None |
+| `WBP_ListEntry_Session` | None |
+| `WBP_CAW_APIDebugScreen` | None |
+
+### `WBP_Text_EmptyState`
+
+1. My Blueprint → Variables → **+**. Name `EmptyStateMessage`, type **Text**.
+2. In its Details: tick **Instance Editable**, set Category to `Frontend Empty State`, and
+   give it a default value such as "Empty state message".
+3. In the Event Graph, from **Event Pre Construct**: drag in `CommonTextBlock_EmptyStateMessage`
+   as a getter, call **Set Text** on it, and plug `EmptyStateMessage` into **In Text**.
+4. Delete the disabled **Event Construct** and **Event Tick** nodes.
+
+Use Pre Construct rather than Construct because it also runs in the designer, so the
+screens that place this module preview their own message. It is the Blueprint version of
+what `UFrontendCommonButtonBase` does with `ButtonDisplayText` in `NativePreConstruct`.
+
+### `WBP_Form_LabeledField`
+
+Same four steps as the empty state: a **Text** variable named `FieldLabel`, Instance
+Editable, Category `Frontend Form Field`, applied with **Set Text** on
+`CommonTextBlock_FieldLabel` from **Event Pre Construct**.
+
+### `WBP_CAW_MultiplayerScreen`
+
+**Button clicks.** For each button, select it in the hierarchy, and in Details → Events
+click **+** next to **On Button Base Clicked**. From that event:
+
+1. Add **Push Soft Widget To Widget Stack**.
+2. **Owning Player Controller** ← **Get Owning Player**.
+3. **In Soft Widget Class** ← **Get Frontend Soft Widget Class By Tag**, with the screen's tag.
+4. **In Widget Stack Tag** ← the stack from the table below.
+5. Leave **Focus on Newly Pushed Widget** ticked.
+
+| Button | Widget tag | Stack tag |
+|---|---|---|
+| `Button_Host` | `Frontend.Widget.HostSessionScreen` | `Frontend.WidgetStack.Frontend` |
+| `Button_ServerBrowser` | `Frontend.Widget.ServerBrowserScreen` | `Frontend.WidgetStack.Frontend` |
+| `Button_Leaderboard` | `Frontend.Widget.LeaderboardScreen` | `Frontend.WidgetStack.Frontend` |
+| `Button_APIDebug` | `Frontend.Widget.APIDebugScreen` | `Frontend.WidgetStack.Modal` |
+
+The push node takes a soft class, not a tag, which is why the tag goes through
+**Get Frontend Soft Widget Class By Tag** first. That function asserts if the tag is not in
+`FrontendWidgetMap`, so register all five tags in Project Settings before clicking any of
+these in PIE — an unregistered tag is a crash, not a silent no-op.
+
+**API debug button visibility.** From **Event On Initialized**: call
+**Should Show API Debug Panel**, feed it into a **Select** node (True → **Visible**, False →
+**Collapsed**), and call **Set Visibility** on `Button_APIDebug` with the result. Set it once
+here rather than with a Visibility binding: the setting cannot change at runtime, and a
+binding re-evaluates every frame.
+
+**Focus target.** My Blueprint → Functions → Override → **BP Get Desired Focus Target**,
+and return `Button_Host`.
+
+### `WBP_CAW_ServerBrowserScreen`
+
+1. In the Event Graph, right-click and add **Event BP On Session List Updated**. It has a
+   **Num Sessions** pin.
+2. Compare **Num Sessions == 0**.
+3. Feed that into a **Select** node: True → **Not Hit-Testable (Self Only)**, False →
+   **Collapsed**.
+4. Call **Set Visibility** on `EmptyState_Sessions` with the result.
+
+"Not Hit-Testable (Self Only)" rather than plain Visible, so the message never swallows a
+click meant for the list beneath it — the same visibility FrontendUI's panels use.
+
+### `WBP_CAW_LeaderboardScreen`
+
+Identical to the server browser, using **Event BP On Leaderboard Updated** (pin
+**Num Entries**) and `EmptyState_Leaderboard`.
+
+### `WBP_ListEntry_Leaderboard`
+
+1. Add **Event BP On Local Player State Changed**. It has an **Is Local Player** pin.
+2. Feed **Is Local Player** into a **Select** node of text style class: True →
+   `Style_Text_ListEntry_Highlight`, False → `Style_Text_ListEntry_Default`.
+3. Call **Set Style** on each of `CommonText_Rank`, `CommonText_PlayerName`, and
+   `CommonText_Score` with that result.
+
+Because the False branch sets the default style explicitly, a recycled row that last showed
+the local player is reset correctly.
+
+### No graph work
+
+- **`WBP_CAW_HostSessionScreen`** — Create, Back, and focus are all in C++. Only set
+  `CommonButton_Create`'s Button Display Text and Button Description Text in Details.
+- **`WBP_ListEntry_Session`** — C++ fills `CommonText_SessionInfo` and handles Join. Only set
+  `CommonButton_Join`'s Button Display Text to "Join".
+- **`WBP_CAW_APIDebugScreen`** — C++ appends log lines, scrolls, and handles Back.
 
 ## Suggested order
 
