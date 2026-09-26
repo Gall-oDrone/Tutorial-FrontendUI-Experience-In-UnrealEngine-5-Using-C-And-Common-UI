@@ -28,6 +28,13 @@ protected:
 	virtual UWidget* NativeGetDesiredFocusTarget() const override;
 	//~ End UCommonActivatableWidget Interface
 
+	/**
+	 * Called after the list is repopulated so the Blueprint can toggle its empty state.
+	 * Event-driven rather than a Visibility binding, which would poll every frame.
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Frontend Leaderboard Screen")
+	void BP_OnLeaderboardUpdated(int32 NumEntries);
+
 private:
 	void OnRefreshBoundActionTriggered();
 	void OnBackBoundActionTriggered();

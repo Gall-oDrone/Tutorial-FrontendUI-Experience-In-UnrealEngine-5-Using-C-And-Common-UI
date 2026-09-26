@@ -75,4 +75,6 @@ void UWidget_LeaderboardScreen::HandleLeaderboardUpdated(const TArray<UFrontendL
 	}
 
 	CommonListView_Leaderboard->SetListItems(ListItems);
+
+	BP_OnLeaderboardUpdated(ListItems.Num());
 }

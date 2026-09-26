@@ -75,4 +75,6 @@ void UWidget_ServerBrowserScreen::HandleSessionListUpdated(const TArray<UFronten
 	}
 
 	CommonListView_Sessions->SetListItems(ListItems);
+
+	BP_OnSessionListUpdated(ListItems.Num());
 }
