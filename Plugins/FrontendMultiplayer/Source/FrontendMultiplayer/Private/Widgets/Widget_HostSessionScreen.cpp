@@ -24,6 +24,11 @@ void UWidget_HostSessionScreen::NativeOnInitialized()
 	CommonButton_Create->OnClicked().AddUObject(this, &ThisClass::OnCreateButtonClicked);
 }
 
+UWidget* UWidget_HostSessionScreen::NativeGetDesiredFocusTarget() const
+{
+	return EditableTextBox_SessionName;
+}
+
 void UWidget_HostSessionScreen::OnBackBoundActionTriggered()
 {
 	DeactivateWidget();

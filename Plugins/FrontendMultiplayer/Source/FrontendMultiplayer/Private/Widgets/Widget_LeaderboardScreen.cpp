@@ -38,6 +38,19 @@ void UWidget_LeaderboardScreen::NativeOnInitialized()
 	}
 }
 
+UWidget* UWidget_LeaderboardScreen::NativeGetDesiredFocusTarget() const
+{
+	if (UObject* SelectedObject = CommonListView_Leaderboard->GetSelectedItem())
+	{
+		if (UUserWidget* SelectedEntryWidget = CommonListView_Leaderboard->GetEntryWidgetFromItem(SelectedObject))
+		{
+			return SelectedEntryWidget;
+		}
+	}
+
+	return CommonListView_Leaderboard;
+}
+
 void UWidget_LeaderboardScreen::OnRefreshBoundActionTriggered()
 {
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))

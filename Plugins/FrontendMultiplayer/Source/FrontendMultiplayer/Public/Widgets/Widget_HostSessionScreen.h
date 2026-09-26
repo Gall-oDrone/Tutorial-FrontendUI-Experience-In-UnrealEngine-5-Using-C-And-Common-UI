@@ -23,6 +23,10 @@ protected:
 	virtual void NativeOnInitialized() override;
 	//~ End UUserWidget Interface
 
+	//~ Begin UCommonActivatableWidget Interface
+	virtual UWidget* NativeGetDesiredFocusTarget() const override;
+	//~ End UCommonActivatableWidget Interface
+
 private:
 	void OnCreateButtonClicked();
 	void OnBackBoundActionTriggered();

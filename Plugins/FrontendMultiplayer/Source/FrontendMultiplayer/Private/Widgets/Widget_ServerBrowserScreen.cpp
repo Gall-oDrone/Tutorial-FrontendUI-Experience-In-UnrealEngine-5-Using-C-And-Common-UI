@@ -38,6 +38,19 @@ void UWidget_ServerBrowserScreen::NativeOnInitialized()
 	}
 }
 
+UWidget* UWidget_ServerBrowserScreen::NativeGetDesiredFocusTarget() const
+{
+	if (UObject* SelectedObject = CommonListView_Sessions->GetSelectedItem())
+	{
+		if (UUserWidget* SelectedEntryWidget = CommonListView_Sessions->GetEntryWidgetFromItem(SelectedObject))
+		{
+			return SelectedEntryWidget;
+		}
+	}
+
+	return CommonListView_Sessions;
+}
+
 void UWidget_ServerBrowserScreen::OnRefreshBoundActionTriggered()
 {
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
