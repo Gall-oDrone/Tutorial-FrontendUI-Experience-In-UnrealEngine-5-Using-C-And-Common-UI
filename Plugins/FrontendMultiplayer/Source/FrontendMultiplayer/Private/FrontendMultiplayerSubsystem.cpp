@@ -45,18 +45,27 @@ void UFrontendMultiplayerSubsystem::FindSessions()
 	SessionA->SessionDisplayName = TEXT("Desert Outpost");
 	SessionA->CurrentPlayers = 2;
 	SessionA->MaxPlayers = 4;
+	SessionA->HostName = TEXT("Raven");
+	SessionA->MapName = TEXT("Dunes");
+	SessionA->PingInMs = 38;
 	FakeSessions.Add(SessionA);
 
 	UFrontendSessionListEntryData* SessionB = NewObject<UFrontendSessionListEntryData>(this);
 	SessionB->SessionDisplayName = TEXT("Night Raid");
 	SessionB->CurrentPlayers = 1;
 	SessionB->MaxPlayers = 8;
+	SessionB->HostName = TEXT("Nightjar");
+	SessionB->MapName = TEXT("Harbor");
+	SessionB->PingInMs = 72;
 	FakeSessions.Add(SessionB);
 
 	UFrontendSessionListEntryData* SessionC = NewObject<UFrontendSessionListEntryData>(this);
 	SessionC->SessionDisplayName = TEXT("Training Grounds");
 	SessionC->CurrentPlayers = 3;
 	SessionC->MaxPlayers = 3;
+	SessionC->HostName = TEXT("Atlas");
+	SessionC->MapName = TEXT("Proving Grounds");
+	SessionC->PingInMs = 15;
 	FakeSessions.Add(SessionC);
 
 	OnSessionListUpdated.Broadcast(FakeSessions);

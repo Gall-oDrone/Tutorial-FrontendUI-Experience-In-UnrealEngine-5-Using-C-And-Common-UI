@@ -25,4 +25,15 @@ public:
 
 	UPROPERTY(BlueprintReadOnly)
 	int32 MaxPlayers = 0;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString HostName;
+
+	UPROPERTY(BlueprintReadOnly)
+	FString MapName;
+
+	UPROPERTY(BlueprintReadOnly)
+	int32 PingInMs = 0;
+
+	bool IsFull() const { return CurrentPlayers >= MaxPlayers; }
 };
