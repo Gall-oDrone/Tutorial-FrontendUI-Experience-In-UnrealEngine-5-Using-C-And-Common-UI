@@ -40,9 +40,10 @@ Reuse unchanged: `WBP_Template_Layout`, `Common Bound Action Bar`,
 `SizeBox_ListEntry`, `Style_Text_Default`, `Style_Text_ListEntry_Default`,
 `Style_Text_OptionsDetailsView_Title`, `Style_Button_Clear`, `Style_Button_Clear_Menu`.
 
-Create two new reusable modules, both parented to `User Widget` the way
-`WBP_Text_ButtonDescription` is. Their graph work is in
-[EventGraph work, by Blueprint](#eventgraph-work-by-blueprint).
+Create three new reusable modules. The first two are parented to `User Widget` the way
+`WBP_Text_ButtonDescription` is, and their graph work is in
+[EventGraph work, by Blueprint](#eventgraph-work-by-blueprint). The third has a C++ parent
+and needs no graph work.
 
 **`WBP_Text_EmptyState`** — used by the server browser and the leaderboard.
 
@@ -63,13 +64,34 @@ spacing consistent as more forms appear.
 
 ```
 [WBP_Form_LabeledField]
-└─ Vertical Box
-   ├─ CommonTextBlock_FieldLabel          (Is Variable, Style_Text_Default)
-   └─ NamedSlot_FieldInputExtendPoint
+└─ SizeBox_ListEntry                       — Width/Height Overrides copied from WBP_ListEntry_String
+   └─ Horizontal Box
+      ├─ CommonTextBlock_FieldLabel        (Is Variable, Style_Text_ListEntry_Default) — Fill, V Center
+      └─ Size Box                          Width Override 300 — Auto, V Center
+         └─ NamedSlot_FieldInputExtendPoint
 ```
 
-Bind targets must live in the screen itself, so put the real input widget into the named
-slot from the screen rather than inside the module.
+A horizontal row rather than label-above-input, so labels and inputs form two aligned
+columns the way Options rows do. Bind targets must live in the screen itself, so put the
+real input widget into the named slot from the screen rather than inside the module.
+
+**`WBP_DetailsView_Session`** — the server browser's right-hand panel. Parent class
+`Widget_SessionDetailsView`, the session counterpart of `WBP_DetailsView_Options`; build it
+by copying that asset's layout and styles.
+
+```
+[WBP_DetailsView_Session]
+└─ Vertical Box
+   ├─ CommonTextBlock_Title             [BIND] (Style_Text_OptionsDetailsView_Title)
+   ├─ CommonRichText_Description        [BIND] (Common Rich Text Block)
+   └─ CommonRichText_DisabledReason     [BIND] (Common Rich Text Block)
+```
+
+- Both rich text blocks: **Text Style Set** `DT_RichTextStyle_OptionsScreen` and
+  **Auto Wrap Text** on, as in `WBP_DetailsView_Options`. C++ writes `<Bold>…</>` into the
+  description, which only renders if that table has a `Bold` row.
+- C++ fills all three: the session name as the title; host, map, players, and ping as the
+  description; "This session is full." as the disabled reason when it applies.
 
 ## 1. `WBP_CAW_MultiplayerScreen`
 
@@ -113,19 +135,30 @@ Parent class `Widget_HostSessionScreen`. A form, so it takes the blur wrapper.
          │  └─ Common Bound Action Bar
          ├─ NamedSlot_DescriptionExtendPoint
          │  └─ WBP_Text_ButtonDescription
-         └─ NamedSlot_CenterExtendPoint
+         ├─ NamedSlot_TabButtonsExtendPoint
+         │  └─ CommonTextBlock_ScreenTitle         "Host Session" (Style_Text_OptionsDetailsView_Title)
+         ├─ NamedSlot_MainLeftExtendPoint
+         │  └─ Vertical Box
+         │     ├─ WBP_Form_LabeledField            label "Session Name"
+         │     │  └─ NamedSlot_FieldInputExtendPoint
+         │     │     └─ EditableTextBox_SessionName   [BIND]
+         │     ├─ WBP_Form_LabeledField            label "Max Players"
+         │     │  └─ NamedSlot_FieldInputExtendPoint
+         │     │     └─ SpinBox_MaxPlayers            [BIND]
+         │     └─ CommonButton_Create                 [BIND] (WBP_Button_Default) — top padding 24
+         └─ NamedSlot_MainRightExtendPoint
             └─ Vertical Box
-               ├─ CommonTextBlock_ScreenTitle      (Style_Text_OptionsDetailsView_Title)
-               ├─ WBP_Form_LabeledField            label "Session Name"
-               │  └─ NamedSlot_FieldInputExtendPoint
-               │     └─ EditableTextBox_SessionName   [BIND]
-               ├─ WBP_Form_LabeledField            label "Max Players"
-               │  └─ NamedSlot_FieldInputExtendPoint
-               │     └─ SpinBox_MaxPlayers            [BIND]
-               └─ CommonButton_Create                 [BIND] (WBP_Button_Default)
+               ├─ Common Text Block                "Host a Session" (Style_Text_OptionsDetailsView_Title)
+               └─ Common Text Block                one paragraph (Style_Text_Default, Auto Wrap Text)
 ```
 
+The title sits where Options' tabs sit, the form takes the left column, and a static
+explanation fills the right column where Options shows its details panel. Use a plain
+Common Text Block for the paragraph; `<Bold>` markup only renders in a rich text block.
+
 - `SpinBox_MaxPlayers`: Min 2, Max 8, Delta 1, with the slider range matching.
+- `EditableTextBox_SessionName` and `SpinBox_MaxPlayers`: Background Color black at
+  alpha 0.45 and white text. The engine defaults are a white field with white text.
 - Set each `WBP_Form_LabeledField` instance's **Field Label** in Details.
 - Focus is handled in C++ (`NativeGetDesiredFocusTarget` returns
   `EditableTextBox_SessionName`), so there is no Blueprint focus step.
@@ -143,11 +176,19 @@ closely, including putting the list view in `NamedSlot_MainLeftExtendPoint`.
       └─ WBP_Template_Layout
          ├─ NamedSlot_BoundActionExtendPoint
          │  └─ Common Bound Action Bar
-         └─ NamedSlot_MainLeftExtendPoint
-            └─ Overlay
-               ├─ CommonListView_Sessions          [BIND] (Common List View)
-               └─ EmptyState_Sessions              (WBP_Text_EmptyState) "No sessions found"
+         ├─ NamedSlot_TabButtonsExtendPoint
+         │  └─ CommonTextBlock_ScreenTitle         "Server Browser" (Style_Text_OptionsDetailsView_Title)
+         ├─ NamedSlot_MainLeftExtendPoint
+         │  └─ Overlay
+         │     ├─ CommonListView_Sessions          [BIND] (Common List View)
+         │     └─ EmptyState_Sessions              (WBP_Text_EmptyState) "No sessions found"
+         └─ NamedSlot_MainRightExtendPoint
+            └─ DetailsView_SessionInfo             [BIND] (WBP_DetailsView_Session)
 ```
+
+- `DetailsView_SessionInfo` is driven entirely from C++, exactly like Options'
+  `DetailsView_ListEntryInfo`: hovering a row shows that session, un-hovering falls back to
+  the selected one, and the first row is selected whenever the list arrives.
 
 - On `CommonListView_Sessions`: **Entry Widget Class** `WBP_ListEntry_Session`,
   **Num Designer Preview Entries** 5 (what Options uses, and how you see rows at design time).
@@ -256,9 +297,10 @@ hooks applies, and the same fix would resolve it for both.
 
 ## 7. `WBP_CAW_APIDebugScreen`
 
-Parent class `Widget_APIDebugScreen`. A log wall, so blur on. Push this one to
-`Frontend.WidgetStack.Modal` rather than the Frontend stack: it is a panel over whatever
-you were already looking at, which is the role Modal already plays for the confirm screen.
+Parent class `Widget_APIDebugScreen`. A log wall, so blur on. Push it to
+`Frontend.WidgetStack.Frontend` like the other screens, not Modal. Modal is a separate layer,
+so the hub would stay drawn underneath with its own action bar and Back would appear twice.
+The confirm screen gets away with Modal only because it has no action bar.
 
 ```
 [WBP_CAW_APIDebugScreen]
@@ -308,7 +350,8 @@ Refresh is simply unavailable.
 |---|---|
 | `WBP_CAW_MultiplayerScreen` | none (no C++ parent) |
 | `WBP_CAW_HostSessionScreen` | `EditableTextBox_SessionName`, `SpinBox_MaxPlayers`, `CommonButton_Create` |
-| `WBP_CAW_ServerBrowserScreen` | `CommonListView_Sessions` |
+| `WBP_CAW_ServerBrowserScreen` | `CommonListView_Sessions`, `DetailsView_SessionInfo` |
+| `WBP_DetailsView_Session` | `CommonTextBlock_Title`, `CommonRichText_Description`, `CommonRichText_DisabledReason` |
 | `WBP_ListEntry_Session` | `CommonText_SessionInfo`, `CommonButton_Join` |
 | `WBP_CAW_LeaderboardScreen` | `CommonListView_Leaderboard` |
 | `WBP_ListEntry_Leaderboard` | `CommonText_Rank`, `CommonText_PlayerName`, `CommonText_Score` |
@@ -316,7 +359,7 @@ Refresh is simply unavailable.
 
 ## EventGraph work, by Blueprint
 
-Six of the nine Blueprints (the seven screens and rows, plus the two reusable modules)
+Six of the ten Blueprints (the seven screens and rows, plus the three reusable modules)
 need graph work, and all of it is small. Everything else — button clicks on the C++
 screens, Back, Refresh, list population, focus — is already done in the C++ parent.
 
@@ -336,6 +379,7 @@ the C++ parent fires a `BP On …` event instead.
 | `WBP_CAW_HostSessionScreen` | None |
 | `WBP_ListEntry_Session` | None |
 | `WBP_CAW_APIDebugScreen` | None |
+| `WBP_DetailsView_Session` | None |
 
 ### `WBP_Text_EmptyState`
 
@@ -372,7 +416,11 @@ click **+** next to **On Button Base Clicked**. From that event:
 | `Button_Host` | `Frontend.Widget.HostSessionScreen` | `Frontend.WidgetStack.Frontend` |
 | `Button_ServerBrowser` | `Frontend.Widget.ServerBrowserScreen` | `Frontend.WidgetStack.Frontend` |
 | `Button_Leaderboard` | `Frontend.Widget.LeaderboardScreen` | `Frontend.WidgetStack.Frontend` |
-| `Button_APIDebug` | `Frontend.Widget.APIDebugScreen` | `Frontend.WidgetStack.Modal` |
+| `Button_APIDebug` | `Frontend.Widget.APIDebugScreen` | `Frontend.WidgetStack.Frontend` |
+
+Main Menu's button that opens the hub must also use **Push Soft Widget To Widget Stack**
+onto `Frontend.WidgetStack.Frontend`, never Create Widget + Add to Viewport. A stack only
+draws its top screen; anything on another layer stays visible and doubles the Back button.
 
 The push node takes a soft class, not a tag, which is why the tag goes through
 **Get Frontend Soft Widget Class By Tag** first. That function asserts if the tag is not in
@@ -426,8 +474,8 @@ the local player is reset correctly.
 
 ## Suggested order
 
-Create the two reusable modules, then `WBP_ListEntry_Session`, then the server browser
-(which needs the row asset to exist), then `WBP_ListEntry_Leaderboard` and the leaderboard
+Create the three reusable modules, then `WBP_ListEntry_Session`, then the server browser
+(which needs the row asset and `WBP_DetailsView_Session` to exist), then `WBP_ListEntry_Leaderboard` and the leaderboard
 (duplicated from the server browser, so build it while that one is fresh), then Host
 Session and API Debug, then the hub last since it pushes all of them. Add the
 `RefreshAction` data table row before compiling either list screen if you want Refresh
