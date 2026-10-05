@@ -8,6 +8,7 @@
 
 class UCommonListView;
 class UFrontendSessionListEntryData;
+class UWidget_SessionDetailsView;
 
 /**
  * Server browser: lists found sessions and refreshes via the multiplayer subsystem.
@@ -40,9 +41,15 @@ private:
 	UFUNCTION()
 	void HandleSessionListUpdated(const TArray<UFrontendSessionListEntryData*>& Sessions);
 
+	void OnListViewItemHovered(UObject* InHoveredItem, bool bWasHovered);
+	void OnListViewItemSelected(UObject* InSelectedItem);
+
 	//****** Bound Widgets ****** //
 	UPROPERTY(meta = (BindWidget))
 	UCommonListView* CommonListView_Sessions;
+
+	UPROPERTY(meta = (BindWidget))
+	UWidget_SessionDetailsView* DetailsView_SessionInfo;
 	//****** Bound Widgets ****** //
 
 	UPROPERTY(EditDefaultsOnly, Category = "Frontend Server Browser Screen", meta = (RowType = "/Script/CommonUI.CommonInputActionDataBase"))

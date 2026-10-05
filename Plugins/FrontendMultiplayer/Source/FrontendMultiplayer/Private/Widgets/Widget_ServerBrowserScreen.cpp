@@ -7,6 +7,7 @@
 #include "Input/CommonUIInputTypes.h"
 #include "FrontendMultiplayerSubsystem.h"
 #include "FrontendSessionListEntryData.h"
+#include "Widgets/Widget_SessionDetailsView.h"
 
 void UWidget_ServerBrowserScreen::NativeOnInitialized()
 {
@@ -30,6 +31,9 @@ void UWidget_ServerBrowserScreen::NativeOnInitialized()
 			FSimpleDelegate::CreateUObject(this, &ThisClass::OnBackBoundActionTriggered)
 		)
 	);
+
+	CommonListView_Sessions->OnItemIsHoveredChanged().AddUObject(this, &ThisClass::OnListViewItemHovered);
+	CommonListView_Sessions->OnItemSelectionChanged().AddUObject(this, &ThisClass::OnListViewItemSelected);
 
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
 	{
@@ -74,7 +78,42 @@ void UWidget_ServerBrowserScreen::HandleSessionListUpdated(const TArray<UFronten
 		ListItems.Add(SessionEntry);
 	}
 
+	DetailsView_SessionInfo->ClearDetailsViewInfo();
+
 	CommonListView_Sessions->SetListItems(ListItems);
 
+	if (ListItems.Num() != 0)
+	{
+		CommonListView_Sessions->NavigateToIndex(0);
+		CommonListView_Sessions->SetSelectedIndex(0);
+	}
+
 	BP_OnSessionListUpdated(ListItems.Num());
+}
+
+void UWidget_ServerBrowserScreen::OnListViewItemHovered(UObject* InHoveredItem, bool bWasHovered)
+{
+	if (!InHoveredItem)
+	{
+		return;
+	}
+
+	if (bWasHovered)
+	{
+		DetailsView_SessionInfo->UpdateDetailsViewInfo(Cast<UFrontendSessionListEntryData>(InHoveredItem));
+	}
+	else if (UFrontendSessionListEntryData* SelectedItem = CommonListView_Sessions->GetSelectedItem<UFrontendSessionListEntryData>())
+	{
+		DetailsView_SessionInfo->UpdateDetailsViewInfo(SelectedItem);
+	}
+}
+
+void UWidget_ServerBrowserScreen::OnListViewItemSelected(UObject* InSelectedItem)
+{
+	if (!InSelectedItem)
+	{
+		return;
+	}
+
+	DetailsView_SessionInfo->UpdateDetailsViewInfo(Cast<UFrontendSessionListEntryData>(InSelectedItem));
 }
