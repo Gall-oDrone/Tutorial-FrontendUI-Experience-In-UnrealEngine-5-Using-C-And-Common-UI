@@ -7,6 +7,7 @@
 #include "Widget_SessionDetailsView.generated.h"
 
 class UCommonTextBlock;
+class UCommonLazyImage;
 class UCommonRichTextBlock;
 class UFrontendSessionListEntryData;
 
@@ -32,6 +33,9 @@ private:
 	//***** Bound Widgets *****//
 	UPROPERTY(meta = (BindWidget))
 	UCommonTextBlock* CommonTextBlock_Title;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UCommonLazyImage* CommonLazyImage_DescriptionImage;
 
 	UPROPERTY(meta = (BindWidget))
 	UCommonRichTextBlock* CommonRichText_Description;

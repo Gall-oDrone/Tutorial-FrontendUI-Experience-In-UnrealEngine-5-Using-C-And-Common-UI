@@ -6,6 +6,8 @@
 #include "UObject/Object.h"
 #include "FrontendSessionListEntryData.generated.h"
 
+class UTexture2D;
+
 /**
  * Read-only data for one found session row in the server browser.
  * Intentionally not a UListDataObject_Base — that type carries options-system
@@ -34,6 +36,9 @@ public:
 
 	UPROPERTY(BlueprintReadOnly)
 	int32 PingInMs = 0;
+
+	UPROPERTY(BlueprintReadOnly)
+	TSoftObjectPtr<UTexture2D> PreviewImage;
 
 	bool IsFull() const { return CurrentPlayers >= MaxPlayers; }
 };
