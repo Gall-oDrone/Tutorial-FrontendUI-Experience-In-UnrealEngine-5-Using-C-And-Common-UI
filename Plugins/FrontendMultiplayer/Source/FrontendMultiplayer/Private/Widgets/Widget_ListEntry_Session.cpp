@@ -8,6 +8,11 @@
 #include "FrontendMultiplayerSubsystem.h"
 #include "FrontendSessionListEntryData.h"
 
+void UWidget_ListEntry_Session::NativeOnListEntryWidgetHovered(bool bWasHovered)
+{
+	BP_OnToggleEntryWidgetHighlightState(bWasHovered || (GetListItem() && IsListItemSelected()));
+}
+
 void UWidget_ListEntry_Session::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
@@ -33,6 +38,20 @@ void UWidget_ListEntry_Session::NativeOnListItemObjectSet(UObject* ListItemObjec
 		CachedSessionData->MaxPlayers);
 
 	CommonText_SessionInfo->SetText(FText::FromString(SessionInfo));
+}
+
+void UWidget_ListEntry_Session::NativeOnItemSelectionChanged(bool bIsSelected)
+{
+	IUserObjectListEntry::NativeOnItemSelectionChanged(bIsSelected);
+
+	BP_OnToggleEntryWidgetHighlightState(bIsSelected);
+}
+
+void UWidget_ListEntry_Session::NativeOnEntryReleased()
+{
+	IUserObjectListEntry::NativeOnEntryReleased();
+
+	NativeOnListEntryWidgetHovered(false);
 }
 
 void UWidget_ListEntry_Session::OnJoinButtonClicked()

@@ -20,20 +20,29 @@ class FRONTENDMULTIPLAYER_API UWidget_ListEntry_Session : public UCommonUserWidg
 {
 	GENERATED_BODY()
 
+public:
+	void NativeOnListEntryWidgetHovered(bool bWasHovered);
+
 protected:
+	//The child widget blueprint should override it to handle the highlight state when this entry widget is hovered or selected
+	UFUNCTION(BlueprintImplementableEvent, meta = (DisplayName = "On Toggle Entry Widget Highlight State"))
+	void BP_OnToggleEntryWidgetHighlightState(bool bShouldHighlight) const;
+
 	//~ Begin UUserWidget Interface
 	virtual void NativeOnInitialized() override;
 	//~ End UUserWidget Interface
 
 	//~ Begin IUserObjectListEntry Interface
 	virtual void NativeOnListItemObjectSet(UObject* ListItemObject) override;
+	virtual void NativeOnItemSelectionChanged(bool bIsSelected) override;
+	virtual void NativeOnEntryReleased() override;
 	//~ End IUserObjectListEntry Interface
 
 private:
 	void OnJoinButtonClicked();
 
 	//***** Bound Widgets ***** //
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidget, AllowPrivateAccess = "true"))
 	UCommonTextBlock* CommonText_SessionInfo;
 
 	UPROPERTY(meta = (BindWidget))

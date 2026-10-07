@@ -8,6 +8,7 @@
 #include "FrontendMultiplayerSubsystem.h"
 #include "FrontendSessionListEntryData.h"
 #include "Widgets/Widget_SessionDetailsView.h"
+#include "Widgets/Widget_ListEntry_Session.h"
 
 void UWidget_ServerBrowserScreen::NativeOnInitialized()
 {
@@ -96,6 +97,11 @@ void UWidget_ServerBrowserScreen::OnListViewItemHovered(UObject* InHoveredItem, 
 	if (!InHoveredItem)
 	{
 		return;
+	}
+
+	if (UWidget_ListEntry_Session* HoveredEntryWidget = CommonListView_Sessions->GetEntryWidgetFromItem<UWidget_ListEntry_Session>(InHoveredItem))
+	{
+		HoveredEntryWidget->NativeOnListEntryWidgetHovered(bWasHovered);
 	}
 
 	if (bWasHovered)
