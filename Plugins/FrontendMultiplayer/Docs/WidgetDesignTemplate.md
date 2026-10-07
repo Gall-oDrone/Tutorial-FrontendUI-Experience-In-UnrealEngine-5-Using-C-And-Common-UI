@@ -81,11 +81,18 @@ by copying that asset's layout and styles.
 
 ```
 [WBP_DetailsView_Session]
-└─ Vertical Box
-   ├─ CommonTextBlock_Title             [BIND] (Style_Text_OptionsDetailsView_Title)
-   ├─ CommonRichText_Description        [BIND] (Common Rich Text Block)
-   └─ CommonRichText_DisabledReason     [BIND] (Common Rich Text Block)
+└─ Scroll Box
+   └─ Vertical Box
+      ├─ CommonTextBlock_Title             [BIND] (Style_Text_OptionsDetailsView_Title)
+      ├─ Size Box
+      │  └─ CommonLazyImage_DescriptionImage  (optional bind)
+      ├─ CommonRichText_Description        [BIND] (Common Rich Text Block)
+      └─ CommonRichText_DisabledReason     [BIND] (Common Rich Text Block)
 ```
+
+- `CommonLazyImage_DescriptionImage` is optional. When present, C++ shows the session's
+  `PreviewImage` and collapses the image when a session has none, which is every session
+  for now. Without that, the designer's placeholder brush would show for every session.
 
 - Both rich text blocks: **Text Style Set** `DT_RichTextStyle_OptionsScreen` and
   **Auto Wrap Text** on, as in `WBP_DetailsView_Options`. C++ writes `<Bold>…</>` into the
@@ -217,11 +224,10 @@ Parent class `Widget_ListEntry_Session`. Root is the shared size box, the same c
       └─ CommonButton_Join        [BIND] — Auto, right aligned, Style_Button_Clear
 ```
 
-This row intentionally does not inherit `Widget_ListEntry_Base`, so it has no
-hover-highlight or gamepad-focus hooks. If CommonUI's baseline selection feedback turns
-out not to be enough, the fix is to extract a smaller generic base out of
-`Widget_ListEntry_Base` inside FrontendUI — splitting the hover/gamepad behaviour from the
-`UListDataObject_Base` specifics — rather than reaching back into the options types here.
+This row intentionally does not inherit `Widget_ListEntry_Base`, but it carries the same
+hover and selection hook: **On Toggle Entry Widget Highlight State**, fired with the same
+rules as Options rows (hovered, or selected). `CommonText_SessionInfo` is
+`BlueprintReadOnly` so the graph can restyle it.
 
 ## 5. `WBP_CAW_LeaderboardScreen`
 
@@ -359,7 +365,7 @@ Refresh is simply unavailable.
 
 ## EventGraph work, by Blueprint
 
-Six of the ten Blueprints (the seven screens and rows, plus the three reusable modules)
+Seven of the ten Blueprints (the seven screens and rows, plus the three reusable modules)
 need graph work, and all of it is small. Everything else — button clicks on the C++
 screens, Back, Refresh, list population, focus — is already done in the C++ parent.
 
@@ -376,8 +382,8 @@ the C++ parent fires a `BP On …` event instead.
 | `WBP_CAW_ServerBrowserScreen` | Yes — empty state |
 | `WBP_CAW_LeaderboardScreen` | Yes — empty state |
 | `WBP_ListEntry_Leaderboard` | Yes — local-player highlight |
+| `WBP_ListEntry_Session` | Yes — hover and selection highlight |
 | `WBP_CAW_HostSessionScreen` | None |
-| `WBP_ListEntry_Session` | None |
 | `WBP_CAW_APIDebugScreen` | None |
 | `WBP_DetailsView_Session` | None |
 
@@ -464,12 +470,17 @@ Identical to the server browser, using **Event BP On Leaderboard Updated** (pin
 Because the False branch sets the default style explicitly, a recycled row that last showed
 the local player is reset correctly.
 
+### `WBP_ListEntry_Session`
+
+1. Add **Event On Toggle Entry Widget Highlight State**. It has a **Should Highlight** pin.
+2. Feed it into a **Select** node of text style class: True →
+   `Style_Text_ListEntry_Highlight`, False → `Style_Text_ListEntry_Default`.
+3. Call **Set Style** on `CommonText_SessionInfo` with the result.
+
 ### No graph work
 
 - **`WBP_CAW_HostSessionScreen`** — Create, Back, and focus are all in C++. Only set
   `CommonButton_Create`'s Button Display Text and Button Description Text in Details.
-- **`WBP_ListEntry_Session`** — C++ fills `CommonText_SessionInfo` and handles Join. Only set
-  `CommonButton_Join`'s Button Display Text to "Join".
 - **`WBP_CAW_APIDebugScreen`** — C++ appends log lines, scrolls, and handles Back.
 
 ## Suggested order
