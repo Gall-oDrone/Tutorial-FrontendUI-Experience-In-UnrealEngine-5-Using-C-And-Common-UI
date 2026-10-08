@@ -18,6 +18,11 @@ void UWidget_ListEntry_Session::NativeOnInitialized()
 	Super::NativeOnInitialized();
 
 	CommonButton_Join->OnClicked().AddUObject(this, &ThisClass::OnJoinButtonClicked);
+
+	// Selectable so the row's selection can show on Join through the button style's
+	// Selected text style; otherwise a selected button stops accepting clicks.
+	CommonButton_Join->SetIsSelectable(true);
+	CommonButton_Join->SetIsInteractableWhenSelected(true);
 }
 
 void UWidget_ListEntry_Session::NativeOnListItemObjectSet(UObject* ListItemObject)
@@ -44,12 +49,16 @@ void UWidget_ListEntry_Session::NativeOnItemSelectionChanged(bool bIsSelected)
 {
 	IUserObjectListEntry::NativeOnItemSelectionChanged(bIsSelected);
 
+	CommonButton_Join->SetIsSelected(bIsSelected, false);
+
 	BP_OnToggleEntryWidgetHighlightState(bIsSelected);
 }
 
 void UWidget_ListEntry_Session::NativeOnEntryReleased()
 {
 	IUserObjectListEntry::NativeOnEntryReleased();
+
+	CommonButton_Join->SetIsSelected(false, false);
 
 	NativeOnListEntryWidgetHovered(false);
 }

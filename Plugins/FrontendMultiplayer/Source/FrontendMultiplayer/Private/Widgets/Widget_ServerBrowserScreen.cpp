@@ -104,13 +104,11 @@ void UWidget_ServerBrowserScreen::OnListViewItemHovered(UObject* InHoveredItem, 
 		HoveredEntryWidget->NativeOnListEntryWidgetHovered(bWasHovered);
 	}
 
+	// Hover moves the selection so only one row is ever highlighted; the selection
+	// handler then updates the details panel.
 	if (bWasHovered)
 	{
-		DetailsView_SessionInfo->UpdateDetailsViewInfo(Cast<UFrontendSessionListEntryData>(InHoveredItem));
-	}
-	else if (UFrontendSessionListEntryData* SelectedItem = CommonListView_Sessions->GetSelectedItem<UFrontendSessionListEntryData>())
-	{
-		DetailsView_SessionInfo->UpdateDetailsViewInfo(SelectedItem);
+		CommonListView_Sessions->SetSelectedItem(InHoveredItem);
 	}
 }
 
