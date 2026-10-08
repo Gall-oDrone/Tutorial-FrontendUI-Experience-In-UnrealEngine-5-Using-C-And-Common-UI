@@ -193,9 +193,9 @@ closely, including putting the list view in `NamedSlot_MainLeftExtendPoint`.
             └─ DetailsView_SessionInfo             [BIND] (WBP_DetailsView_Session)
 ```
 
-- `DetailsView_SessionInfo` is driven entirely from C++, exactly like Options'
-  `DetailsView_ListEntryInfo`: hovering a row shows that session, un-hovering falls back to
-  the selected one, and the first row is selected whenever the list arrives.
+- `DetailsView_SessionInfo` is driven entirely from C++ from the list selection, like
+  Options' `DetailsView_ListEntryInfo`. Unlike Options, hovering a row selects it, so only one
+  row is highlighted at a time. The first row is selected whenever the list arrives.
 
 - On `CommonListView_Sessions`: **Entry Widget Class** `WBP_ListEntry_Session`,
   **Num Designer Preview Entries** 5 (what Options uses, and how you see rows at design time).
