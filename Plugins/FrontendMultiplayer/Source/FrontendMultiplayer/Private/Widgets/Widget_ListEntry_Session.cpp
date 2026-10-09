@@ -49,7 +49,15 @@ void UWidget_ListEntry_Session::NativeOnItemSelectionChanged(bool bIsSelected)
 {
 	IUserObjectListEntry::NativeOnItemSelectionChanged(bIsSelected);
 
-	CommonButton_Join->SetIsSelected(bIsSelected, false);
+	// SetIsSelected(false) is a no-op on a non-toggleable button; ClearSelection is not.
+	if (bIsSelected)
+	{
+		CommonButton_Join->SetIsSelected(true, false);
+	}
+	else
+	{
+		CommonButton_Join->ClearSelection();
+	}
 
 	BP_OnToggleEntryWidgetHighlightState(bIsSelected);
 }
@@ -58,7 +66,7 @@ void UWidget_ListEntry_Session::NativeOnEntryReleased()
 {
 	IUserObjectListEntry::NativeOnEntryReleased();
 
-	CommonButton_Join->SetIsSelected(false, false);
+	CommonButton_Join->ClearSelection();
 
 	NativeOnListEntryWidgetHovered(false);
 }

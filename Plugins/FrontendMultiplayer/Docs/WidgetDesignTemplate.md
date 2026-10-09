@@ -229,6 +229,11 @@ hover and selection hook: **On Toggle Entry Widget Highlight State**, fired with
 rules as Options rows (hovered, or selected). `CommonText_SessionInfo` is
 `BlueprintReadOnly` so the graph can restyle it.
 
+C++ also puts `CommonButton_Join` into its selected state while the row is selected, so the
+button's style needs a **Selected Text Style** (same as its Hovered one) and Selected brushes
+that draw nothing, or Join will not light up with the row. If that style is shared with the
+Options tab buttons, duplicate it for Join instead of editing it.
+
 ## 5. `WBP_CAW_LeaderboardScreen`
 
 Parent class `Widget_LeaderboardScreen`. Reading-dense, so the blur wrapper is on. This is
