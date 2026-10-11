@@ -56,11 +56,6 @@ void UWidget_LeaderboardScreen::NativeOnInitialized()
 	CommonButton_PageUp->OnClicked().AddUObject(this, &ThisClass::OnPageUpClicked);
 	CommonButton_PageDown->OnClicked().AddUObject(this, &ThisClass::OnPageDownClicked);
 
-	if (const FText* SortText = SortModeDisplayTexts.Find(CurrentSortMode))
-	{
-		CommonButton_SortScore->SetButtonText(*SortText);
-	}
-
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
 	{
 		MultiplayerSubsystem->OnLeaderboardUpdated.AddDynamic(this, &ThisClass::HandleLeaderboardUpdated);
@@ -70,6 +65,10 @@ void UWidget_LeaderboardScreen::NativeOnInitialized()
 void UWidget_LeaderboardScreen::NativeOnActivated()
 {
 	Super::NativeOnActivated();
+
+	// After construction, so the button's own PreConstruct cannot overwrite it with
+	// the placeholder Button Display Text authored in the Blueprint.
+	RefreshSortButtonText();
 
 	// Register once; the stack may re-activate a cached screen. Selecting the first tab
 	// is what triggers the initial fetch, through OnLeaderboardTabSelected.
@@ -131,6 +130,12 @@ void UWidget_LeaderboardScreen::RepopulateList()
 	CommonListView_Leaderboard->ScrollToTop();
 
 	BP_OnLeaderboardUpdated(ListItems.Num());
+}
+
+void UWidget_LeaderboardScreen::RefreshSortButtonText()
+{
+	const FText* SortText = SortModeDisplayTexts.Find(CurrentSortMode);
+	CommonButton_SortScore->SetButtonText(SortText ? *SortText : UEnum::GetDisplayValueAsText(CurrentSortMode));
 }
 
 void UWidget_LeaderboardScreen::ScrollByPages(int32 PageDelta)
@@ -212,11 +217,7 @@ void UWidget_LeaderboardScreen::OnSortScoreClicked()
 		? ELeaderboardSortMode::ScoreAscending
 		: ELeaderboardSortMode::ScoreDescending;
 
-	if (const FText* SortText = SortModeDisplayTexts.Find(CurrentSortMode))
-	{
-		CommonButton_SortScore->SetButtonText(*SortText);
-	}
-
+	RefreshSortButtonText();
 	RepopulateList();
 }
 
