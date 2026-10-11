@@ -45,6 +45,7 @@ protected:
 private:
 	void RequestFetch();
 	void RepopulateList();
+	void RefreshSortButtonText();
 	void ScrollByPages(int32 PageDelta);
 
 	void OnRefreshBoundActionTriggered();
