@@ -78,46 +78,44 @@ void UFrontendMultiplayerSubsystem::JoinSession(int32 SessionIndex)
 	BroadcastDebugLog(TEXT("[stub] Session joined (simulated)"));
 }
 
-void UFrontendMultiplayerSubsystem::FetchLeaderboard()
+void UFrontendMultiplayerSubsystem::FetchLeaderboard(ELeaderboardCategory Category)
 {
-	BroadcastDebugLog(TEXT("[stub] FetchLeaderboard() called"));
+	BroadcastDebugLog(FString::Printf(TEXT("[stub] FetchLeaderboard(%s) called"), *UEnum::GetDisplayValueAsText(Category).ToString()));
 
-	// Rows arrive already ranked. Ordering is the backend's responsibility, so the
-	// screen stays a pure renderer and never re-sorts what it is handed.
-	struct FSimulatedLeaderboardRow
+	// Rows arrive already ranked, highest score first. Rank is the backend's
+	// responsibility; the screen may reorder rows for display but never renumbers them.
+	static const TCHAR* const SimulatedNames[] =
 	{
-		const TCHAR* PlayerDisplayName;
-		int32 Score;
-		bool bIsLocalPlayer;
+		TEXT("Valkyrie"), TEXT("Ronin"),    TEXT("Cinder"),   TEXT("Specter"),  TEXT("Longshot"),
+		TEXT("Nomad"),    TEXT("Havoc"),    TEXT("Wraith"),   TEXT("Tempest"),  TEXT("Ember"),
+		TEXT("Raven"),    TEXT("Atlas"),    TEXT("Nightjar"), TEXT("Falcon"),   TEXT("Mirage"),
+		TEXT("Blitz"),    TEXT("You"),      TEXT("Onyx"),     TEXT("Saber"),    TEXT("Quill"),
+		TEXT("Drift"),    TEXT("Vortex"),   TEXT("Helix"),    TEXT("Gale"),     TEXT("Juno"),
+		TEXT("Kestrel"),  TEXT("Lynx"),     TEXT("Mako"),     TEXT("Nova"),     TEXT("Orion"),
+		TEXT("Pike"),     TEXT("Rook"),     TEXT("Sable"),    TEXT("Talon"),    TEXT("Umbra"),
+		TEXT("Vesper"),   TEXT("Warden"),   TEXT("Zephyr"),   TEXT("Cobalt"),   TEXT("Dusk")
 	};
 
-	static const FSimulatedLeaderboardRow SimulatedRows[] =
-	{
-		{ TEXT("Valkyrie"),    18420, false },
-		{ TEXT("Ronin"),       16075, false },
-		{ TEXT("Cinder"),      14930, false },
-		{ TEXT("You"),         13115, true  },
-		{ TEXT("Longshot"),    11860, false },
-		{ TEXT("Nomad"),        9540, false }
-	};
-
-	const int32 SimulatedRowCount = static_cast<int32>(UE_ARRAY_COUNT(SimulatedRows));
+	const int32 SimulatedRowCount = static_cast<int32>(UE_ARRAY_COUNT(SimulatedNames));
+	// Different categories get different numbers so a future Ranked / Unranked split is visibly distinct.
+	const int32 CategorySeed = static_cast<int32>(Category) * 7;
 
 	TArray<UFrontendLeaderboardEntryData*> FakeEntries;
 	FakeEntries.Reserve(SimulatedRowCount);
 
+	int32 Score = 24000 - CategorySeed * 100;
 	for (int32 RowIndex = 0; RowIndex < SimulatedRowCount; ++RowIndex)
 	{
-		const FSimulatedLeaderboardRow& SimulatedRow = SimulatedRows[RowIndex];
-
 		UFrontendLeaderboardEntryData* Entry = NewObject<UFrontendLeaderboardEntryData>(this);
 		Entry->Rank = RowIndex + 1;
-		Entry->PlayerDisplayName = SimulatedRow.PlayerDisplayName;
-		Entry->Score = SimulatedRow.Score;
-		Entry->bIsLocalPlayer = SimulatedRow.bIsLocalPlayer;
+		Entry->PlayerDisplayName = SimulatedNames[RowIndex];
+		Entry->Score = Score;
+		Entry->bIsLocalPlayer = FCString::Strcmp(SimulatedNames[RowIndex], TEXT("You")) == 0;
 		FakeEntries.Add(Entry);
+
+		Score -= 300 + ((RowIndex * 37 + CategorySeed) % 250);
 	}
 
-	OnLeaderboardUpdated.Broadcast(FakeEntries);
+	OnLeaderboardUpdated.Broadcast(Category, FakeEntries);
 	BroadcastDebugLog(FString::Printf(TEXT("[stub] FetchLeaderboard returned %d simulated entr(ies)"), FakeEntries.Num()));
 }

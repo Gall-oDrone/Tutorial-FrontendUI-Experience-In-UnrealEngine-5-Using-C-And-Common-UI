@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
+#include "FrontendLeaderboardTypes.h"
 #include "FrontendMultiplayerSubsystem.generated.h"
 
 class UFrontendLeaderboardEntryData;
@@ -32,7 +33,7 @@ public:
 	void JoinSession(int32 SessionIndex);
 
 	UFUNCTION(BlueprintCallable, Category = "Frontend Multiplayer")
-	void FetchLeaderboard();
+	void FetchLeaderboard(ELeaderboardCategory Category = ELeaderboardCategory::Main);
 
 	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAPIDebugLogUpdated, const FString&, LogLine);
 	UPROPERTY(BlueprintAssignable)
@@ -42,7 +43,7 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnSessionListUpdated OnSessionListUpdated;
 
-	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLeaderboardUpdated, const TArray<UFrontendLeaderboardEntryData*>&, Entries);
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnLeaderboardUpdated, ELeaderboardCategory, Category, const TArray<UFrontendLeaderboardEntryData*>&, Entries);
 	UPROPERTY(BlueprintAssignable)
 	FOnLeaderboardUpdated OnLeaderboardUpdated;
 
