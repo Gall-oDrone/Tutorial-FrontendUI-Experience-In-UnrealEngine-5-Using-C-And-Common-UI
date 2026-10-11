@@ -236,10 +236,9 @@ Options tab buttons, duplicate it for Join instead of editing it.
 
 ## 5. `WBP_CAW_LeaderboardScreen`
 
-Parent class `Widget_LeaderboardScreen`. Reading-dense, so the blur wrapper is on. This is
-the server browser's structural twin — same list view in `NamedSlot_MainLeftExtendPoint`,
-same empty state, same Refresh-as-bound-action. Build it by duplicating the server browser
-and replacing the list view and its entry class.
+Parent class `Widget_LeaderboardScreen`. Reading-dense, so the blur wrapper is on. It is
+laid out like Options: tabs on top, the list on the left, and a column of buttons on the
+right where Options has its details panel. Build it by duplicating the server browser.
 
 ```
 [WBP_CAW_LeaderboardScreen]
@@ -249,30 +248,55 @@ and replacing the list view and its entry class.
       └─ WBP_Template_Layout
          ├─ NamedSlot_BoundActionExtendPoint
          │  └─ Common Bound Action Bar
-         └─ NamedSlot_MainLeftExtendPoint
-            └─ Vertical Box
-               ├─ CommonTextBlock_ScreenTitle   (Style_Text_OptionsDetailsView_Title)
-               ├─ Horizontal Box                — column headers, Style_Text_Default
-               │  ├─ CommonTextBlock_HeaderRank    "#"      — Fixed, matches row width
-               │  ├─ CommonTextBlock_HeaderPlayer  "Player" — Fill
-               │  └─ CommonTextBlock_HeaderScore   "Score"  — Fixed, matches row width
-               └─ Overlay
-                  ├─ CommonListView_Leaderboard [BIND] (Common List View)
-                  └─ EmptyState_Leaderboard     (WBP_Text_EmptyState) "No scores yet"
+         ├─ NamedSlot_DescriptionExtendPoint
+         │  └─ WBP_Text_ButtonDescription
+         ├─ NamedSlot_TabButtonsExtendPoint
+         │  └─ TabListWidget_LeaderboardTabs  [BIND] (WBP_TabList_Options)
+         ├─ NamedSlot_MainLeftExtendPoint
+         │  └─ Vertical Box
+         │     ├─ Size Box                       — Width Override = row width, H Align Left
+         │     │  └─ Horizontal Box              — column headers, Style_Text_Default
+         │     │     ├─ Size Box 80  → "#"       — Justification Right
+         │     │     ├─ "Player"                 — Fill, Padding Left 16
+         │     │     └─ Size Box 160 → "Score"   — Justification Right
+         │     └─ Overlay                        — Fill
+         │        ├─ CommonListView_Leaderboard  [BIND] (Common List View)
+         │        └─ EmptyState_Leaderboard      (WBP_Text_EmptyState) "No scores yet"
+         └─ NamedSlot_MainRightExtendPoint
+            └─ Vertical Box                      (WBP_Button_Default each)
+               ├─ CommonButton_JumpTop           [BIND] "Top"
+               ├─ CommonButton_JumpMe            [BIND] "Me"
+               ├─ CommonButton_JumpBottom        [BIND] "Bottom"
+               ├─ CommonButton_SortScore         [BIND] (text set by C++)
+               ├─ CommonButton_PageUp            [BIND] "Page Up"
+               ├─ CommonButton_PageDown          [BIND] "Page Down"
+               └─ CommonButton_Refresh           [BIND] "Refresh"
 ```
 
+- **Tabs.** `TabListWidget_LeaderboardTabs` is an instance of `WBP_TabList_Options` (or a
+  duplicate named `WBP_TabList_Leaderboard`); it only carries the tab button class, nothing
+  Options-specific. The tabs themselves come from **Leaderboard Tabs** in class defaults,
+  one row per tab (Tab ID, Display Name, Category). There is one row, "Leaderboard", today.
+  Adding Ranked / Unranked later means a new `ELeaderboardCategory` value, a stub branch,
+  and a new row here; no screen code changes.
+- **Right-column buttons.** Clicks are wired in C++. Set each button's **Button Display
+  Text** (except Sort, which C++ drives from **Sort Mode Display Texts**) and its
+  **Button Description Text** — that is what shows in the description slot on hover and
+  makes the column a visual aid. Suggested descriptions: "Scroll to the first player",
+  "Scroll to your own row", "Scroll to the last player", "Flip between highest and lowest
+  score first", "Scroll up one page", "Scroll down one page", "Fetch the latest scores".
+- **Behaviour.** Top / Bottom scroll the list; Me scrolls your own row into view; Sort
+  reorders for display without renumbering ranks; Page Up / Down move by the number of
+  visible rows; Refresh fetches the current tab again. The optional Refresh bound action
+  still works alongside the button.
 - On `CommonListView_Leaderboard`: **Entry Widget Class** `WBP_ListEntry_Leaderboard`,
   **Num Designer Preview Entries** 5.
-- The header row is plain Blueprint decoration, not bound to C++. Its three cells must use
-  the same widths and padding as the row below or the columns will not line up; that is the
-  one thing to get right here.
+- The header row is plain Blueprint decoration. Its Size Box must match the row's width and
+  be left-aligned, or the Score column drifts; its cells must use the row's widths.
 - On `EmptyState_Leaderboard`: tick **Is Variable**, set Visibility to **Collapsed**, and
   set **Empty State Message** to "No scores yet". Toggled from the graph, as on the server
   browser.
 - Focus is handled in C++: the selected row's entry widget, otherwise the list view.
-- Refresh is a bound action, not a button. Set the **Refresh Action** handle under
-  "Frontend Leaderboard Screen" in class defaults to the same `RefreshAction` row the
-  server browser uses.
 - Same note as the server browser: use a plain `Common List View`, not
   `UFrontendCommonListView`, which would assert on leaderboard rows.
 
@@ -364,7 +388,7 @@ Refresh is simply unavailable.
 | `WBP_CAW_ServerBrowserScreen` | `CommonListView_Sessions`, `DetailsView_SessionInfo` |
 | `WBP_DetailsView_Session` | `CommonTextBlock_Title`, `CommonRichText_Description`, `CommonRichText_DisabledReason` |
 | `WBP_ListEntry_Session` | `CommonText_SessionInfo`, `CommonButton_Join` |
-| `WBP_CAW_LeaderboardScreen` | `CommonListView_Leaderboard` |
+| `WBP_CAW_LeaderboardScreen` | `TabListWidget_LeaderboardTabs`, `CommonListView_Leaderboard`, `CommonButton_JumpTop`, `CommonButton_JumpMe`, `CommonButton_JumpBottom`, `CommonButton_SortScore`, `CommonButton_PageUp`, `CommonButton_PageDown`, `CommonButton_Refresh` |
 | `WBP_ListEntry_Leaderboard` | `CommonText_Rank`, `CommonText_PlayerName`, `CommonText_Score` |
 | `WBP_CAW_APIDebugScreen` | `ScrollBox_DebugLog`, `CommonTextBlock_DebugLog` |
 
