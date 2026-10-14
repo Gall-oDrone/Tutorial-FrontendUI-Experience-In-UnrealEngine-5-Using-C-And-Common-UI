@@ -10,7 +10,8 @@ class UCommonTextBlock;
 class UScrollBox;
 
 /**
- * Scrollable API debug log fed by UFrontendMultiplayerSubsystem::OnAPIDebugLogUpdated.
+ * Scrollable API debug log. Shows UFrontendMultiplayerSubsystem's full log history
+ * on open and follows new lines while visible.
  */
 UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
 class FRONTENDMULTIPLAYER_API UWidget_APIDebugScreen : public UWidget_ActivatableBase
@@ -22,11 +23,20 @@ protected:
 	virtual void NativeOnInitialized() override;
 	//~ End UUserWidget Interface
 
+	//~ Begin UCommonActivatableWidget Interface
+	virtual void NativeOnActivated() override;
+	//~ End UCommonActivatableWidget Interface
+
 private:
 	void OnBackBoundActionTriggered();
 
 	UFUNCTION()
 	void HandleAPIDebugLogUpdated(const FString& LogLine);
+
+	UFUNCTION()
+	void HandleAPIDebugLogCleared();
+
+	void RebuildLogFromHistory();
 
 	//****** Bound Widgets ****** //
 	UPROPERTY(meta = (BindWidget))

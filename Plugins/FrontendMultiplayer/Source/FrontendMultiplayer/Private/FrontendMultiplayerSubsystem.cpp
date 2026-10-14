@@ -4,6 +4,7 @@
 #include "FrontendMultiplayerSubsystem.h"
 #include "FrontendLeaderboardEntryData.h"
 #include "FrontendSessionListEntryData.h"
+#include "FrontendMultiplayerSettings.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -22,7 +23,23 @@ UFrontendMultiplayerSubsystem* UFrontendMultiplayerSubsystem::Get(const UObject*
 void UFrontendMultiplayerSubsystem::BroadcastDebugLog(const FString& LogLine)
 {
 	UE_LOG(LogTemp, Log, TEXT("%s"), *LogLine);
-	OnAPIDebugLogUpdated.Broadcast(LogLine);
+
+	const FString StampedLine = FString::Printf(TEXT("[%s] %s"), *FDateTime::Now().ToString(TEXT("%H:%M:%S")), *LogLine);
+
+	const int32 MaxHistory = FMath::Max(1, UFrontendMultiplayerSettings::Get()->APIDebugLogHistorySize);
+	APIDebugLogHistory.Add(StampedLine);
+	if (APIDebugLogHistory.Num() > MaxHistory)
+	{
+		APIDebugLogHistory.RemoveAt(0, APIDebugLogHistory.Num() - MaxHistory);
+	}
+
+	OnAPIDebugLogUpdated.Broadcast(StampedLine);
+}
+
+void UFrontendMultiplayerSubsystem::ClearAPIDebugLog()
+{
+	APIDebugLogHistory.Reset();
+	OnAPIDebugLogCleared.Broadcast();
 }
 
 void UFrontendMultiplayerSubsystem::CreateSession(FName SessionName, int32 MaxPlayers)

@@ -23,7 +23,17 @@ void UWidget_APIDebugScreen::NativeOnInitialized()
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
 	{
 		MultiplayerSubsystem->OnAPIDebugLogUpdated.AddDynamic(this, &ThisClass::HandleAPIDebugLogUpdated);
+		MultiplayerSubsystem->OnAPIDebugLogCleared.AddDynamic(this, &ThisClass::HandleAPIDebugLogCleared);
 	}
+}
+
+void UWidget_APIDebugScreen::NativeOnActivated()
+{
+	Super::NativeOnActivated();
+
+	// The widget stack pools instances, so the lines logged while this screen was
+	// closed are only visible if the text is rebuilt from the history on every open.
+	RebuildLogFromHistory();
 }
 
 void UWidget_APIDebugScreen::OnBackBoundActionTriggered()
@@ -33,11 +43,23 @@ void UWidget_APIDebugScreen::OnBackBoundActionTriggered()
 
 void UWidget_APIDebugScreen::HandleAPIDebugLogUpdated(const FString& LogLine)
 {
-	const FString ExistingLog = CommonTextBlock_DebugLog->GetText().ToString();
-	const FString UpdatedLog = ExistingLog.IsEmpty()
-		? LogLine
-		: ExistingLog + LINE_TERMINATOR + LogLine;
+	RebuildLogFromHistory();
+}
 
-	CommonTextBlock_DebugLog->SetText(FText::FromString(UpdatedLog));
+void UWidget_APIDebugScreen::HandleAPIDebugLogCleared()
+{
+	RebuildLogFromHistory();
+}
+
+void UWidget_APIDebugScreen::RebuildLogFromHistory()
+{
+	const UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this);
+	if (!MultiplayerSubsystem)
+	{
+		return;
+	}
+
+	const FString FullLog = FString::Join(MultiplayerSubsystem->GetAPIDebugLogHistory(), LINE_TERMINATOR);
+	CommonTextBlock_DebugLog->SetText(FText::FromString(FullLog));
 	ScrollBox_DebugLog->ScrollToEnd();
 }

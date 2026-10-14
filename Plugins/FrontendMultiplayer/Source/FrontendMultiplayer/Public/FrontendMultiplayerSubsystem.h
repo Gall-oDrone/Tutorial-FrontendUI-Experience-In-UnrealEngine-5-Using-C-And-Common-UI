@@ -35,9 +35,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Frontend Multiplayer")
 	void FetchLeaderboard(ELeaderboardCategory Category = ELeaderboardCategory::Main);
 
+	/** Every line logged so far, oldest first, capped by UFrontendMultiplayerSettings::APIDebugLogHistorySize. */
+	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer|Debug")
+	TArray<FString> GetAPIDebugLogHistory() const { return APIDebugLogHistory; }
+
+	UFUNCTION(BlueprintCallable, Category = "Frontend Multiplayer|Debug")
+	void ClearAPIDebugLog();
+
+	/** Fired per line as it is logged. Read GetAPIDebugLogHistory() for lines logged before subscribing. */
 	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAPIDebugLogUpdated, const FString&, LogLine);
 	UPROPERTY(BlueprintAssignable)
 	FOnAPIDebugLogUpdated OnAPIDebugLogUpdated;
+
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnAPIDebugLogCleared);
+	UPROPERTY(BlueprintAssignable)
+	FOnAPIDebugLogCleared OnAPIDebugLogCleared;
 
 	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSessionListUpdated, const TArray<UFrontendSessionListEntryData*>&, Sessions);
 	UPROPERTY(BlueprintAssignable)
@@ -49,4 +61,7 @@ public:
 
 private:
 	void BroadcastDebugLog(const FString& LogLine);
+
+	UPROPERTY(Transient)
+	TArray<FString> APIDebugLogHistory;
 };

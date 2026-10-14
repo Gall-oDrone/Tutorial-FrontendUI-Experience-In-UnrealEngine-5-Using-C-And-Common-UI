@@ -337,6 +337,12 @@ Parent class `Widget_APIDebugScreen`. A log wall, so blur on. Push it to
 so the hub would stay drawn underneath with its own action bar and Back would appear twice.
 The confirm screen gets away with Modal only because it has no action bar.
 
+The subsystem keeps every logged line in a history (timestamped, oldest first), so the
+screen shows everything that happened in Host, Server Browser and Leaderboard before it was
+opened, and keeps following new lines while it is up. The cap is **Project Settings →
+Frontend Multiplayer Settings → API Debug Log History Size** (default 200). `Clear API Debug
+Log` on the subsystem empties it, should you add a Clear button later.
+
 ```
 [WBP_CAW_APIDebugScreen]
 └─ Border
@@ -510,7 +516,8 @@ the local player is reset correctly.
 
 - **`WBP_CAW_HostSessionScreen`** — Create, Back, and focus are all in C++. Only set
   `CommonButton_Create`'s Button Display Text and Button Description Text in Details.
-- **`WBP_CAW_APIDebugScreen`** — C++ appends log lines, scrolls, and handles Back.
+- **`WBP_CAW_APIDebugScreen`** — C++ fills the log from the subsystem history on every
+  open, follows new lines, scrolls to the end, and handles Back.
 
 ## Suggested order
 
