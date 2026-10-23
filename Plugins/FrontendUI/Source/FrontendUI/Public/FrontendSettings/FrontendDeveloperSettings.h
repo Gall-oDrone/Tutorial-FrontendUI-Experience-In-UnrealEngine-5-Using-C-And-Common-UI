@@ -8,6 +8,7 @@
 #include "FrontendDeveloperSettings.generated.h"
 
 class UWidget_ActivatableBase;
+class UOptionsDataRegistry;
 /**
  * 
  */
@@ -26,4 +27,11 @@ public:
 	/** Show the studio logo screen before Press Any Key. When off, the boot flow skips straight to Press Any Key. */
 	UPROPERTY(Config, EditAnywhere, Category = "Boot Flow")
 	bool bShowLogoScreen = true;
+
+	/**
+	 * Registry that builds the options screen tabs. Leave empty to use the framework
+	 * default (UOptionsDataRegistry). Set it to a game subclass to add or change options.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Options Screen")
+	TSoftClassPtr<UOptionsDataRegistry> OptionsDataRegistryClass;
 };

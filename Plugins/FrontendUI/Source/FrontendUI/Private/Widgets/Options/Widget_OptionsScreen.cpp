@@ -9,6 +9,7 @@
 #include "Widgets/Options/DataObjects/ListDataObject_Collection.h"
 #include "Widgets/Components/FrontendCommonListView.h"
 #include "FrontendSettings/FrontendGameUserSettings.h"
+#include "FrontendSettings/FrontendDeveloperSettings.h"
 #include "Widgets/Options/ListEntries/Widget_ListEntry_Base.h"
 #include "Widgets/Options/Widget_OptionsDetailsView.h"
 #include "Subsystems/FrontendUISubsystem.h"
@@ -90,7 +91,22 @@ UOptionsDataRegistry* UWidget_OptionsScreen::GetOrCreateDataRegistry()
 {
 	if (!CreatedOwningDataRegistry)
 	{
-		CreatedOwningDataRegistry = NewObject<UOptionsDataRegistry>();
+		// A game can replace the registry from Project Settings to add its own options
+		// without modifying this plugin. Fall back to the framework default otherwise.
+		UClass* RegistryClass = nullptr;
+
+		const UFrontendDeveloperSettings* FrontendDeveloperSettings = GetDefault<UFrontendDeveloperSettings>();
+		if (!FrontendDeveloperSettings->OptionsDataRegistryClass.IsNull())
+		{
+			RegistryClass = FrontendDeveloperSettings->OptionsDataRegistryClass.LoadSynchronous();
+		}
+
+		if (!RegistryClass)
+		{
+			RegistryClass = UOptionsDataRegistry::StaticClass();
+		}
+
+		CreatedOwningDataRegistry = NewObject<UOptionsDataRegistry>(GetTransientPackage(), RegistryClass);
 		CreatedOwningDataRegistry->InitOptionsDataRegistry(GetOwningLocalPlayer());
 	}
 
