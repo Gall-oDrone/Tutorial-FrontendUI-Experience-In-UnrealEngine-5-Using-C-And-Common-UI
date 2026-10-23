@@ -25,5 +25,11 @@ TSoftObjectPtr<UTexture2D> UFrontendFunctionLibrary::GetOptionsSoftImageByTag(FG
 
 bool UFrontendFunctionLibrary::IsLogoScreenEnabled()
 {
+#if UE_BUILD_SHIPPING
+	// The studio splash is a brand / legal requirement in shipped builds; the toggle is
+	// an iteration convenience and must not be able to turn it off there.
+	return true;
+#else
 	return GetDefault<UFrontendDeveloperSettings>()->bShowLogoScreen;
+#endif
 }

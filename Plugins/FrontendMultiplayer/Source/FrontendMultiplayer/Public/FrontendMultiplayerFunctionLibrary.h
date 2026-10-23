@@ -19,6 +19,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer")
 	static bool IsMultiplayerEnabled() { return UFrontendMultiplayerSettings::Get()->bEnableMultiplayer; }
 
+	/** Development tooling only; always false in Shipping so it cannot leak into a release through config. */
 	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer")
-	static bool ShouldShowAPIDebugPanel() { return UFrontendMultiplayerSettings::Get()->bShowAPIDebugPanel; }
+	static bool ShouldShowAPIDebugPanel()
+	{
+#if UE_BUILD_SHIPPING
+		return false;
+#else
+		return UFrontendMultiplayerSettings::Get()->bShowAPIDebugPanel;
+#endif
+	}
 };
