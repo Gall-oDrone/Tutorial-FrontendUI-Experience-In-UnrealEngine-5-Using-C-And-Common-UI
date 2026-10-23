@@ -29,12 +29,15 @@ Both are opt-in so the project behaves identically until you flip them.
 
 - **Options:** Project Settings → Game → Frontend UI Settings → Options Screen →
   *Options Data Registry Class* = `GameUIOptionsDataRegistry`.
-- **User settings:** `Config/DefaultEngine.ini`
+- **User settings:** this is an *engine* setting, not a plugin one. Project Settings →
+  **Engine → General Settings → Default Classes → Advanced → Game User Settings Class**
+  = `GameUIGameUserSettings`. Equivalent in `Config/DefaultEngine.ini`:
   ```ini
   [/Script/Engine.Engine]
   GameUserSettingsClassName=/Script/GameUI.GameUIGameUserSettings
   ```
-  Saved `GameUserSettings.ini` values start from defaults once after the switch.
+  Takes effect after an editor restart. Saved `GameUserSettings.ini` values start from
+  defaults once after the switch.
 
 ## Moving content in (Phase 1 of the plugin split)
 
@@ -42,7 +45,8 @@ Do every move in the **Content Browser**, then right-click the source folder →
 **Fix Up Redirectors**, then commit. Never move `.uasset` files with git or Explorer.
 
 1. `UI/Input/IA_*`, `IMC_Default` → `GameUI/Content/Input`
-2. `T_StudioLogo`, `WBP_CAW_LogoScreen`, `Content/Movies/*` → `GameUI/Content/Brand`
+2. `T_StudioLogo`, `WBP_CAW_LogoScreen` → `GameUI/Content/Brand`
+   (startup movies **stay** in `Content/Movies` — MoviePlayer only reads that folder)
 3. `WBP_CAW_MainMenu`, `WBP_CAW_StoryScreen`, `WBP_CAW_CreditScreen` → `GameUI/Content/UI/Screens`
 4. `BP_FrontendController`, `BP_FrontendGameMode`, `WBP_CUW_PrimaryLayout` → `GameUI/Content/Core`
 5. Update `Config/DefaultGame.ini` `FrontendWidgetMap` paths (`/FrontendUI/...` → `/GameUI/...`)
