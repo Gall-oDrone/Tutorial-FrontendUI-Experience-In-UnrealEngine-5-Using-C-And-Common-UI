@@ -6,6 +6,8 @@
 #include "Engine/DeveloperSettings.h"
 #include "FrontendMultiplayerSettings.generated.h"
 
+class UFrontendSessionBackend;
+
 /**
  * Project settings that gate the multiplayer menu flow and its debug tooling.
  */
@@ -15,10 +17,20 @@ class FRONTENDMULTIPLAYER_API UFrontendMultiplayerSettings : public UDeveloperSe
 	GENERATED_BODY()
 
 public:
+	UFrontendMultiplayerSettings();
+
 	static const UFrontendMultiplayerSettings* Get() { return GetDefault<UFrontendMultiplayerSettings>(); }
 
 	UPROPERTY(Config, EditAnywhere, Category = "Multiplayer")
 	bool bEnableMultiplayer = false;
+
+	/**
+	 * Class that hosts, finds and joins sessions on behalf of the UI. Defaults to the
+	 * simulated stub. Point it at an OnlineSubsystem / EOS / GameLift implementation
+	 * to go live; no screen changes are needed.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Multiplayer", meta = (EditCondition = "bEnableMultiplayer"))
+	TSoftClassPtr<UFrontendSessionBackend> SessionBackendClass;
 
 	UPROPERTY(Config, EditAnywhere, Category = "Debug", meta = (EditCondition = "bEnableMultiplayer"))
 	bool bShowAPIDebugPanel = false;

@@ -9,11 +9,14 @@
 
 class UFrontendLeaderboardEntryData;
 class UFrontendSessionListEntryData;
+class UFrontendSessionBackend;
 
 /**
  * Session host/find/join entry point for the multiplayer menu flow, plus
- * leaderboard retrieval. Every call is stubbed with simulated logs and fake
- * data so the UI can be exercised before real networking / GameLift lands.
+ * leaderboard retrieval. The screens talk only to this subsystem; it forwards every
+ * request to the UFrontendSessionBackend named in UFrontendMultiplayerSettings and
+ * re-broadcasts the backend's results through the delegates below. The default
+ * backend is a stub with simulated data.
  */
 UCLASS()
 class FRONTENDMULTIPLAYER_API UFrontendMultiplayerSubsystem : public UGameInstanceSubsystem
@@ -22,6 +25,11 @@ class FRONTENDMULTIPLAYER_API UFrontendMultiplayerSubsystem : public UGameInstan
 
 public:
 	static UFrontendMultiplayerSubsystem* Get(const UObject* WorldContextObject);
+
+	//~ Begin USubsystem Interface
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual void Deinitialize() override;
+	//~ End USubsystem Interface
 
 	UFUNCTION(BlueprintCallable, Category = "Frontend Multiplayer")
 	void CreateSession(FName SessionName, int32 MaxPlayers);
@@ -35,12 +43,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Frontend Multiplayer")
 	void FetchLeaderboard(ELeaderboardCategory Category = ELeaderboardCategory::Main);
 
+	/** The backend currently servicing requests. Null only if construction failed outright. */
+	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer")
+	UFrontendSessionBackend* GetSessionBackend() const { return ActiveBackend; }
+
 	/** Every line logged so far, oldest first, capped by UFrontendMultiplayerSettings::APIDebugLogHistorySize. */
 	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer|Debug")
 	TArray<FString> GetAPIDebugLogHistory() const { return APIDebugLogHistory; }
 
 	UFUNCTION(BlueprintCallable, Category = "Frontend Multiplayer|Debug")
 	void ClearAPIDebugLog();
+
+	/** Append a line to the API debug log. Backends call this through UFrontendSessionBackend::LogDebug. */
+	void BroadcastDebugLog(const FString& LogLine);
 
 	/** Fired per line as it is logged. Read GetAPIDebugLogHistory() for lines logged before subscribing. */
 	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAPIDebugLogUpdated, const FString&, LogLine);
@@ -60,7 +75,10 @@ public:
 	FOnLeaderboardUpdated OnLeaderboardUpdated;
 
 private:
-	void BroadcastDebugLog(const FString& LogLine);
+	void CreateSessionBackend();
+
+	UPROPERTY(Transient)
+	TObjectPtr<UFrontendSessionBackend> ActiveBackend;
 
 	UPROPERTY(Transient)
 	TArray<FString> APIDebugLogHistory;
