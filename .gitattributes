@@ -61,3 +61,10 @@
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
+
+###############################################################################
+# Unreal Engine binary assets — never normalise line endings or attempt text merges
+###############################################################################
+*.uasset binary
+*.umap   binary
+*.mp4    binary
