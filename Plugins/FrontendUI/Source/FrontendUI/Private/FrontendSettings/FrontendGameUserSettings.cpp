@@ -22,31 +22,54 @@ UFrontendGameUserSettings* UFrontendGameUserSettings::Get()
 	return nullptr;
 }
 
+void UFrontendGameUserSettings::ApplyNonResolutionSettings()
+{
+	Super::ApplyNonResolutionSettings();
+
+	// Runs on startup after LoadSettings() and whenever ApplySettings() is called, so a
+	// game's ApplyAudioSettings() override sees the persisted volumes without extra wiring.
+	ApplyAudioSettings();
+}
+
+void UFrontendGameUserSettings::SetCurrentGameDifficulty(const FString& InNewDifficulty)
+{
+	if (CurrentGameDifficulty == InNewDifficulty)
+	{
+		return;
+	}
+
+	CurrentGameDifficulty = InNewDifficulty;
+	OnGameDifficultyChanged.Broadcast(CurrentGameDifficulty);
+}
+
 void UFrontendGameUserSettings::SetOverallVolume(float InVolume)
 {
 	OverallVolume = InVolume;
-
-	//The actual logic for controlling the volume goes here
+	ApplyAudioSettings();
 }
 
 void UFrontendGameUserSettings::SetMusicVolume(float InVolume)
 {
 	MusicVolume = InVolume;
+	ApplyAudioSettings();
 }
 
 void UFrontendGameUserSettings::SetSoundFXVolume(float InVolume)
 {
 	SoundFXVolume = InVolume;
+	ApplyAudioSettings();
 }
 
 void UFrontendGameUserSettings::SetAllowBackgroundAudio(bool bIsAllowed)
 {
 	bAllowBackgroundAudio = bIsAllowed;
+	ApplyAudioSettings();
 }
 
 void UFrontendGameUserSettings::SetUseHDRAudioMode(bool bIsAllowed)
 {
 	bUseHDRAudioMode = bIsAllowed;
+	ApplyAudioSettings();
 }
 
 float UFrontendGameUserSettings::GetCurrentDisplayGamma() const
