@@ -22,3 +22,8 @@ TSoftObjectPtr<UTexture2D> UFrontendFunctionLibrary::GetOptionsSoftImageByTag(FG
 
 	return FrontendDeveloperSettings->OptionsScreenSoftImageMap.FindRef(InImageTag);
 }
+
+bool UFrontendFunctionLibrary::IsLogoScreenEnabled()
+{
+	return GetDefault<UFrontendDeveloperSettings>()->bShowLogoScreen;
+}

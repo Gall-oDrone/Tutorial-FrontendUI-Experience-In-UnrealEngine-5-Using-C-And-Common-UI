@@ -22,4 +22,8 @@ public:
 
 	UPROPERTY(Config, EditAnywhere, Category = "Options Image Reference", meta = (ForceInlineRow, Categories = "Frontend.Image"))
 	TMap< FGameplayTag, TSoftObjectPtr<UTexture2D>> OptionsScreenSoftImageMap;
+
+	/** Show the studio logo screen before Press Any Key. When off, the boot flow skips straight to Press Any Key. */
+	UPROPERTY(Config, EditAnywhere, Category = "Boot Flow")
+	bool bShowLogoScreen = true;
 };
