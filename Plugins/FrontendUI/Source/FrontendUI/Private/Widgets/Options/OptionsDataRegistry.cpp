@@ -115,17 +115,10 @@ void UOptionsDataRegistry::InitGameplayCollectionTab()
 
 		GameplayTabCollection->AddChildListData(GameDifficulty);
 	}
-	
-	//Test Item
-	{
-		UListDataObject_String* TestItem = NewObject<UListDataObject_String>();
-		TestItem->SetDataID(FName("TestItem"));
-		TestItem->SetDataDisplayName(FText::FromString(TEXT("Test Image Item")));
-		TestItem->SetSoftDescriptionImage(UFrontendFunctionLibrary::GetOptionsSoftImageByTag(FrontendGameplayTags::Frontend_Image_TestImage));
-		TestItem->SetDescriptionRichText(FText::FromString(TEXT("The image to display can be specified in the project settings. It can be anything the developer assigned in there")));
 
-		GameplayTabCollection->AddChildListData(TestItem);
-	}
+	// Game-specific rows (for example the tutorial's "Test Image Item") belong in a
+	// UOptionsDataRegistry subclass registered via UFrontendDeveloperSettings; see
+	// UGameUIOptionsDataRegistry in the GameUI plugin for the pattern.
 
 	RegisteredOptionsTabCollections.Add(GameplayTabCollection);
 }

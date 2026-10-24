@@ -22,4 +22,8 @@ protected:
 	//~ Begin UOptionsDataRegistry Interface
 	virtual void InitGameplayCollectionTab() override;
 	//~ End UOptionsDataRegistry Interface
+
+private:
+	/** Finds a tab the base class already registered, so game rows can be appended to it. */
+	UListDataObject_Collection* FindTabCollection(const FName& InTabID) const;
 };

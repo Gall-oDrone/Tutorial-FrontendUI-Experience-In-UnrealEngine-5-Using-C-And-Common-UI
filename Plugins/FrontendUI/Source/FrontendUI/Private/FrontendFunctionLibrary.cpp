@@ -18,9 +18,15 @@ TSoftObjectPtr<UTexture2D> UFrontendFunctionLibrary::GetOptionsSoftImageByTag(FG
 {
 	const UFrontendDeveloperSettings* FrontendDeveloperSettings = GetDefault<UFrontendDeveloperSettings>();
 
-	checkf(FrontendDeveloperSettings->OptionsScreenSoftImageMap.Contains(InImageTag),TEXT("Could not find an image associated with tag %s"),*InImageTag.ToString());
+	// Unlike widget classes, a missing image is cosmetic: UWidget_OptionsDetailsView already
+	// skips null images, so degrade to "no image" and say so rather than asserting.
+	if (const TSoftObjectPtr<UTexture2D>* FoundImage = FrontendDeveloperSettings->OptionsScreenSoftImageMap.Find(InImageTag))
+	{
+		return *FoundImage;
+	}
 
-	return FrontendDeveloperSettings->OptionsScreenSoftImageMap.FindRef(InImageTag);
+	UE_LOG(LogTemp, Warning, TEXT("FrontendUI: no image mapped to tag %s in Frontend UI Settings -> Options Image Reference."), *InImageTag.ToString());
+	return TSoftObjectPtr<UTexture2D>();
 }
 
 bool UFrontendFunctionLibrary::IsLogoScreenEnabled()
