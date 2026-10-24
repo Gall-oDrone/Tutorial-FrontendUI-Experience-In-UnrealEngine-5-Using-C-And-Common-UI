@@ -8,6 +8,7 @@
 	"CreatedBy": "Diego Gallo",
 	"CanContainContent": true,
 	"Installed": false,
+	"EngineVersion": "5.3.0",
 	"Modules": [
 		{
 			"Name": "FrontendUI",
