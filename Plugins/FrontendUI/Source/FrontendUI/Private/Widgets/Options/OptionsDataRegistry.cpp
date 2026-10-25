@@ -645,7 +645,16 @@ void UOptionsDataRegistry::InitControlCollectionTab(ULocalPlayer* InOwningLocalP
 
 	UEnhancedInputUserSettings* EIUserSettings = EISubsystem->GetUserSettings();
 
-	check(EIUserSettings);
+	// Key remapping is built on Enhanced Input's user settings, which are an opt-in project
+	// feature. A host that has not enabled them gets no Controls tab rather than a crash.
+	if (!EIUserSettings)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("FrontendUI: Enhanced Input user settings are disabled, so the Options screen has no Controls tab. ")
+			TEXT("Enable them in Project Settings -> Engine -> Enhanced Input -> User Settings -> Enable User Settings ")
+			TEXT("(DefaultInput.ini: [/Script/EnhancedInput.EnhancedInputDeveloperSettings] bEnableUserSettings=True) and restart the editor."));
+		return;
+	}
 
 	//Keyboard Mouse Category
 	{
