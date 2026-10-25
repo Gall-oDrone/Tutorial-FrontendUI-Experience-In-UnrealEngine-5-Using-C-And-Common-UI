@@ -12,14 +12,25 @@ UFrontendGameUserSettings::UFrontendGameUserSettings()
 {
 }
 
+UFrontendGameUserSettings* UFrontendGameUserSettings::TryGet()
+{
+	return GEngine ? Cast<UFrontendGameUserSettings>(GEngine->GetGameUserSettings()) : nullptr;
+}
+
 UFrontendGameUserSettings* UFrontendGameUserSettings::Get()
 {
-	if (GEngine)
-	{
-		return CastChecked<UFrontendGameUserSettings>(GEngine->GetGameUserSettings());
-	}
+	UFrontendGameUserSettings* Settings = TryGet();
 
-	return nullptr;
+	// The most common integration mistake is forgetting the ini line (or not restarting
+	// the editor after adding it). Say exactly that instead of a bare cast failure.
+	checkf(Settings,
+		TEXT("FrontendUI requires the game user settings class to be UFrontendGameUserSettings or a subclass. ")
+		TEXT("Set it in Config/DefaultEngine.ini under [/Script/Engine.Engine]: ")
+		TEXT("GameUserSettingsClassName=/Script/FrontendUI.FrontendGameUserSettings - then restart the editor. ")
+		TEXT("Current class: %s"),
+		GEngine && GEngine->GetGameUserSettings() ? *GEngine->GetGameUserSettings()->GetClass()->GetName() : TEXT("none"));
+
+	return Settings;
 }
 
 void UFrontendGameUserSettings::ApplyNonResolutionSettings()

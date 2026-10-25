@@ -20,7 +20,11 @@ class FRONTENDUI_API UFrontendGameUserSettings : public UGameUserSettings
 public:
 	UFrontendGameUserSettings();
 
+	/** Asserts with an actionable message if GameUserSettingsClassName is not this class or a subclass. */
 	static UFrontendGameUserSettings* Get();
+
+	/** Null if the project has not configured GameUserSettingsClassName; use where degrading gracefully is possible. */
+	static UFrontendGameUserSettings* TryGet();
 
 	//~ Begin UGameUserSettings Interface
 	virtual void ApplyNonResolutionSettings() override;
