@@ -20,6 +20,23 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnLoadingReasonUpdatedDelegate OnLoadingReasonUpdated;
 
+	/**
+	 * Keep the loading screen up (or bring it back) until ClearLoadingScreenHold is called
+	 * with the same tag. Use it for work the engine cannot see: the frontend pushing its
+	 * first screen, joining a session, streaming a save. InReason is shown on the screen.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Frontend Loading Screen")
+	void RegisterLoadingScreenHold(FName InHoldTag, const FString& InReason);
+
+	UFUNCTION(BlueprintCallable, Category = "Frontend Loading Screen")
+	void ClearLoadingScreenHold(FName InHoldTag);
+
+	UFUNCTION(BlueprintPure, Category = "Frontend Loading Screen")
+	bool HasActiveLoadingScreenHolds() const { return !ActiveLoadingScreenHolds.IsEmpty(); }
+
+	UFUNCTION(BlueprintPure, Category = "Frontend Loading Screen")
+	bool IsLoadingScreenVisible() const { return CachedCreatedLoadingScreenWidget.IsValid(); }
+
 	//~ Begin USubsystem Interface
 	virtual bool ShouldCreateSubsystem(UObject* Outer) const;
 	virtual void Initialize(FSubsystemCollectionBase& Collection);
@@ -58,6 +75,9 @@ private:
 	float HoldLoadingScreenStartUpTime = -1.f;
 
 	FString CurrentLoadingReason;
+
+	/** Holds registered through RegisterLoadingScreenHold, keyed by tag. */
+	TMap<FName, FString> ActiveLoadingScreenHolds;
 
 	TSharedPtr<SWidget> CachedCreatedLoadingScreenWidget;
 };

@@ -115,17 +115,10 @@ void UOptionsDataRegistry::InitGameplayCollectionTab()
 
 		GameplayTabCollection->AddChildListData(GameDifficulty);
 	}
-	
-	//Test Item
-	{
-		UListDataObject_String* TestItem = NewObject<UListDataObject_String>();
-		TestItem->SetDataID(FName("TestItem"));
-		TestItem->SetDataDisplayName(FText::FromString(TEXT("Test Image Item")));
-		TestItem->SetSoftDescriptionImage(UFrontendFunctionLibrary::GetOptionsSoftImageByTag(FrontendGameplayTags::Frontend_Image_TestImage));
-		TestItem->SetDescriptionRichText(FText::FromString(TEXT("The image to display can be specified in the project settings. It can be anything the developer assigned in there")));
 
-		GameplayTabCollection->AddChildListData(TestItem);
-	}
+	// Game-specific rows (for example the tutorial's "Test Image Item") belong in a
+	// UOptionsDataRegistry subclass registered via UFrontendDeveloperSettings; see
+	// UGameUIOptionsDataRegistry in the GameUI plugin for the pattern.
 
 	RegisteredOptionsTabCollections.Add(GameplayTabCollection);
 }
@@ -652,7 +645,16 @@ void UOptionsDataRegistry::InitControlCollectionTab(ULocalPlayer* InOwningLocalP
 
 	UEnhancedInputUserSettings* EIUserSettings = EISubsystem->GetUserSettings();
 
-	check(EIUserSettings);
+	// Key remapping is built on Enhanced Input's user settings, which are an opt-in project
+	// feature. A host that has not enabled them gets no Controls tab rather than a crash.
+	if (!EIUserSettings)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("FrontendUI: Enhanced Input user settings are disabled, so the Options screen has no Controls tab. ")
+			TEXT("Enable them in Project Settings -> Engine -> Enhanced Input -> User Settings -> Enable User Settings ")
+			TEXT("(DefaultInput.ini: [/Script/EnhancedInput.EnhancedInputDeveloperSettings] bEnableUserSettings=True) and restart the editor."));
+		return;
+	}
 
 	//Keyboard Mouse Category
 	{

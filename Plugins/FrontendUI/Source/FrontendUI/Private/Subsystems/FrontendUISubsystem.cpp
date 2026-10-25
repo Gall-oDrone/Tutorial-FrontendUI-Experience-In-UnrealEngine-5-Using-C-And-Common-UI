@@ -39,7 +39,10 @@ bool UFrontendUISubsystem::ShouldCreateSubsystem(UObject* Outer) const
 
 void UFrontendUISubsystem::RegisterCreatedPrimaryLayout(UWidget_PrimaryLayout* InCreatedWidget)
 {
-	check(InCreatedWidget);
+	checkf(InCreatedWidget,
+		TEXT("RegisterCreatedPrimaryLayout was passed a null widget. In the player controller, connect Create Widget's ")
+		TEXT("Return Value to 'In Created Widget', and make sure that widget Blueprint's parent class is Widget_PrimaryLayout ")
+		TEXT("(a Cast node between them means the parent class is wrong)."));
 
 	CreatedPrimaryLayout = InCreatedWidget;
 

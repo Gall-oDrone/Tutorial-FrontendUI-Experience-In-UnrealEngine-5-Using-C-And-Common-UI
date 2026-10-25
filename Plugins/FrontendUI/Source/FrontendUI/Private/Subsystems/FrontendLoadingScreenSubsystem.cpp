@@ -96,6 +96,26 @@ void UFrontendLoadingScreenSubsystem::OnMapPostLoaded(UWorld* LoadedWorld)
 	}
 }
 
+void UFrontendLoadingScreenSubsystem::RegisterLoadingScreenHold(FName InHoldTag, const FString& InReason)
+{
+	if (InHoldTag.IsNone())
+	{
+		return;
+	}
+
+	ActiveLoadingScreenHolds.Add(InHoldTag, InReason);
+
+	// A hold placed after the screen was dismissed must bring it back, so make sure we tick.
+	SetTickableTickType(ETickableTickType::Conditional);
+
+	TryUpdateLoadingScreen();
+}
+
+void UFrontendLoadingScreenSubsystem::ClearLoadingScreenHold(FName InHoldTag)
+{
+	ActiveLoadingScreenHolds.Remove(InHoldTag);
+}
+
 void UFrontendLoadingScreenSubsystem::TryUpdateLoadingScreen()
 {
 	//Check if there's any start up loading screen that's currently active
@@ -167,6 +187,20 @@ bool UFrontendLoadingScreenSubsystem::ShouldShowLoadingScreen()
 	}
 
 	const float ElapsedTime = CurrentTime - HoldLoadingScreenStartUpTime;
+
+	// Work the engine cannot observe (frontend building its first screen, session join,
+	// save streaming) keeps the screen up through explicit holds. Checked after world
+	// rendering is enabled so texture streaming keeps progressing underneath.
+	if (!ActiveLoadingScreenHolds.IsEmpty())
+	{
+		for (const TPair<FName, FString>& ActiveHold : ActiveLoadingScreenHolds)
+		{
+			CurrentLoadingReason = ActiveHold.Value;
+			break;
+		}
+
+		return true;
+	}
 
 	if (ElapsedTime < LoadingScreenSettings->HoldLoadingScreenExtraSeconds)
 	{

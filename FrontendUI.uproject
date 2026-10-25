@@ -23,6 +23,14 @@
 		{
 			"Name": "FrontendUI",
 			"Enabled": true
+		},
+		{
+			"Name": "FrontendMultiplayer",
+			"Enabled": true
+		},
+		{
+			"Name": "GameUI",
+			"Enabled": true
 		}
 	]
 }

@@ -1,0 +1,22 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Game UI",
+	"Description": "Per-game UI layer: boot flow, main menu, brand assets, pause menu, HUD, input actions and the game's extensions of the FrontendUI and FrontendMultiplayer frameworks.",
+	"Category": "UI",
+	"CreatedBy": "Diego Gallo",
+	"CanContainContent": true,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "GameUI",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{ "Name": "FrontendUI", "Enabled": true },
+		{ "Name": "FrontendMultiplayer", "Enabled": true }
+	]
+}
