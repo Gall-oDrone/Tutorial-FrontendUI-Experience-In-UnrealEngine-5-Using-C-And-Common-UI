@@ -15,5 +15,5 @@ UWidget_HUDBase::UWidget_HUDBase(const FObjectInitializer& ObjectInitializer)
 
 TOptional<FUIInputConfig> UWidget_HUDBase::GetDesiredInputConfig() const
 {
-	return FUIInputConfig(ECommonInputMode::Game, EMouseCaptureMode::CapturePermanentlyIncludingInitialMouseDown);
+	return FUIInputConfig(ECommonInputMode::Game, EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown);
 }
