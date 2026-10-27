@@ -22,10 +22,12 @@ class GAMEUI_API UWidget_PauseMenu : public UWidget_ActivatableBase
 	GENERATED_BODY()
 
 public:
+	UWidget_PauseMenu(const FObjectInitializer& ObjectInitializer);
+
 	DECLARE_MULTICAST_DELEGATE(FOnPauseMenuCloseRequested);
 	FOnPauseMenuCloseRequested OnCloseRequested;
 
-	/** Close via Resume, Back, or code. Notifies the owner first, then deactivates. */
+	/** Close via Resume, Back, the toggle action, or code. Notifies the owner once, then deactivates. */
 	UFUNCTION(BlueprintCallable, Category = "Game UI|Pause Menu")
 	void RequestClose();
 
@@ -35,15 +37,28 @@ protected:
 	//~ End UUserWidget Interface
 
 	//~ Begin UCommonActivatableWidget Interface
+	virtual void NativeOnActivated() override;
+	virtual bool NativeOnHandleBackAction() override;
 	virtual UWidget* NativeGetDesiredFocusTarget() const override;
 	virtual TOptional<FUIInputConfig> GetDesiredInputConfig() const override;
 	//~ End UCommonActivatableWidget Interface
+
+	/**
+	 * Optional. A row in the CommonUI input action table (e.g. a "PauseAction" row bound to P / Start)
+	 * that closes the menu, so the key that opened it also closes it. The player controller cannot
+	 * do this itself: in Menu input mode game input never reaches it.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Game UI|Pause Menu", meta = (RowType = "/Script/CommonUI.CommonInputActionDataBase"))
+	FDataTableRowHandle ToggleAction;
 
 private:
 	void OnResumeClicked();
 	void OnOptionsClicked();
 	void OnReturnToMainMenuClicked();
 	void OnQuitClicked();
+
+	FUIActionBindingHandle ToggleActionHandle;
+	bool bCloseRequested = false;
 
 	//****** Bound Widgets ****** //
 	UPROPERTY(meta = (BindWidget))

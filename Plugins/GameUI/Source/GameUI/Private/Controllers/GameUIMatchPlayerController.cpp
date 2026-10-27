@@ -257,6 +257,11 @@ void AGameUIMatchPlayerController::HandlePauseMenuCloseRequested()
 
 	SetWorldPausedForMenu(false);
 
+	// The pause key's release arrived while CommonUI had the viewport in Menu mode, so
+	// PlayerInput still thinks it is held and Enhanced Input will never see another
+	// "Started" for it. Forget all pressed keys now that game input is back.
+	FlushPressedKeys();
+
 	if (ActiveHUD.IsValid())
 	{
 		ActiveHUD->BP_OnPauseMenuVisibilityChanged(false);

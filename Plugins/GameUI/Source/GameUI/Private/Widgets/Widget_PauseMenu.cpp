@@ -13,23 +13,48 @@
 
 #define LOCTEXT_NAMESPACE "GameUIPauseMenu"
 
+UWidget_PauseMenu::UWidget_PauseMenu(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+	// Back is handled natively (NativeOnHandleBackAction) so there is exactly one close path.
+	// Set here rather than in the Blueprint so it cannot be forgotten.
+	bIsBackHandler = true;
+	bIsBackActionDisplayedInActionBar = true;
+}
+
 void UWidget_PauseMenu::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
-
-	// Back behaves like Resume: it closes the pause menu, it never pops to an empty stack.
-	RegisterUIActionBinding(
-		FBindUIActionArgs(
-			ICommonInputModule::GetSettings().GetDefaultBackAction(),
-			true,
-			FSimpleDelegate::CreateUObject(this, &ThisClass::OnResumeClicked)
-		)
-	);
 
 	CommonButton_Resume->OnClicked().AddUObject(this, &ThisClass::OnResumeClicked);
 	CommonButton_Options->OnClicked().AddUObject(this, &ThisClass::OnOptionsClicked);
 	CommonButton_ReturnToMainMenu->OnClicked().AddUObject(this, &ThisClass::OnReturnToMainMenuClicked);
 	CommonButton_Quit->OnClicked().AddUObject(this, &ThisClass::OnQuitClicked);
+
+	if (!ToggleAction.IsNull())
+	{
+		ToggleActionHandle = RegisterUIActionBinding(
+			FBindUIActionArgs(
+				ToggleAction,
+				false,
+				FSimpleDelegate::CreateUObject(this, &ThisClass::RequestClose)
+			)
+		);
+	}
+}
+
+void UWidget_PauseMenu::NativeOnActivated()
+{
+	Super::NativeOnActivated();
+
+	// Re-armed on every activation: the same instance is reactivated when Options pops back to us.
+	bCloseRequested = false;
+}
+
+bool UWidget_PauseMenu::NativeOnHandleBackAction()
+{
+	RequestClose();
+	return true;
 }
 
 UWidget* UWidget_PauseMenu::NativeGetDesiredFocusTarget() const
@@ -44,6 +69,12 @@ TOptional<FUIInputConfig> UWidget_PauseMenu::GetDesiredInputConfig() const
 
 void UWidget_PauseMenu::RequestClose()
 {
+	if (bCloseRequested)
+	{
+		return;
+	}
+	bCloseRequested = true;
+
 	OnCloseRequested.Broadcast();
 	DeactivateWidget();
 }

@@ -26,8 +26,15 @@ on top of the pause menu does **not** unpause.
 - `IA_Pause`: Input Action, Value Type **Digital (bool)**. Tick **Trigger when Paused** —
   otherwise the action is swallowed while the world is paused.
 - `IMC_Match`: Input Mapping Context. Map `IA_Pause` to **P** and **Gamepad Special Right**
-  (Start). Avoid Escape as the only key: in PIE, Escape ends the session. The CommonUI Back
-  action (Escape / B) closes the menu once it is open.
+  (Start). Avoid Escape as the only key: in PIE, Escape ends the session.
+
+This action **opens** the menu. It cannot close it: once the menu is up, CommonUI puts the
+viewport in Menu input mode and the player controller stops receiving game input. Closing is
+CommonUI's job — Back (Escape / B) always works, and to make **the same key** close it:
+
+- Open `FrontendUI Content/UI/CommonInputData/DT_CommonInputKeyMapping` → add a row
+  `PauseAction`, Display Name *Resume*, Keyboard key **P**, Gamepad key **Gamepad Special Right**.
+- In `WBP_CAW_PauseMenu` class defaults → *Game UI | Pause Menu* → **Toggle Action** = that row.
 
 ### 2. `WBP_HUD` — `GameUI/Content/UI/Screens`
 
@@ -66,9 +73,9 @@ level should stay visible behind a pause menu), `WBP_Template_Layout` root.
 ```
 
 - Set each button's **Button Display Text** / **Button Description Text** in Details.
-- Class defaults: **Is Back Handler** ✔ and **Is Back Action Displayed In Action Bar** ✔ so
-  the bar shows *Back*. The C++ registers the Back handler that calls Resume.
-- Input config and focus are set in C++ (Menu / no capture; focus on Resume). No graph work.
+- Back handling, action-bar display, input config (Menu / no capture) and focus (Resume) are
+  all set in C++. Nothing to tick in class defaults except the optional **Toggle Action** row.
+  No graph work.
 
 | Blueprint | Required widget names |
 |---|---|
@@ -113,7 +120,8 @@ New level with lighting (Env. Light Mixer) and a floor. World Settings → GameM
 |---|---|
 | Main Menu → Play | loading screen → `L_MatchTest` with `WBP_HUD` visible, mouse captured |
 | Press **P** | pause menu, world paused, HUD dimmed, focus on Resume, bound-action bar shows Back |
-| Back / Resume | menu closes, world resumes, HUD restored |
+| Back / Resume / **P** (if Toggle Action is set) | menu closes, world resumes, HUD restored |
+| Press **P** again, several times | reopens every time (regression check for the stuck-key bug) |
 | Options | framework Options screen on top of the pause menu; Back returns to the pause menu, world still paused |
 | Return to Main Menu → Yes | loading screen → `FrontEndTestMap` → Press Any Key (unpaused) |
 | Quit → No | back to pause menu |
