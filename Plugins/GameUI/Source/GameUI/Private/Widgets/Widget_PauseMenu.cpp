@@ -31,7 +31,7 @@ void UWidget_PauseMenu::NativeOnInitialized()
 	CommonButton_ReturnToMainMenu->OnClicked().AddUObject(this, &ThisClass::OnReturnToMainMenuClicked);
 	CommonButton_Quit->OnClicked().AddUObject(this, &ThisClass::OnQuitClicked);
 
-	if (!ToggleAction.IsNull())
+	if (ToggleAction.DataTable && !ToggleAction.RowName.IsNone())
 	{
 		ToggleActionHandle = RegisterUIActionBinding(
 			FBindUIActionArgs(

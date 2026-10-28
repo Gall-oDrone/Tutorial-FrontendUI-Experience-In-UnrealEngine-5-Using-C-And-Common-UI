@@ -6,10 +6,11 @@
 UWidget_HUDBase::UWidget_HUDBase(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	// A HUD is drawn over the game, not interacted with: it must never steal focus from
-	// gameplay or from a menu pushed above it.
+	// Not focusable: a HUD is drawn over the game, never interacted with. It must still
+	// *support* activation focus, because CommonUI only treats such widgets as an active
+	// root - and only an active root's input config (Game mode, here) is applied. With this
+	// false, closing a menu above the HUD left CommonUI with no root and stuck in Menu mode.
 	SetIsFocusable(false);
-	bSupportsActivationFocus = false;
 	bIsBackHandler = false;
 }
 
