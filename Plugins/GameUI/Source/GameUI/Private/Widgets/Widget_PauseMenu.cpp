@@ -36,7 +36,7 @@ void UWidget_PauseMenu::NativeOnInitialized()
 		ToggleActionHandle = RegisterUIActionBinding(
 			FBindUIActionArgs(
 				ToggleAction,
-				false,
+				true,
 				FSimpleDelegate::CreateUObject(this, &ThisClass::RequestClose)
 			)
 		);
@@ -75,8 +75,10 @@ void UWidget_PauseMenu::RequestClose()
 	}
 	bCloseRequested = true;
 
-	OnCloseRequested.Broadcast();
+	// Deactivate first: CommonUI pops the stack and re-applies the HUD's input config
+	// synchronously. The owner then restores viewport focus on top of that, not under it.
 	DeactivateWidget();
+	OnCloseRequested.Broadcast();
 }
 
 void UWidget_PauseMenu::OnResumeClicked()

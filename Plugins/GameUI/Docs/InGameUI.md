@@ -32,9 +32,12 @@ This action **opens** the menu. It cannot close it: once the menu is up, CommonU
 viewport in Menu input mode and the player controller stops receiving game input. Closing is
 CommonUI's job — Back (Escape / B) always works, and to make **the same key** close it:
 
-- Open `FrontendUI Content/UI/CommonInputData/DT_CommonInputKeyMapping` → add a row
-  `PauseAction`, Display Name *Resume*, Keyboard key **P**, Gamepad key **Gamepad Special Right**.
+- In `GameUI/Content/Input` create a Data Table with row structure **CommonInputActionDataBase**,
+  name it `DT_GameUIInputActions`. Add a row `PauseAction`: Display Name *Resume*,
+  Keyboard Input Type Info → Key **P**, Default Gamepad Input Type Info → Key **Gamepad Special Right**.
+  (Don't edit FrontendUI's `DT_CommonInputKeyMapping` — the game owns this row.)
 - In `WBP_CAW_PauseMenu` class defaults → *Game UI | Pause Menu* → **Toggle Action** = that row.
+  It appears in the bound-action bar as *Resume* with the P / Start glyph.
 
 ### 2. `WBP_HUD` — `GameUI/Content/UI/Screens`
 

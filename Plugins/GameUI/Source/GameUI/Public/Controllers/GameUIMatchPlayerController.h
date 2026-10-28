@@ -50,6 +50,7 @@ private:
 	void OnPauseActionTriggered();
 	void HandlePauseMenuCloseRequested();
 	void SetWorldPausedForMenu(bool bPaused);
+	void FocusGameViewport();
 
 	UPROPERTY(Transient)
 	TObjectPtr<UWidget_PrimaryLayout> CreatedPrimaryLayout;

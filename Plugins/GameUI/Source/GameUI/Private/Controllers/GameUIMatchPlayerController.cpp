@@ -18,6 +18,9 @@
 #include "InputAction.h"
 #include "InputMappingContext.h"
 #include "Kismet/GameplayStatics.h"
+#include "Engine/GameViewportClient.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Widgets/SViewport.h"
 
 namespace
 {
@@ -154,6 +157,9 @@ void AGameUIMatchPlayerController::PushHUD()
 				{
 					LoadingScreen->ClearLoadingScreenHold(MatchLoadingScreenHoldTag);
 				}
+
+				// The HUD is not focusable, so nothing else will give the viewport keyboard focus.
+				WeakThis->FocusGameViewport();
 			}
 		}
 	);
@@ -257,14 +263,34 @@ void AGameUIMatchPlayerController::HandlePauseMenuCloseRequested()
 
 	SetWorldPausedForMenu(false);
 
-	// The pause key's release arrived while CommonUI had the viewport in Menu mode, so
-	// PlayerInput still thinks it is held and Enhanced Input will never see another
-	// "Started" for it. Forget all pressed keys now that game input is back.
+	// Keyboard focus was on a button inside the menu that no longer exists. The HUD is not
+	// focusable, so unless we hand focus back to the viewport ourselves, no key reaches the
+	// player controller until the player clicks the screen.
+	FocusGameViewport();
+
+	// The pause key's release may have arrived while CommonUI had the viewport in Menu mode,
+	// leaving PlayerInput thinking it is still held. Forget all pressed keys.
 	FlushPressedKeys();
 
 	if (ActiveHUD.IsValid())
 	{
 		ActiveHUD->BP_OnPauseMenuVisibilityChanged(false);
+	}
+}
+
+void AGameUIMatchPlayerController::FocusGameViewport()
+{
+	ULocalPlayer* LocalPlayer = GetLocalPlayer();
+	UGameViewportClient* ViewportClient = LocalPlayer ? LocalPlayer->ViewportClient : nullptr;
+	if (!ViewportClient || !FSlateApplication::IsInitialized())
+	{
+		return;
+	}
+
+	TSharedPtr<SViewport> ViewportWidget = ViewportClient->GetGameViewportWidget();
+	if (ViewportWidget.IsValid())
+	{
+		FSlateApplication::Get().SetUserFocus(LocalPlayer->GetControllerId(), ViewportWidget, EFocusCause::SetDirectly);
 	}
 }
 
