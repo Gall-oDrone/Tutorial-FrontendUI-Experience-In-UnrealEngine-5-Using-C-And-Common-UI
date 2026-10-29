@@ -25,6 +25,7 @@ protected:
 	//~ End UUserWidget Interface
 
 	//~ Begin UCommonActivatableWidget Interface
+	virtual void NativeOnActivated() override;
 	virtual UWidget* NativeGetDesiredFocusTarget() const override;
 	//~ End UCommonActivatableWidget Interface
 

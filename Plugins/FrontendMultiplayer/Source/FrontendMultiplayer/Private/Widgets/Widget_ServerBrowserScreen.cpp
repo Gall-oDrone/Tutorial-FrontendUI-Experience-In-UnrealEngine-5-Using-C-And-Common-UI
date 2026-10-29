@@ -40,6 +40,17 @@ void UWidget_ServerBrowserScreen::NativeOnInitialized()
 	{
 		MultiplayerSubsystem->OnSessionListUpdated.AddDynamic(this, &ThisClass::HandleSessionListUpdated);
 		MultiplayerSubsystem->OnSessionOperationChanged.AddDynamic(this, &ThisClass::HandleSessionOperationChanged);
+	}
+}
+
+void UWidget_ServerBrowserScreen::NativeOnActivated()
+{
+	Super::NativeOnActivated();
+
+	// The widget stack pools screens, so NativeOnInitialized runs once per process.
+	// Searching here means every visit (including Back and re-enter) is a fresh search.
+	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
+	{
 		MultiplayerSubsystem->FindSessions();
 	}
 }
