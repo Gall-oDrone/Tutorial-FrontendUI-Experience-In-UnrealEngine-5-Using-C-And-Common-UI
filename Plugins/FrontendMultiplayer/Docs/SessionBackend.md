@@ -72,9 +72,25 @@ Every step is written to the API debug panel with an `[oss]` prefix.
 
 ## Testing on one machine
 
-> Null discovery is UDP LAN broadcast. Use **two separate processes**: Play dropdown →
-> *Number of Players = 2*, *Net Mode = Play Standalone*, **untick Run Under One Process**.
-> Or launch two `-game -windowed -ResX=1280 -ResY=720` instances.
+Null discovery is a UDP LAN broadcast between **separate processes**. The editor's Play
+button will not give you two of those: *Net Mode = Play Standalone* always launches a
+single instance (Number of Players only applies to *Listen Server* / *Client*, and those
+auto-connect to the current map, skipping the Host → Browse → Join flow entirely).
+
+Launch the instances yourself instead:
+
+1. Close PIE. Double-click **`Scripts/LaunchInstances.bat`** (edit `UE_ROOT` at the top
+   if the engine is not under `D:\EpicGames\UE_5.6`). It starts two 1280x720 windows side
+   by side, each with its own log (`Saved/Logs/Instance1.log`, `Instance2.log`).
+2. Allow the Windows Firewall prompt for private networks the first time — the LAN
+   beacon needs it.
+3. Treat the left window as **A** (host) and the right one as **B** (client).
+
+Equivalent manual command, run twice:
+```
+"D:\EpicGames\UE_5.6\Engine\Binaries\Win64\UnrealEditor.exe" "<path>\FrontendUI.uproject" -game -windowed -ResX=1280 -ResY=720 -log
+```
+
 
 | # | Step | Expect |
 |---|---|---|
