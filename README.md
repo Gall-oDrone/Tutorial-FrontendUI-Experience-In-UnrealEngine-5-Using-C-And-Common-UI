@@ -80,6 +80,7 @@ Dev-only switches (`Show Logo Screen`, `Show API Debug Panel`) are compiled to f
 | FrontendUI | **Loading Screen** | `UFrontendLoadingScreenSubsystem` + `PreLoadScreen`, optional startup movie |
 | FrontendMultiplayer | **Multiplayer hub**, **Host Session**, **Server Browser**, **Leaderboard**, **API Debug** | gated by *Enable Multiplayer*; backend-agnostic |
 | GameUI | **Main Menu**, **Story**, **Credits**, **Logo** | this game's screens |
+| GameUI | **HUD**, **Pause Menu** | in-match, on the `GameHud` / `GameMenu` stacks; pause reuses the framework Options screen |
 
 ## Using FrontendUI in your game
 
@@ -141,9 +142,9 @@ Subclass `UOptionsDataRegistry` and `UFrontendGameUserSettings` in your game mod
 
 ## Roadmap
 
-- In-game half of `GameUI`: pause menu and HUD base on the `GameMenu` / `GameHud` stacks, input-mode switching, return-to-menu through the loading screen.
 - A real `UFrontendSessionBackend` (OnlineSubsystem / EOS), then AWS GameLift for dedicated-server hosting and session placement, selected purely from Project Settings.
 - Studio logo as a startup movie or `FPreLoadScreenBase` so it precedes the loading screen.
+- Pause menu and HUD are in (`Plugins/GameUI/Docs/InGameUI.md`); next is match-specific HUD content and a disconnect/reconnect flow against the real backend.
 
 ## License
 
