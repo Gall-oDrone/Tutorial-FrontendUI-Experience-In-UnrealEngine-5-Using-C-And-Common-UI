@@ -4,6 +4,7 @@
 #include "Subsystems/GameUIFlowSubsystem.h"
 #include "Settings/GameUIDeveloperSettings.h"
 #include "Subsystems/FrontendUISubsystem.h"
+#include "FrontendMultiplayerSubsystem.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -64,6 +65,13 @@ void UGameUIFlowSubsystem::ReturnToFrontend()
 
 	// A paused world would carry the pause flag into the loading screen.
 	UGameplayStatics::SetGamePaused(PC, false);
+
+	// Tear down the online session (host: destroy, client: leave) so the service lets
+	// this player host or join again from the frontend.
+	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UGameInstance::GetSubsystem<UFrontendMultiplayerSubsystem>(GetGameInstance()))
+	{
+		MultiplayerSubsystem->LeaveSession();
+	}
 
 	const FString FrontendMapPackage = Settings->FrontendMap.ToSoftObjectPath().GetLongPackageName();
 	PC->ClientTravel(FrontendMapPackage, ETravelType::TRAVEL_Absolute);

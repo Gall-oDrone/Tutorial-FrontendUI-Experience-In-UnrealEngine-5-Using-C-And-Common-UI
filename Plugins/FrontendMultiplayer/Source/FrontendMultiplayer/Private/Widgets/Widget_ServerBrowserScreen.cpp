@@ -39,6 +39,7 @@ void UWidget_ServerBrowserScreen::NativeOnInitialized()
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
 	{
 		MultiplayerSubsystem->OnSessionListUpdated.AddDynamic(this, &ThisClass::HandleSessionListUpdated);
+		MultiplayerSubsystem->OnSessionOperationChanged.AddDynamic(this, &ThisClass::HandleSessionOperationChanged);
 		MultiplayerSubsystem->FindSessions();
 	}
 }
@@ -90,6 +91,14 @@ void UWidget_ServerBrowserScreen::HandleSessionListUpdated(const TArray<UFronten
 	}
 
 	BP_OnSessionListUpdated(ListItems.Num());
+}
+
+void UWidget_ServerBrowserScreen::HandleSessionOperationChanged(EFrontendSessionOperation Operation, bool bInProgress)
+{
+	if (Operation == EFrontendSessionOperation::Finding)
+	{
+		BP_OnSearchStateChanged(bInProgress);
+	}
 }
 
 void UWidget_ServerBrowserScreen::OnListViewItemHovered(UObject* InHoveredItem, bool bWasHovered)

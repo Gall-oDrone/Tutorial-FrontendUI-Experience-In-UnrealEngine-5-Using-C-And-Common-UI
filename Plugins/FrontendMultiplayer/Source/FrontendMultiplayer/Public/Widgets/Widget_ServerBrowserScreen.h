@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Widgets/Widget_ActivatableBase.h"
+#include "FrontendSessionTypes.h"
 #include "Widget_ServerBrowserScreen.generated.h"
 
 class UCommonListView;
@@ -34,12 +35,19 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Frontend Server Browser Screen")
 	void BP_OnSessionListUpdated(int32 NumSessions);
 
+	/** True while a search is running; false once results (or a failure) arrive. Drive a spinner or "Searching..." label from this. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Frontend Server Browser Screen")
+	void BP_OnSearchStateChanged(bool bIsSearching);
+
 private:
 	void OnRefreshBoundActionTriggered();
 	void OnBackBoundActionTriggered();
 
 	UFUNCTION()
 	void HandleSessionListUpdated(const TArray<UFrontendSessionListEntryData*>& Sessions);
+
+	UFUNCTION()
+	void HandleSessionOperationChanged(EFrontendSessionOperation Operation, bool bInProgress);
 
 	void OnListViewItemHovered(UObject* InHoveredItem, bool bWasHovered);
 	void OnListViewItemSelected(UObject* InSelectedItem);

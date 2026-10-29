@@ -9,11 +9,51 @@ void UFrontendSessionBackend::Initialize(UFrontendMultiplayerSubsystem* InOwning
 	OwningSubsystem = InOwningSubsystem;
 }
 
-void UFrontendSessionBackend::ReportSessionList(const TArray<UFrontendSessionListEntryData*>& Sessions) const
+void UFrontendSessionBackend::ReportOperationStarted(EFrontendSessionOperation Operation) const
 {
 	if (UFrontendMultiplayerSubsystem* Subsystem = OwningSubsystem.Get())
 	{
-		Subsystem->OnSessionListUpdated.Broadcast(Sessions);
+		Subsystem->NotifyOperationStarted(Operation);
+	}
+}
+
+void UFrontendSessionBackend::ReportSessionCreated(bool bSucceeded, const FText& ErrorText) const
+{
+	if (UFrontendMultiplayerSubsystem* Subsystem = OwningSubsystem.Get())
+	{
+		Subsystem->NotifySessionCreated(bSucceeded, ErrorText);
+	}
+}
+
+void UFrontendSessionBackend::ReportSessionsFound(const TArray<UFrontendSessionListEntryData*>& Sessions) const
+{
+	if (UFrontendMultiplayerSubsystem* Subsystem = OwningSubsystem.Get())
+	{
+		Subsystem->NotifySessionsFound(Sessions);
+	}
+}
+
+void UFrontendSessionBackend::ReportFindSessionsFailed(const FText& ErrorText) const
+{
+	if (UFrontendMultiplayerSubsystem* Subsystem = OwningSubsystem.Get())
+	{
+		Subsystem->NotifyFindSessionsFailed(ErrorText);
+	}
+}
+
+void UFrontendSessionBackend::ReportSessionJoined(bool bSucceeded, const FString& ConnectString, const FText& ErrorText) const
+{
+	if (UFrontendMultiplayerSubsystem* Subsystem = OwningSubsystem.Get())
+	{
+		Subsystem->NotifySessionJoined(bSucceeded, ConnectString, ErrorText);
+	}
+}
+
+void UFrontendSessionBackend::ReportSessionLeft() const
+{
+	if (UFrontendMultiplayerSubsystem* Subsystem = OwningSubsystem.Get())
+	{
+		Subsystem->NotifySessionLeft();
 	}
 }
 
