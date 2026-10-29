@@ -167,7 +167,7 @@ void AGameUIMatchPlayerController::PushHUD()
 
 void AGameUIMatchPlayerController::OnPauseActionTriggered()
 {
-	UE_LOG(LogTemp, Display, TEXT("GameUI: pause action triggered (menu open=%d, world paused=%d)"), bIsPauseMenuOpen ? 1 : 0, IsPaused() ? 1 : 0);
+	UE_LOG(LogTemp, Verbose, TEXT("GameUI: pause action triggered (menu open=%d, world paused=%d)"), bIsPauseMenuOpen ? 1 : 0, IsPaused() ? 1 : 0);
 
 	// Only opens. Closing is CommonUI's Back action on the menu itself, so the same key
 	// never races between "open" here and "close" there.
@@ -178,7 +178,7 @@ void AGameUIMatchPlayerController::OpenPauseMenu()
 {
 	if (bIsPauseMenuOpen || !IsLocalPlayerController())
 	{
-		UE_LOG(LogTemp, Display, TEXT("GameUI: OpenPauseMenu ignored (already open=%d, local=%d)"), bIsPauseMenuOpen ? 1 : 0, IsLocalPlayerController() ? 1 : 0);
+		UE_LOG(LogTemp, Verbose, TEXT("GameUI: OpenPauseMenu ignored (already open=%d, local=%d)"), bIsPauseMenuOpen ? 1 : 0, IsLocalPlayerController() ? 1 : 0);
 		return;
 	}
 
@@ -210,7 +210,7 @@ void AGameUIMatchPlayerController::OpenPauseMenu()
 
 			if (InPushState == EAsyncPushWidgetState::OnCreatedBeforePush)
 			{
-				UE_LOG(LogTemp, Display, TEXT("GameUI: pause menu widget created/reused: %s"), *PushedWidget->GetName());
+				UE_LOG(LogTemp, Verbose, TEXT("GameUI: pause menu widget created/reused: %s"), *PushedWidget->GetName());
 				PushedWidget->SetOwningPlayer(WeakThis.Get());
 
 				if (UWidget_PauseMenu* PauseMenu = Cast<UWidget_PauseMenu>(PushedWidget))
@@ -226,7 +226,7 @@ void AGameUIMatchPlayerController::OpenPauseMenu()
 			}
 			else if (InPushState == EAsyncPushWidgetState::AfterPush)
 			{
-				UE_LOG(LogTemp, Display, TEXT("GameUI: pause menu pushed (activated=%d)"), PushedWidget->IsActivated() ? 1 : 0);
+				UE_LOG(LogTemp, Verbose, TEXT("GameUI: pause menu pushed (activated=%d)"), PushedWidget->IsActivated() ? 1 : 0);
 
 				if (UWidget* WidgetToFocus = PushedWidget->GetDesiredFocusTarget())
 				{
@@ -269,7 +269,7 @@ void AGameUIMatchPlayerController::TogglePauseMenu()
 
 void AGameUIMatchPlayerController::HandlePauseMenuCloseRequested()
 {
-	UE_LOG(LogTemp, Display, TEXT("GameUI: pause menu close requested"));
+	UE_LOG(LogTemp, Verbose, TEXT("GameUI: pause menu close requested"));
 
 	bIsPauseMenuOpen = false;
 	ActivePauseMenu.Reset();
