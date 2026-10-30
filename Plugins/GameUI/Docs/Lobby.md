@@ -42,53 +42,131 @@ Host clicks Start ──► server: all ready? MinPlayers met? ──► countdo
 
 ## Assets to create
 
+Same conventions as `FrontendMultiplayer/Docs/WidgetDesignTemplate.md`: `WBP_Template_Layout`
+as the shell, `WBP_Button_Default` for buttons, `SizeBox_ListEntry` + `Style_Text_ListEntry_Default`
+for rows, type-prefixed names for every `[BIND]` widget (exact match, or the Blueprint will not
+compile). Build the lobby by **duplicating `WBP_CAW_ServerBrowserScreen`** and the row by
+**duplicating `WBP_ListEntry_Session`** — then reparent, rename and trim.
+
 ### 1. `WBP_ListEntry_LobbyPlayer` — `GameUI/Content/UI/Screens`
 
-Parent class **Widget_ListEntry_LobbyPlayer**.
+Parent class **Widget_ListEntry_LobbyPlayer** (File → Reparent Blueprint after duplicating
+`WBP_ListEntry_Session`; delete `CommonButton_Join` and the old graph).
 
-| Widget | Name | Notes |
-|---|---|---|
-| Common Text Block | `CommonText_PlayerName` | required (BindWidget) |
-| Image / Text | *ready tick* | optional; toggled in `BP_OnPlayerEntryUpdated` |
-| Text | *"Host"* tag | optional; same event |
+```
+[WBP_ListEntry_LobbyPlayer]
+└─ SizeBox_ListEntry                                   — same component the other rows use
+   └─ Border_Row                 (Is Variable)         — Brush Color white, alpha 0 (tinted for the local player)
+      └─ Horizontal Box
+         ├─ CommonText_PlayerName      [BIND]          — Fill, V Center, Style_Text_ListEntry_Default
+         ├─ CommonText_HostTag         (Is Variable)   — Auto, V Center, text "HOST",  Padding Left 16, Collapsed
+         └─ CommonText_ReadyTag        (Is Variable)   — Auto, V Center, text "READY", Padding Left 16, Collapsed
+```
 
-Implement **Event BP_OnPlayerEntryUpdated (bIsReady, bIsHost, bIsLocalPlayer)**: show/hide the
-tick and host tag, tint the row when `bIsLocalPlayer`. Set **Is Focusable = false** on the
-root; the list, not the row, handles navigation.
+- Text tags rather than icons: `Style_Text_ListEntry_Default` already exists and the Din font
+  has no check-mark glyph. Swap for `Image` widgets later if you make brushes.
+- Root (`SizeBox_ListEntry` → Details → Behavior): **Is Focusable off**. The list view owns
+  navigation; the row is display only. There is no Join button and no hover highlight to wire.
+- Class defaults: nothing.
+
+**EventGraph** — one event, no variables:
+
+```
+Event BP_OnPlayerEntryUpdated (bIsReady, bIsHost, bIsLocalPlayer)
+ ├─ CommonText_ReadyTag → Set Visibility  (Select: bIsReady ? Visible : Collapsed)
+ ├─ CommonText_HostTag  → Set Visibility  (Select: bIsHost  ? Visible : Collapsed)
+ └─ Border_Row          → Set Brush Color (Select: bIsLocalPlayer ? (1,1,1,0.08) : (1,1,1,0))
+```
+
+Rows are rebuilt (new item objects) on every change, so this fires again each time; no
+state to keep.
 
 ### 2. `WBP_CAW_LobbyScreen` — `GameUI/Content/UI/Screens`
 
-Parent class **Widget_LobbyScreen**. Same frame/style as `WBP_CAW_HostSessionScreen`.
+Parent class **Widget_LobbyScreen**. Duplicate `WBP_CAW_ServerBrowserScreen`, reparent,
+remove the `Border → Overlay → Background Blur` wrapper (the pause-menu rule applies: the
+level stays visible behind a lobby), delete `DetailsView_SessionInfo`.
 
-| Widget | Name | Notes |
-|---|---|---|
-| Common Text Block | `CommonText_SessionName` | header; receives the Host-screen name |
-| Common Text Block | `CommonText_PlayerCount` | "2 / 4" |
-| Common List View | `CommonListView_Players` | **Entry Widget Class** = `WBP_ListEntry_LobbyPlayer`; Selection Mode **None** |
-| Frontend button | `CommonButton_Ready` | text set from `BP_OnReadyStateChanged` |
-| Frontend button | `CommonButton_Start` | host only; C++ collapses it for clients and enables/disables it |
-| Frontend button | `CommonButton_Leave` | |
-| Text (optional) | countdown / status | driven by `BP_OnCountdownChanged` and `BP_OnStartAvailabilityChanged` |
+```
+[WBP_CAW_LobbyScreen]
+└─ WBP_Template_Layout
+   ├─ NamedSlot_BoundActionExtendPoint
+   │  └─ Common Bound Action Bar                       — Main Menu's settings; shows Back = Leave
+   ├─ NamedSlot_DescriptionExtendPoint
+   │  └─ WBP_Text_ButtonDescription
+   ├─ NamedSlot_TabButtonsExtendPoint
+   │  └─ Horizontal Box
+   │     ├─ CommonText_SessionName     [BIND]          — Fill,  Style_Text_OptionsDetailsView_Title
+   │     └─ CommonText_PlayerCount     [BIND]          — Auto, V Bottom, Style_Text_Default, Padding Left 24
+   ├─ NamedSlot_MainLeftExtendPoint
+   │  └─ Vertical Box
+   │     ├─ Common Text Block                           "Players" (Style_Text_Default)
+   │     └─ CommonListView_Players    [BIND]           — Fill
+   └─ NamedSlot_MainRightExtendPoint
+      └─ Vertical Box
+         ├─ CommonButton_Ready        [BIND] (WBP_Button_Default)
+         ├─ CommonButton_Start        [BIND] (WBP_Button_Default)      — top padding 8
+         ├─ CommonButton_Leave        [BIND] (WBP_Button_Default)      — top padding 24
+         └─ CommonText_Status         (Is Variable)                    — Style_Text_Default, Auto Wrap, top padding 24
+```
 
-Events to implement:
+Details to set:
 
-| Event | Do |
+| Widget | Setting |
 |---|---|
-| `BP_OnReadyStateChanged(bIsLocalPlayerReady)` | Ready button text: *Ready* ↔ *Not Ready* (or *Cancel Ready*) |
-| `BP_OnStartAvailabilityChanged(bCanStart, Reason)` | show `Reason` in the status text when `bCanStart` is false; clear it otherwise |
-| `BP_OnCountdownChanged(SecondsRemaining, bIsCountingDown)` | status text "Starting in 3…"; relabel Start to *Cancel* while active |
-| `BP_OnHostStateChanged(bIsLocalPlayerHost)` | optional chrome ("You are the host") |
+| `CommonListView_Players` | **Entry Widget Class** `WBP_ListEntry_LobbyPlayer` · **Selection Mode** None · **Num Designer Preview Entries** 4 · plain `Common List View`, *not* `FrontendCommonListView` (same reason as the server browser: that one casts rows to `ListDataObject_Base`) |
+| `CommonButton_Ready` | Button Display Text "Ready" · Description "Toggle your ready state" |
+| `CommonButton_Start` | Display Text "Start Match" · Description "Start the match once everyone is ready" · leave **Visible**; C++ collapses it for non-hosts |
+| `CommonButton_Leave` | Display Text "Leave" · Description "Return to the main menu" |
+| `CommonText_Status` | empty text; **Is Variable** on |
+| `CommonText_SessionName`, `CommonText_PlayerCount` | placeholder text only; C++ overwrites |
 
-Class defaults: nothing required — Back handling and the Menu input config are set in C++.
+Class defaults: nothing. Back handling (`bIsBackHandler`), the action-bar entry, the
+Menu/no-capture input config, and focus (`CommonButton_Ready`) are all set in C++.
+
+**EventGraph** — four events. Each one is a straight line; no Tick, no timers, no casts.
+
+```
+Event BP_OnReadyStateChanged (bIsLocalPlayerReady)
+ └─ CommonButton_Ready → Set Button Text  (Select: bIsLocalPlayerReady ? "Not Ready" : "Ready")
+
+Event BP_OnStartAvailabilityChanged (bCanStart, Reason)
+ └─ Branch (Is Counting Down?)   ← promote a bool variable "bCountingDown", see below
+     ├─ True  → (do nothing; the countdown text owns the status line)
+     └─ False → CommonText_Status → Set Text  (Select: bCanStart ? "Everyone is ready" : Reason)
+
+Event BP_OnCountdownChanged (SecondsRemaining, bIsCountingDown)
+ ├─ Set bCountingDown = bIsCountingDown
+ ├─ CommonButton_Start → Set Button Text (Select: bIsCountingDown ? "Cancel" : "Start Match")
+ └─ Branch (bIsCountingDown)
+     ├─ True  → CommonText_Status → Set Text (Format Text "Starting in {Seconds}..." ← SecondsRemaining)
+     └─ False → CommonText_Status → Set Text ("")   ← C++ re-sends the availability text right after
+
+Event BP_OnHostStateChanged (bIsLocalPlayerHost)
+ └─ (optional) WBP_Text_ButtonDescription or a small text: "You are the host" / ""
+```
+
+`Set Button Text` is the setter `WBP_Button_Default` exposes for its display text (the same
+one Main Menu's buttons use); if your button Blueprint names it differently, use that.
 
 ### 3. Widget Map — Project Settings → Game → Frontend UI Settings
 
-Add `Frontend.Widget.LobbyScreen` → `WBP_CAW_LobbyScreen`.
+`Frontend.Widget.LobbyScreen` → `WBP_CAW_LobbyScreen` is **already in `DefaultGame.ini`** at
+`/GameUI/UI/Screens/WBP_CAW_LobbyScreen`. Create the asset at exactly that path and nothing
+else is needed; if you place it elsewhere, repoint the entry.
 
 ### 4. `WBP_HUD`
 
-Implement **Event BP_OnMatchInfoChanged (SessionName, CurrentPlayers, MaxPlayers)** — a corner
-text like `Alpha  2 / 4` is enough. Fired when the HUD lands and on every join/leave.
+Add a `Common Text Block` (`CommonText_MatchInfo`, Is Variable) in a top-right corner of the
+HUD's overlay, `Style_Text_Default`, and implement:
+
+```
+Event BP_OnMatchInfoChanged (SessionName, CurrentPlayers, MaxPlayers)
+ └─ CommonText_MatchInfo → Set Text (Format Text "{Name}  {Cur} / {Max}")
+```
+
+Fired when the HUD lands and on every join/leave. `MaxPlayers` is 0 when the session had no
+capacity (stub); show just `{Cur}` then if you care.
 
 ### 5. `BP_MatchGameMode`
 
@@ -96,6 +174,12 @@ No change needed: the C++ parent switched from `GameModeBase` to `GameMode` unde
 sets Game State / Player State classes. Open it once and confirm *Classes* shows
 `GameUIMatchGameState` / `GameUIMatchPlayerState` (not overridden) and a **Default Pawn Class**
 is set, so Start visibly spawns something.
+
+| Blueprint | Required widget names |
+|---|---|
+| `WBP_ListEntry_LobbyPlayer` | `CommonText_PlayerName` |
+| `WBP_CAW_LobbyScreen` | `CommonText_SessionName`, `CommonText_PlayerCount`, `CommonListView_Players`, `CommonButton_Ready`, `CommonButton_Start`, `CommonButton_Leave` |
+| `WBP_HUD` | none |
 
 ## Test checklist (two instances via `Scripts/LaunchInstances.bat`)
 
