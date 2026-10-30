@@ -50,9 +50,9 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Game UI|Lobby")
 	void BP_OnStartAvailabilityChanged(bool bCanStart, const FText& Reason);
 
-	/** Fired once per second while a countdown runs, and once with bIsActive = false when it stops. */
+	/** Fired once per second while a countdown runs, and once with bIsCountingDown = false when it stops. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Game UI|Lobby")
-	void BP_OnCountdownChanged(int32 SecondsRemaining, bool bIsActive);
+	void BP_OnCountdownChanged(int32 SecondsRemaining, bool bIsCountingDown);
 
 	/** Called on activation and whenever host status could have changed. Show/hide host-only chrome here. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Game UI|Lobby")

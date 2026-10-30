@@ -76,7 +76,7 @@ Events to implement:
 |---|---|
 | `BP_OnReadyStateChanged(bIsLocalPlayerReady)` | Ready button text: *Ready* ↔ *Not Ready* (or *Cancel Ready*) |
 | `BP_OnStartAvailabilityChanged(bCanStart, Reason)` | show `Reason` in the status text when `bCanStart` is false; clear it otherwise |
-| `BP_OnCountdownChanged(SecondsRemaining, bIsActive)` | status text "Starting in 3…"; relabel Start to *Cancel* while active |
+| `BP_OnCountdownChanged(SecondsRemaining, bIsCountingDown)` | status text "Starting in 3…"; relabel Start to *Cancel* while active |
 | `BP_OnHostStateChanged(bIsLocalPlayerHost)` | optional chrome ("You are the host") |
 
 Class defaults: nothing required — Back handling and the Menu input config are set in C++.
