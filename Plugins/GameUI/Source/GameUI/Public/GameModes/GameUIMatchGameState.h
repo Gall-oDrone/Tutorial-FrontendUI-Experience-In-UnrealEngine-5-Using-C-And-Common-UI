@@ -49,6 +49,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Game UI|Lobby")
 	bool AreAllPlayersReady() const;
 
+	/**
+	 * True when the lobby may start: WaitingToStart, Min Players To Start met, everyone ready.
+	 * Evaluated identically on server and clients (settings are config, state is replicated).
+	 */
+	UFUNCTION(BlueprintPure, Category = "Game UI|Lobby")
+	bool CanStartMatch(FText& OutFailReason) const;
+
 	UFUNCTION(BlueprintPure, Category = "Game UI|Lobby")
 	bool IsStartCountdownActive() const { return StartCountdownEndServerTime >= 0.f; }
 

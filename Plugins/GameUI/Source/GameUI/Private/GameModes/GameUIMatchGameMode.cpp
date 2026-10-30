@@ -93,28 +93,8 @@ bool AGameUIMatchGameMode::CanStartMatch(FText& OutFailReason) const
 		return false;
 	}
 
-	if (GetMatchState() != MatchState::WaitingToStart)
-	{
-		OutFailReason = LOCTEXT("NotInLobby", "The match has already started.");
-		return false;
-	}
-
-	const int32 MinPlayers = FMath::Max(1, UGameUIDeveloperSettings::Get()->MinPlayersToStart);
-	if (NumPlayers < MinPlayers)
-	{
-		OutFailReason = FText::Format(LOCTEXT("NotEnoughPlayers", "Waiting for players ({0} / {1})."), NumPlayers, MinPlayers);
-		return false;
-	}
-
-	if (!MatchGameState->AreAllPlayersReady())
-	{
-		OutFailReason = FText::Format(LOCTEXT("NotAllReady", "Waiting for everyone to be ready ({0} / {1})."),
-			MatchGameState->GetReadyPlayerCount(), NumPlayers);
-		return false;
-	}
-
-	OutFailReason = FText::GetEmpty();
-	return true;
+	// One rule, shared with the lobby UI on clients.
+	return MatchGameState->CanStartMatch(OutFailReason);
 }
 
 bool AGameUIMatchGameMode::RequestStartMatch(AController* Requester, FText& OutFailReason)

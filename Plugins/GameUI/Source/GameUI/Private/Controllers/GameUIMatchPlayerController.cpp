@@ -4,8 +4,13 @@
 #include "Controllers/GameUIMatchPlayerController.h"
 #include "GameUIGameplayTags.h"
 #include "Settings/GameUIDeveloperSettings.h"
+#include "GameModes/GameUIMatchGameMode.h"
+#include "GameModes/GameUIMatchGameState.h"
+#include "GameModes/GameUIMatchPlayerState.h"
+#include "Subsystems/GameUIFlowSubsystem.h"
 #include "Widgets/Widget_HUDBase.h"
 #include "Widgets/Widget_PauseMenu.h"
+#include "Widgets/Widget_LobbyScreen.h"
 #include "Widgets/Widget_PrimaryLayout.h"
 #include "Subsystems/FrontendUISubsystem.h"
 #include "Subsystems/FrontendLoadingScreenSubsystem.h"
@@ -13,6 +18,7 @@
 #include "FrontendGameplayTags.h"
 #include "Blueprint/UserWidget.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/World.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputAction.h"
@@ -21,6 +27,8 @@
 #include "Engine/GameViewportClient.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Widgets/SViewport.h"
+
+#define LOCTEXT_NAMESPACE "GameUILobby"
 
 namespace
 {
@@ -40,6 +48,35 @@ void AGameUIMatchPlayerController::BeginPlay()
 	AddMatchMappingContext();
 	CreatePrimaryLayout();
 	PushHUD();
+
+	// The game state decides whether we are in the lobby or the match. On a client it can
+	// replicate after this controller begins play, so bind either now or when it arrives.
+	UWorld* World = GetWorld();
+	if (AGameStateBase* GameState = World ? World->GetGameState() : nullptr)
+	{
+		BindToGameState(GameState);
+	}
+	else if (World)
+	{
+		GameStateSetHandle = World->GameStateSetEvent.AddUObject(this, &ThisClass::BindToGameState);
+	}
+}
+
+void AGameUIMatchPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GameStateSetEvent.Remove(GameStateSetHandle);
+	}
+
+	if (AGameUIMatchGameState* GameState = BoundGameState.Get())
+	{
+		GameState->OnMatchPhaseChanged.RemoveAll(this);
+		GameState->OnLobbyStateChanged.RemoveAll(this);
+	}
+	BoundGameState.Reset();
+
+	Super::EndPlay(EndPlayReason);
 }
 
 void AGameUIMatchPlayerController::SetupInputComponent()
@@ -160,6 +197,7 @@ void AGameUIMatchPlayerController::PushHUD()
 
 				// The HUD is not focusable, so nothing else will give the viewport keyboard focus.
 				WeakThis->FocusGameViewport();
+				WeakThis->PushMatchInfoToHUD();
 			}
 		}
 	);
@@ -176,9 +214,9 @@ void AGameUIMatchPlayerController::OnPauseActionTriggered()
 
 void AGameUIMatchPlayerController::OpenPauseMenu()
 {
-	if (bIsPauseMenuOpen || !IsLocalPlayerController())
+	if (bIsPauseMenuOpen || bIsLobbyOpen || !IsLocalPlayerController())
 	{
-		UE_LOG(LogTemp, Verbose, TEXT("GameUI: OpenPauseMenu ignored (already open=%d, local=%d)"), bIsPauseMenuOpen ? 1 : 0, IsLocalPlayerController() ? 1 : 0);
+		UE_LOG(LogTemp, Verbose, TEXT("GameUI: OpenPauseMenu ignored (already open=%d, lobby open=%d, local=%d)"), bIsPauseMenuOpen ? 1 : 0, bIsLobbyOpen ? 1 : 0, IsLocalPlayerController() ? 1 : 0);
 		return;
 	}
 
@@ -317,3 +355,245 @@ void AGameUIMatchPlayerController::SetWorldPausedForMenu(bool bPaused)
 	// No-op for clients in a networked game: only an authoritative controller can pause.
 	UGameplayStatics::SetGamePaused(this, bPaused);
 }
+
+//~ Begin lobby
+
+void AGameUIMatchPlayerController::BindToGameState(AGameStateBase* GameState)
+{
+	AGameUIMatchGameState* MatchGameState = Cast<AGameUIMatchGameState>(GameState);
+	if (!MatchGameState || BoundGameState == MatchGameState)
+	{
+		if (GameState && !MatchGameState)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("GameUI: game state %s is not an AGameUIMatchGameState; no lobby will be shown."), *GameState->GetName());
+		}
+		return;
+	}
+
+	BoundGameState = MatchGameState;
+	MatchGameState->OnMatchPhaseChanged.AddUObject(this, &ThisClass::HandleMatchPhaseChanged);
+	MatchGameState->OnLobbyStateChanged.AddUObject(this, &ThisClass::HandleLobbyStateChanged);
+
+	HandleMatchPhaseChanged();
+	HandleLobbyStateChanged();
+}
+
+void AGameUIMatchPlayerController::HandleMatchPhaseChanged()
+{
+	const AGameUIMatchGameState* MatchGameState = BoundGameState.Get();
+	if (!MatchGameState)
+	{
+		return;
+	}
+
+	UE_LOG(LogTemp, Verbose, TEXT("GameUI: match phase -> %s"), *MatchGameState->GetMatchState().ToString());
+
+	if (MatchGameState->IsInLobby())
+	{
+		OpenLobby();
+	}
+	else if (MatchGameState->GetMatchState() != MatchState::EnteringMap)
+	{
+		CloseLobby();
+	}
+}
+
+void AGameUIMatchPlayerController::HandleLobbyStateChanged()
+{
+	PushMatchInfoToHUD();
+}
+
+void AGameUIMatchPlayerController::OpenLobby()
+{
+	if (bIsLobbyOpen || !IsLocalPlayerController())
+	{
+		return;
+	}
+
+	UFrontendUISubsystem* FrontendUISubsystem = UFrontendUISubsystem::Get(this);
+	if (!FrontendUISubsystem)
+	{
+		return;
+	}
+
+	// The lobby replaces the pause menu as the GameMenu-stack screen for this phase.
+	if (bIsPauseMenuOpen)
+	{
+		ClosePauseMenu();
+	}
+
+	bIsLobbyOpen = true;
+
+	TWeakObjectPtr<AGameUIMatchPlayerController> WeakThis(this);
+
+	FrontendUISubsystem->PushSoftWidgetToStackAsync(
+		FrontendGameplayTags::Frontend_WidgetStack_GameMenu,
+		UFrontendFunctionLibrary::GetFrontendSoftWidgetClassByTag(GameUIGameplayTags::Frontend_Widget_LobbyScreen),
+		[WeakThis](EAsyncPushWidgetState InPushState, UWidget_ActivatableBase* PushedWidget)
+		{
+			if (!WeakThis.IsValid() || !PushedWidget)
+			{
+				return;
+			}
+
+			if (InPushState == EAsyncPushWidgetState::OnCreatedBeforePush)
+			{
+				PushedWidget->SetOwningPlayer(WeakThis.Get());
+				WeakThis->ActiveLobby = Cast<UWidget_LobbyScreen>(PushedWidget);
+				if (!WeakThis->ActiveLobby.IsValid())
+				{
+					UE_LOG(LogTemp, Error, TEXT("GameUI: widget mapped to Frontend.Widget.LobbyScreen is not a Widget_LobbyScreen."));
+				}
+			}
+			else if (InPushState == EAsyncPushWidgetState::AfterPush)
+			{
+				// The match may have started while the widget was streaming in.
+				if (!WeakThis->bIsLobbyOpen)
+				{
+					PushedWidget->DeactivateWidget();
+					return;
+				}
+
+				if (UWidget* WidgetToFocus = PushedWidget->GetDesiredFocusTarget())
+				{
+					WidgetToFocus->SetFocus();
+				}
+			}
+		}
+	);
+}
+
+void AGameUIMatchPlayerController::CloseLobby()
+{
+	if (!bIsLobbyOpen)
+	{
+		return;
+	}
+
+	bIsLobbyOpen = false;
+
+	if (UWidget_LobbyScreen* Lobby = ActiveLobby.Get())
+	{
+		// Popping the GameMenu stack re-applies the HUD's Game input config synchronously.
+		Lobby->DeactivateWidget();
+	}
+	ActiveLobby.Reset();
+
+	// Same hygiene as closing the pause menu: give the viewport focus back and forget any
+	// key the player was holding while CommonUI was in Menu mode.
+	FocusGameViewport();
+	FlushPressedKeys();
+}
+
+void AGameUIMatchPlayerController::PushMatchInfoToHUD()
+{
+	UWidget_HUDBase* HUD = ActiveHUD.Get();
+	const AGameUIMatchGameState* MatchGameState = BoundGameState.Get();
+	if (!HUD || !MatchGameState)
+	{
+		return;
+	}
+
+	HUD->BP_OnMatchInfoChanged(
+		FText::FromString(MatchGameState->GetSessionDisplayName()),
+		MatchGameState->PlayerArray.Num(),
+		MatchGameState->GetMaxPlayers());
+}
+
+void AGameUIMatchPlayerController::SetReady(bool bReady)
+{
+	ServerSetReady(bReady);
+}
+
+void AGameUIMatchPlayerController::ToggleReady()
+{
+	const AGameUIMatchPlayerState* MatchPlayerState = GetPlayerState<AGameUIMatchPlayerState>();
+	ServerSetReady(!(MatchPlayerState && MatchPlayerState->IsReady()));
+}
+
+void AGameUIMatchPlayerController::RequestStartMatch()
+{
+	ServerRequestStartMatch();
+}
+
+void AGameUIMatchPlayerController::CancelStartMatch()
+{
+	ServerCancelStartMatch();
+}
+
+void AGameUIMatchPlayerController::LeaveMatch()
+{
+	if (UGameUIFlowSubsystem* FlowSubsystem = UGameInstance::GetSubsystem<UGameUIFlowSubsystem>(GetGameInstance()))
+	{
+		FlowSubsystem->ReturnToFrontend();
+	}
+}
+
+bool AGameUIMatchPlayerController::ServerSetReady_Validate(bool bReady)
+{
+	return true;
+}
+
+void AGameUIMatchPlayerController::ServerSetReady_Implementation(bool bReady)
+{
+	if (AGameUIMatchPlayerState* MatchPlayerState = GetPlayerState<AGameUIMatchPlayerState>())
+	{
+		MatchPlayerState->SetReady(bReady);
+	}
+}
+
+bool AGameUIMatchPlayerController::ServerRequestStartMatch_Validate()
+{
+	return true;
+}
+
+void AGameUIMatchPlayerController::ServerRequestStartMatch_Implementation()
+{
+	AGameUIMatchGameMode* MatchGameMode = GetWorld() ? GetWorld()->GetAuthGameMode<AGameUIMatchGameMode>() : nullptr;
+	if (!MatchGameMode)
+	{
+		return;
+	}
+
+	FText FailReason;
+	if (!MatchGameMode->RequestStartMatch(this, FailReason))
+	{
+		ClientStartMatchRejected(FailReason.ToString());
+	}
+}
+
+bool AGameUIMatchPlayerController::ServerCancelStartMatch_Validate()
+{
+	return true;
+}
+
+void AGameUIMatchPlayerController::ServerCancelStartMatch_Implementation()
+{
+	// Only the host may cancel directly; everyone else cancels implicitly by un-readying.
+	const AGameUIMatchPlayerState* MatchPlayerState = GetPlayerState<AGameUIMatchPlayerState>();
+	if (!MatchPlayerState || !MatchPlayerState->IsHost())
+	{
+		return;
+	}
+
+	if (AGameUIMatchGameMode* MatchGameMode = GetWorld() ? GetWorld()->GetAuthGameMode<AGameUIMatchGameMode>() : nullptr)
+	{
+		MatchGameMode->CancelStartCountdown();
+	}
+}
+
+void AGameUIMatchPlayerController::ClientStartMatchRejected_Implementation(const FString& Reason)
+{
+	if (UFrontendUISubsystem* FrontendUISubsystem = UFrontendUISubsystem::Get(this))
+	{
+		FrontendUISubsystem->PushConfirmScreenToModalStackAsync(
+			EConfirmScreenType::Ok,
+			LOCTEXT("StartRejectedTitle", "Cannot Start"),
+			FText::FromString(Reason),
+			[](EConfirmScreenButtonType) {});
+	}
+}
+
+//~ End lobby
+
+#undef LOCTEXT_NAMESPACE

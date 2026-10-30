@@ -4,9 +4,12 @@
 #include "GameModes/GameUIMatchGameState.h"
 #include "GameModes/GameUIMatchGameMode.h"
 #include "GameModes/GameUIMatchPlayerState.h"
+#include "Settings/GameUIDeveloperSettings.h"
 #include "GameFramework/GameMode.h"
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
+
+#define LOCTEXT_NAMESPACE "GameUILobby"
 
 void AGameUIMatchGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
@@ -56,6 +59,40 @@ bool AGameUIMatchGameState::AreAllPlayersReady() const
 		}
 	}
 	return ActivePlayers > 0;
+}
+
+bool AGameUIMatchGameState::CanStartMatch(FText& OutFailReason) const
+{
+	if (!IsInLobby())
+	{
+		OutFailReason = LOCTEXT("NotInLobby", "The match has already started.");
+		return false;
+	}
+
+	int32 ActivePlayers = 0;
+	for (APlayerState* PlayerState : PlayerArray)
+	{
+		if (PlayerState && !PlayerState->IsInactive() && !PlayerState->IsOnlyASpectator())
+		{
+			++ActivePlayers;
+		}
+	}
+
+	const int32 MinPlayers = FMath::Max(1, UGameUIDeveloperSettings::Get()->MinPlayersToStart);
+	if (ActivePlayers < MinPlayers)
+	{
+		OutFailReason = FText::Format(LOCTEXT("NotEnoughPlayers", "Waiting for players ({0} / {1})"), ActivePlayers, MinPlayers);
+		return false;
+	}
+
+	if (!AreAllPlayersReady())
+	{
+		OutFailReason = FText::Format(LOCTEXT("NotAllReady", "Waiting for everyone to be ready ({0} / {1})"), GetReadyPlayerCount(), ActivePlayers);
+		return false;
+	}
+
+	OutFailReason = FText::GetEmpty();
+	return true;
 }
 
 float AGameUIMatchGameState::GetStartCountdownSecondsRemaining() const
@@ -151,3 +188,5 @@ void AGameUIMatchGameState::BroadcastLobbyStateChanged()
 		}
 	}
 }
+
+#undef LOCTEXT_NAMESPACE
