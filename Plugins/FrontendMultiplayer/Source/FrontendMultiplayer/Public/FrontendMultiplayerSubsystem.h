@@ -68,6 +68,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer")
 	bool IsSessionOperationInProgress() const { return CurrentOperation != EFrontendSessionOperation::None; }
 
+	/** Name and capacity of the session this player hosts or joined. False if there is none. */
+	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer")
+	bool GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const;
+
 	/** Every line logged so far, oldest first, capped by UFrontendMultiplayerSettings::APIDebugLogHistorySize. */
 	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer|Debug")
 	TArray<FString> GetAPIDebugLogHistory() const { return APIDebugLogHistory; }

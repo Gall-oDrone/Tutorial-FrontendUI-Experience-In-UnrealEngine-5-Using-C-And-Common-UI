@@ -29,5 +29,11 @@ public:
 	virtual void LeaveSession() override;
 	virtual void FetchLeaderboard(ELeaderboardCategory Category) override;
 	virtual FString GetBackendDisplayName() const override { return TEXT("Stub (simulated, no networking)"); }
+	virtual bool GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const override;
 	//~ End UFrontendSessionBackend Interface
+
+private:
+	/** The last simulated host request; cleared by LeaveSession. */
+	FString SimulatedSessionName;
+	int32 SimulatedMaxPlayers = 0;
 };
