@@ -1,9 +1,9 @@
 {
 	"FileVersion": 3,
-	"Version": 1,
-	"VersionName": "1.0",
+	"Version": 2,
+	"VersionName": "1.1",
 	"FriendlyName": "Frontend Multiplayer",
-	"Description": "Multiplayer session UI (host/join/server browser) and API debug tooling, built on top of the FrontendUI plugin.",
+	"Description": "Multiplayer session UI (host/join/server browser) and API debug tooling, built on top of the FrontendUI plugin. Includes an OnlineSubsystem-backed session backend in a separate module.",
 	"Category": "UI",
 	"CreatedBy": "Diego Gallo",
 	"CanContainContent": true,
@@ -13,9 +13,16 @@
 			"Name": "FrontendMultiplayer",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "FrontendMultiplayerOSS",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
 		}
 	],
 	"Plugins": [
-		{ "Name": "FrontendUI", "Enabled": true }
+		{ "Name": "FrontendUI", "Enabled": true },
+		{ "Name": "OnlineSubsystem", "Enabled": true },
+		{ "Name": "OnlineSubsystemUtils", "Enabled": true }
 	]
 }

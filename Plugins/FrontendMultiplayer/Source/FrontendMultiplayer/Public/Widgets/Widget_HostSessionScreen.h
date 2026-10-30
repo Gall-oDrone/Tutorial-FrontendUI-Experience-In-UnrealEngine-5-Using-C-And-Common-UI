@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Widgets/Widget_ActivatableBase.h"
+#include "FrontendSessionTypes.h"
 #include "Widget_HostSessionScreen.generated.h"
 
 class UFrontendCommonButtonBase;
@@ -30,6 +31,10 @@ protected:
 private:
 	void OnCreateButtonClicked();
 	void OnBackBoundActionTriggered();
+
+	/** Create is disabled for the duration of any session request so a double click cannot host twice. */
+	UFUNCTION()
+	void HandleSessionOperationChanged(EFrontendSessionOperation Operation, bool bInProgress);
 
 	//****** Bound Widgets ****** //
 	UPROPERTY(meta = (BindWidget))

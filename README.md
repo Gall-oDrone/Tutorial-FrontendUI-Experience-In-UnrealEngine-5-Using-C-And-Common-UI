@@ -10,7 +10,7 @@ GameUI  ──►  FrontendMultiplayer  ──►  FrontendUI  ──►  Common
 ```
 
 - **`FrontendUI`** — the reusable framework. Stacks, async push, loading screen, data-driven options with key remapping, confirm dialog, styles and controller glyphs. References nothing above it.
-- **`FrontendMultiplayer`** — host / server browser / leaderboard / API debug screens, built on FrontendUI, talking to a pluggable `UFrontendSessionBackend`. Ships with a simulated stub backend.
+- **`FrontendMultiplayer`** — host / server browser / leaderboard / API debug screens, built on FrontendUI, talking to a pluggable `UFrontendSessionBackend`. Ships with a simulated stub and, in a separate `FrontendMultiplayerOSS` module, a real OnlineSubsystem backend (Null / Steam / EOS by config).
 - **`GameUI`** — everything that names *this* game: boot flow, main menu, logo, input actions, and the game's subclasses of the framework extension points. A new game replaces this plugin and keeps the other two.
 
 ## Requirements
@@ -36,10 +36,12 @@ Plugins/
     Source/FrontendUI/               Runtime module
     Content/UI/                      Press Any Key, Options, Confirm, Loading, styles, input data
     Content/Assets/                  ControllerIcons, Fonts/Din, Materials, Textures
-  FrontendMultiplayer/               Session + leaderboard screens, IFrontendSessionBackend
+  FrontendMultiplayer/               Session + leaderboard screens, UFrontendSessionBackend
     Source/FrontendMultiplayer/      Widgets, subsystem, Backends/ (Stub)
+    Source/FrontendMultiplayerOSS/   UFrontendSessionBackend_OSS (IOnlineSession)
     Content/UI/                      Multiplayer hub, Host, Server Browser, Leaderboard, API Debug
     Docs/WidgetDesignTemplate.md     Authoring spec for the multiplayer Blueprints
+    Docs/SessionBackend.md           Backend contract, OSS setup, LAN test plan
   GameUI/                            This game's UI layer
     Source/GameUI/Settings/          UGameUIOptionsDataRegistry, UGameUIGameUserSettings
     Content/Core/                    BP_FrontendController, BP_FrontendGameMode, WBP_CUW_PrimaryLayout
@@ -64,7 +66,7 @@ The framework is extended by subclassing, never by editing it. Each seam has a P
 |---|---|---|
 | Options tabs | `UOptionsDataRegistry` subclass → **Frontend UI Settings → Options Data Registry Class** | `UGameUIOptionsDataRegistry` adds the demo image row to the Gameplay tab |
 | Applying settings | `UFrontendGameUserSettings` subclass → `GameUserSettingsClassName` in `DefaultEngine.ini`; override `ApplyAudioSettings()`, bind `OnGameDifficultyChanged` | `UGameUIGameUserSettings` |
-| Session backend | `UFrontendSessionBackend` subclass → **Frontend Multiplayer Settings → Session Backend Class** | `UFrontendSessionBackend_Stub` (framework default) |
+| Session backend | `UFrontendSessionBackend` subclass → **Frontend Multiplayer Settings → Session Backend Class** + **Host Map** | `UFrontendSessionBackend_OSS` over the Null subsystem (`UFrontendSessionBackend_Stub` is the framework default) |
 | Screens | tag + `FrontendWidgetMap` entry | main menu, story, credits, logo |
 | Loading screen | `RegisterLoadingScreenHold` / `ClearLoadingScreenHold` from any system | controller holds until the first screen is pushed |
 
@@ -142,9 +144,9 @@ Subclass `UOptionsDataRegistry` and `UFrontendGameUserSettings` in your game mod
 
 ## Roadmap
 
-- A real `UFrontendSessionBackend` (OnlineSubsystem / EOS), then AWS GameLift for dedicated-server hosting and session placement, selected purely from Project Settings.
+- Real sessions are in: `UFrontendSessionBackend_OSS` hosts, finds and joins over the Null subsystem on LAN (`Plugins/FrontendMultiplayer/Docs/SessionBackend.md`). Next: EOS login + config, then AWS GameLift for dedicated-server hosting and session placement, selected purely from Project Settings.
 - Studio logo as a startup movie or `FPreLoadScreenBase` so it precedes the loading screen.
-- Pause menu and HUD are in (`Plugins/GameUI/Docs/InGameUI.md`); next is match-specific HUD content and a disconnect/reconnect flow against the real backend.
+- Pause menu and HUD are in (`Plugins/GameUI/Docs/InGameUI.md`); next is match-specific HUD content and a reconnect flow against the real backend.
 
 ## License
 

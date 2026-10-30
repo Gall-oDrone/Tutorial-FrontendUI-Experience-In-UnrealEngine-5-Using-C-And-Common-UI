@@ -22,6 +22,12 @@ void UWidget_HostSessionScreen::NativeOnInitialized()
 	);
 
 	CommonButton_Create->OnClicked().AddUObject(this, &ThisClass::OnCreateButtonClicked);
+
+	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
+	{
+		MultiplayerSubsystem->OnSessionOperationChanged.AddDynamic(this, &ThisClass::HandleSessionOperationChanged);
+		CommonButton_Create->SetIsEnabled(!MultiplayerSubsystem->IsSessionOperationInProgress());
+	}
 }
 
 UWidget* UWidget_HostSessionScreen::NativeGetDesiredFocusTarget() const
@@ -36,11 +42,21 @@ void UWidget_HostSessionScreen::OnBackBoundActionTriggered()
 
 void UWidget_HostSessionScreen::OnCreateButtonClicked()
 {
-	const FString SessionNameString = EditableTextBox_SessionName->GetText().ToString();
-	const int32 MaxPlayers = static_cast<int32>(SpinBox_MaxPlayers->GetValue());
+	FString SessionNameString = EditableTextBox_SessionName->GetText().ToString().TrimStartAndEnd();
+	if (SessionNameString.IsEmpty())
+	{
+		SessionNameString = TEXT("Session");
+	}
+
+	const int32 MaxPlayers = FMath::Max(1, static_cast<int32>(SpinBox_MaxPlayers->GetValue()));
 
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
 	{
 		MultiplayerSubsystem->CreateSession(FName(*SessionNameString), MaxPlayers);
 	}
+}
+
+void UWidget_HostSessionScreen::HandleSessionOperationChanged(EFrontendSessionOperation Operation, bool bInProgress)
+{
+	CommonButton_Create->SetIsEnabled(!bInProgress);
 }

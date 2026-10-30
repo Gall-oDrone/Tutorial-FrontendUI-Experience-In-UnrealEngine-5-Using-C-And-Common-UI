@@ -39,6 +39,18 @@ void UWidget_ServerBrowserScreen::NativeOnInitialized()
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
 	{
 		MultiplayerSubsystem->OnSessionListUpdated.AddDynamic(this, &ThisClass::HandleSessionListUpdated);
+		MultiplayerSubsystem->OnSessionOperationChanged.AddDynamic(this, &ThisClass::HandleSessionOperationChanged);
+	}
+}
+
+void UWidget_ServerBrowserScreen::NativeOnActivated()
+{
+	Super::NativeOnActivated();
+
+	// The widget stack pools screens, so NativeOnInitialized runs once per process.
+	// Searching here means every visit (including Back and re-enter) is a fresh search.
+	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
+	{
 		MultiplayerSubsystem->FindSessions();
 	}
 }
@@ -90,6 +102,14 @@ void UWidget_ServerBrowserScreen::HandleSessionListUpdated(const TArray<UFronten
 	}
 
 	BP_OnSessionListUpdated(ListItems.Num());
+}
+
+void UWidget_ServerBrowserScreen::HandleSessionOperationChanged(EFrontendSessionOperation Operation, bool bInProgress)
+{
+	if (Operation == EFrontendSessionOperation::Finding)
+	{
+		BP_OnSearchStateChanged(bInProgress);
+	}
 }
 
 void UWidget_ServerBrowserScreen::OnListViewItemHovered(UObject* InHoveredItem, bool bWasHovered)

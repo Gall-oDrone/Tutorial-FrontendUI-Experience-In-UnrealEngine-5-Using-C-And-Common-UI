@@ -68,3 +68,4 @@
 *.uasset binary
 *.umap   binary
 *.mp4    binary
+*.bat text eol=crlf
