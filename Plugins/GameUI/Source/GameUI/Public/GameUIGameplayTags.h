@@ -12,4 +12,5 @@ namespace GameUIGameplayTags
 {
 	GAMEUI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Frontend_Widget_HUD);
 	GAMEUI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Frontend_Widget_PauseMenu);
+	GAMEUI_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Frontend_Widget_LobbyScreen);
 }

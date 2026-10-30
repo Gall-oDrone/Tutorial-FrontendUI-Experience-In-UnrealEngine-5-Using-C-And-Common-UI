@@ -8,7 +8,7 @@ public class GameUI : ModuleRules
 
 		PublicDependencyModuleNames.AddRange(new string[] {
 			"Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput",
-			"UMG", "CommonUI", "CommonInput", "GameplayTags", "DeveloperSettings",
+			"UMG", "CommonUI", "CommonInput", "GameplayTags", "DeveloperSettings", "NetCore",
 			"FrontendUI", "FrontendMultiplayer"
 		});
 
