@@ -146,7 +146,7 @@ Subclass `UOptionsDataRegistry` and `UFrontendGameUserSettings` in your game mod
 
 - Real sessions are in: `UFrontendSessionBackend_OSS` hosts, finds and joins over the Null subsystem on LAN (`Plugins/FrontendMultiplayer/Docs/SessionBackend.md`). Next: EOS login + config, then AWS GameLift for dedicated-server hosting and session placement, selected purely from Project Settings.
 - Studio logo as a startup movie or `FPreLoadScreenBase` so it precedes the loading screen.
-- Pause menu and HUD are in (`Plugins/GameUI/Docs/InGameUI.md`); next is match-specific HUD content and a reconnect flow against the real backend.
+- Pause menu, HUD and a ready-gated pre-match lobby are in (`Plugins/GameUI/Docs/InGameUI.md`, `Docs/Lobby.md`); next is a reconnect flow against the real backend.
 
 ## License
 

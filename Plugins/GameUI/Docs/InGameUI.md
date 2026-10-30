@@ -9,8 +9,8 @@ the Blueprints below only provide layout and styling. Conventions follow
 | Class | Role |
 |---|---|
 | `AGameUIMatchPlayerController` | On BeginPlay: adds the match mapping context, creates the primary layout, pushes the HUD onto `GameHud` under a loading-screen hold. Binds the pause action. `OpenPauseMenu` / `ClosePauseMenu` / `TogglePauseMenu` are BlueprintCallable. |
-| `AGameUIMatchGameMode` | Sets the controller above. Pawn and rules are yours. |
-| `UWidget_HUDBase` | Non-focusable, `Game` input mode. `BP_OnPauseMenuVisibilityChanged(bool)` fires when the pause menu opens/closes. |
+| `AGameUIMatchGameMode` | Sets the controller above; an `AGameMode` whose `WaitingToStart` phase is the lobby (see `Lobby.md`). Pawn and rules are yours. |
+| `UWidget_HUDBase` | Non-focusable, `Game` input mode. `BP_OnPauseMenuVisibilityChanged(bool)` fires when the pause menu opens/closes; `BP_OnMatchInfoChanged(SessionName, Players, Max)` on arrival and on join/leave. |
 | `UWidget_PauseMenu` | Resume / Options / Return to Main Menu / Quit. Back = Resume. Options pushes the framework Options screen onto `GameMenu`. Destructive actions confirm on `Modal`. |
 | `UGameUIFlowSubsystem` | `ReturnToFrontend()`; listens to network/travel failures, travels home and stores a message for `ShowPendingDisconnectMessage()`. |
 | `UGameUIDeveloperSettings` | **Project Settings → Game → Game UI Settings**: layout class, match mapping context, frontend map, pause action, pause-the-world toggle. |
