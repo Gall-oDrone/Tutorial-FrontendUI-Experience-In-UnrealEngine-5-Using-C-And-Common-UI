@@ -48,7 +48,7 @@ for rows, type-prefixed names for every `[BIND]` widget (exact match, or the Blu
 compile). Build the lobby by **duplicating `WBP_CAW_ServerBrowserScreen`** and the row by
 **duplicating `WBP_ListEntry_Session`** — then reparent, rename and trim.
 
-### 1. `WBP_ListEntry_LobbyPlayer` — `GameUI/Content/UI/Screens`
+### 1. `WBP_ListEntry_LobbyPlayer` — `GameUI/Content/UI/Screens/Lobby/ListEntries`
 
 Parent class **Widget_ListEntry_LobbyPlayer** (File → Reparent Blueprint after duplicating
 `WBP_ListEntry_Session`; delete `CommonButton_Join` and the old graph).
@@ -98,7 +98,7 @@ tag widgets. Delete any leftover `Tick` / `In Delta Time` node from the duplicat
 Rows are rebuilt (new item objects) on every change, so this fires again each time; no
 state to keep.
 
-### 2. `WBP_CAW_LobbyScreen` — `GameUI/Content/UI/Screens`
+### 2. `WBP_CAW_LobbyScreen` — `GameUI/Content/UI/Screens/Lobby`
 
 Parent class **Widget_LobbyScreen**. Duplicate `WBP_CAW_ServerBrowserScreen`, reparent,
 remove the `Border → Overlay → Background Blur` wrapper (the pause-menu rule applies: the
@@ -175,8 +175,8 @@ Do **not** add Blueprint `On Clicked` events for the buttons: the C++ parent alr
 ### 3. Widget Map — Project Settings → Game → Frontend UI Settings
 
 `Frontend.Widget.LobbyScreen` → `WBP_CAW_LobbyScreen` is **already in `DefaultGame.ini`** at
-`/GameUI/UI/Screens/WBP_CAW_LobbyScreen`. Create the asset at exactly that path and nothing
-else is needed; if you place it elsewhere, repoint the entry.
+`/GameUI/UI/Screens/Lobby/WBP_CAW_LobbyScreen`. If you move the asset, repoint the entry — a
+mismatch shows up as an ensure (`widget class ... did not load`) the first time the lobby is pushed.
 
 ### 4. `WBP_HUD`
 
