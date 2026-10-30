@@ -163,8 +163,14 @@ Event BP_OnHostStateChanged (bIsLocalPlayerHost)
  └─ (optional) WBP_Text_ButtonDescription or a small text: "You are the host" / ""
 ```
 
-`Set Button Text` is the setter `WBP_Button_Default` exposes for its display text (the same
-one Main Menu's buttons use); if your button Blueprint names it differently, use that.
+`Set Button Text` is `UFrontendCommonButtonBase::SetButtonText` (the parent of `WBP_Button_Default`).
+It has no category, so in the context menu it sits under **Frontend Common Button Base**; drag
+off the `CommonButton_Ready` variable and search *button text*. The six bound widgets are
+`BlueprintReadOnly`, so they appear under *Variables → Widget Lobby Screen* once the C++ has
+been built and the names match.
+
+Do **not** add Blueprint `On Clicked` events for the buttons: the C++ parent already binds
+`OnClicked()` for all three. A second handler would be ignored at best and confusing at worst.
 
 ### 3. Widget Map — Project Settings → Game → Frontend UI Settings
 

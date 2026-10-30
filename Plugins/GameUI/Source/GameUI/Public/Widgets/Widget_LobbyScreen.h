@@ -78,22 +78,24 @@ private:
 	AGameUIMatchPlayerState* GetLocalMatchPlayerState() const;
 
 	//****** Bound Widgets ****** //
-	UPROPERTY(meta = (BindWidget))
+	// BlueprintReadOnly so the BP_* events can relabel buttons and read the texts; the
+	// Blueprint still never drives state through them.
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidget, AllowPrivateAccess = "true"))
 	UCommonListView* CommonListView_Players;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidget, AllowPrivateAccess = "true"))
 	UCommonTextBlock* CommonText_SessionName;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidget, AllowPrivateAccess = "true"))
 	UCommonTextBlock* CommonText_PlayerCount;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidget, AllowPrivateAccess = "true"))
 	UFrontendCommonButtonBase* CommonButton_Ready;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidget, AllowPrivateAccess = "true"))
 	UFrontendCommonButtonBase* CommonButton_Start;
 
-	UPROPERTY(meta = (BindWidget))
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidget, AllowPrivateAccess = "true"))
 	UFrontendCommonButtonBase* CommonButton_Leave;
 	//****** Bound Widgets ****** //
 
