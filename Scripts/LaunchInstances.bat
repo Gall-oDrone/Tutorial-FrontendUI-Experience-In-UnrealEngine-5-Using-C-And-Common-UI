@@ -30,7 +30,7 @@ if not exist "%EDITOR%" (
 REM 1280x720 windows tiled left-to-right so both are visible on one screen.
 set /a X=0
 for /l %%i in (1,1,%COUNT%) do (
-	start "FrontendUI instance %%i" "%EDITOR%" "%PROJECT%" -game -windowed -ResX=1280 -ResY=720 -WinX=!X! -WinY=60 -log LOG=Instance%%i.log
+	start "FrontendUI instance %%i" "%EDITOR%" "%PROJECT%" -game -windowed -ResX=1280 -ResY=720 -WinX=!X! -WinY=60 -log -LOG=Instance%%i.log
 	set /a X+=1300
 )
 
