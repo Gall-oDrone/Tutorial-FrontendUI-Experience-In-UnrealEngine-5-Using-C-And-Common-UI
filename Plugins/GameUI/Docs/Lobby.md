@@ -69,14 +69,31 @@ Parent class **Widget_ListEntry_LobbyPlayer** (File → Reparent Blueprint after
   navigation; the row is display only. There is no Join button and no hover highlight to wire.
 - Class defaults: nothing.
 
-**EventGraph** — one event, no variables:
+**EventGraph** — one event driving **three independent chains**, no variables:
 
 ```
-Event BP_OnPlayerEntryUpdated (bIsReady, bIsHost, bIsLocalPlayer)
- ├─ CommonText_ReadyTag → Set Visibility  (Select: bIsReady ? Visible : Collapsed)
- ├─ CommonText_HostTag  → Set Visibility  (Select: bIsHost  ? Visible : Collapsed)
- └─ Border_Row          → Set Brush Color (Select: bIsLocalPlayer ? (1,1,1,0.08) : (1,1,1,0))
+Event BP_OnPlayerEntryUpdated (Is Ready, Is Host, Is Local Player)
+  │
+  ├─exec─► Set Visibility    Target = CommonText_ReadyTag
+  │          In Visibility ◄─ Select   Index = Is Ready        False = Collapsed   True = Visible
+  │
+  ├─exec─► Set Visibility    Target = CommonText_HostTag
+  │          In Visibility ◄─ Select   Index = Is Host         False = Collapsed   True = Visible
+  │
+  └─exec─► Set Brush Color   Target = Border_Row
+             In Brush Color ◄─ Select  Index = Is Local Player  False = (1,1,1,0)   True = (1,1,1,0.08)
 ```
+
+Chain the execs in sequence (event → Set Visibility → Set Visibility → Set Brush Color).
+
+How to wire a `Select` so it comes out typed correctly: **drag backwards from the input pin it
+should feed** (e.g. `In Visibility`), type *Select*; the node is created with `ESlateVisibility`
+options. Then plug the event's bool into **Index** — the options relabel to **False / True**. A
+Select created from empty space is a Wildcard, and plugging bools into its *Options* turns it
+into the wrong thing (a bool-returning Select with three options).
+
+Common mistakes: `Set Visibility` with Target = *self* hides the whole row; the targets are the
+tag widgets. Delete any leftover `Tick` / `In Delta Time` node from the duplicated row.
 
 Rows are rebuilt (new item objects) on every change, so this fires again each time; no
 state to keep.
