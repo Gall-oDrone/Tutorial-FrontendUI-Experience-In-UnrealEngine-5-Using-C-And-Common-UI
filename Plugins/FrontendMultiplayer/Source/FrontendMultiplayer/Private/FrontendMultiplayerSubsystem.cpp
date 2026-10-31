@@ -322,7 +322,11 @@ void UFrontendMultiplayerSubsystem::TravelToHostMap()
 
 	// "?listen" turns the loaded map into a listen server; the online session created by
 	// the backend outlives the map change because it belongs to the online subsystem.
-	const FString TravelURL = Settings->HostMap.ToSoftObjectPath().GetLongPackageName() + TEXT("?listen");
+	// The backend may add options the net driver reads (a LAN host says ?bIsLanMatch so
+	// NetDriverEOS, if configured, binds IP sockets instead of EOS P2P ones).
+	const FString TravelURL = Settings->HostMap.ToSoftObjectPath().GetLongPackageName()
+		+ TEXT("?listen")
+		+ (ActiveBackend ? ActiveBackend->GetHostTravelOptions() : FString());
 
 	BroadcastDebugLog(FString::Printf(TEXT("ServerTravel %s"), *TravelURL));
 	World->ServerTravel(TravelURL);

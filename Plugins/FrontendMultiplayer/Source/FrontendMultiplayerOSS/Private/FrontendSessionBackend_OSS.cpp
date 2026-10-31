@@ -105,6 +105,13 @@ bool UFrontendSessionBackend_OSS::GetActiveSessionInfo(FString& OutDisplayName, 
 	return true;
 }
 
+FString UFrontendSessionBackend_OSS::GetHostTravelOptions() const
+{
+	// NetDriverEOS checks this option in InitListen and falls back to plain IP sockets,
+	// so a LAN host stays reachable by address even when the EOS driver is configured.
+	return IsLAN() ? TEXT("?bIsLanMatch") : TEXT("");
+}
+
 void UFrontendSessionBackend_OSS::CreateSession(FName SessionName, int32 MaxPlayers)
 {
 	ReportOperationStarted(EFrontendSessionOperation::Creating);

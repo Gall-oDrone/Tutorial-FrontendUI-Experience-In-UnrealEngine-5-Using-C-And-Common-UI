@@ -81,6 +81,12 @@ public:
 	 */
 	virtual bool GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const { return false; }
 
+	/**
+	 * Extra URL options appended to the host's "?listen" travel, e.g. "?bIsLanMatch".
+	 * Net drivers read these: NetDriverEOS only binds plain IP sockets for a LAN match.
+	 */
+	virtual FString GetHostTravelOptions() const { return FString(); }
+
 protected:
 	UFrontendMultiplayerSubsystem* GetOwningSubsystem() const { return OwningSubsystem.Get(); }
 

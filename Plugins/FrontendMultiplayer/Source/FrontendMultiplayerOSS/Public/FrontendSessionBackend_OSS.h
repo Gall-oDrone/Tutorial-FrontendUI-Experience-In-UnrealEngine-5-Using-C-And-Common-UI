@@ -59,6 +59,7 @@ public:
 	virtual void Login() override;
 	virtual FString GetLocalPlayerDisplayName() const override;
 	virtual bool GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const override;
+	virtual FString GetHostTravelOptions() const override;
 	//~ End UFrontendSessionBackend Interface
 
 private:

@@ -29,17 +29,20 @@ Both travels go through the existing `UFrontendLoadingScreenSubsystem` map hooks
 
 ## Project setup (Null subsystem, LAN)
 
-1. **Plugins** (`.uproject`): `OnlineSubsystem`, `OnlineSubsystemUtils`, `OnlineSubsystemNull`.
-   Disable `OnlineServicesEOS` / `EOSShared` / `OnlineSubsystemEOS` if you are not using them;
-   they spam telemetry timeouts in the log.
+1. **Plugins** (`.uproject`): `OnlineSubsystem`, `OnlineSubsystemUtils`, `OnlineSubsystemNull`,
+   and `OnlineSubsystemEOS` (enabled but idle until EOS is selected; see
+   [Docs/EOSSetup.md](../../../Docs/EOSSetup.md)).
 2. **`Config/DefaultEngine.ini`**
    ```ini
    [OnlineSubsystem]
    DefaultPlatformService=Null
 
    [/Script/Engine.GameEngine]
-   +NetDriverDefinitions=(DefName="GameNetDriver",DriverClassName="OnlineSubsystemUtils.IpNetDriver",DriverClassNameFallback="OnlineSubsystemUtils.IpNetDriver")
+   !NetDriverDefinitions=ClearArray
+   +NetDriverDefinitions=(DefName="GameNetDriver",DriverClassName="OnlineSubsystemEOS.NetDriverEOS",DriverClassNameFallback="OnlineSubsystemUtils.IpNetDriver")
    ```
+   `NetDriverEOS` passes through to IP sockets whenever the address is not an EOS one,
+   and a LAN host travels with `?bIsLanMatch`, so this driver is safe for the Null path.
 3. **Project Settings → Game → Frontend Multiplayer Settings**
 
    | Setting | Value |
@@ -58,8 +61,9 @@ Both travels go through the existing `UFrontendLoadingScreenSubsystem` map hooks
 
 | Request | What happens |
 |---|---|
-| **Create** | If a `GameSession` already exists it is destroyed first (the service allows one). Session: `NumPublicConnections = MaxPlayers`, `bShouldAdvertise`, `bAllowJoinInProgress` (setting), `bIsLANMatch` = Null only, `bUsesPresence` / `bUseLobbiesIfAvailable` = not Null. Custom settings: `MAPNAME` (Host Map asset name), `FRONTEND_SESSION_DISPLAY_NAME` (text from the Host screen). On success `StartSession` is fired and the host travels. |
-| **Find** | `FOnlineSessionSearch` with `bIsLanQuery` = Null only, `SEARCH_PRESENCE` otherwise. Each result → `UFrontendSessionListEntryData`: display name from the custom setting (falls back to the host's user name), `Current = Max - NumOpenPublicConnections`, host name, map, ping. |
+| **Sign-in** | Only on subsystems that need an account (`RequiresLogin() = !IsLAN()`, i.e. anything but Null). Host / Find / Join call `EnsureLoggedInThen(Request)`: if `IOnlineIdentity::GetLoginStatus(0)` is not `LoggedIn`, the credential chain from **Project Settings → Game → Frontend Multiplayer OSS** runs (command line `-AUTH_TYPE/-AUTH_LOGIN/-AUTH_PASSWORD` → `persistentauth` → configured type, default `accountportal`) and the parked request continues from `OnLoginComplete`. A failure answers the parked request with the login error. `Login()` does the same explicitly under the `LoggingIn` operation; a later sign-out reaches the UI through `OnLoginStateChanged(false)`. |
+| **Create** | If a `GameSession` already exists it is destroyed first (the service allows one). Session: `NumPublicConnections = MaxPlayers`, `bShouldAdvertise`, `bAllowJoinInProgress` (setting), `bIsLANMatch` = Null only, `bUsesPresence` / `bUseLobbiesIfAvailable` = not Null. Custom settings: `MAPNAME` (Host Map asset name), `FRONTEND_SESSION_DISPLAY_NAME` (text from the Host screen). On success `StartSession` is fired and the host travels; a LAN host adds `?bIsLanMatch` to the URL (`GetHostTravelOptions`). |
+| **Find** | `FOnlineSessionSearch` with `bIsLanQuery` = Null only, `SEARCH_PRESENCE` + `SEARCH_LOBBIES` otherwise (EOS creates lobbies for `bUseLobbiesIfAvailable` hosts and only returns them when asked). Each result → `UFrontendSessionListEntryData`: display name from the custom setting (falls back to the host's user name), `Current = Max - NumOpenPublicConnections`, host name, map, ping. |
 | **Join** | Index into the last search results. `JoinSession` → `GetResolvedConnectString` → client travel. `SessionIsFull`, `SessionDoesNotExist`, `CouldNotRetrieveAddress`, `AlreadyInSession` map to readable messages. |
 | **Leave** | `DestroySession(GameSession)`. `UGameUIFlowSubsystem::ReturnToFrontend()` calls this before travelling back so the next Host/Join is clean. |
 | **Leaderboard** | If the subsystem has no leaderboard interface (Null): debug line + simulated rows (or empty if the setting is off). |
@@ -82,6 +86,8 @@ Launch the instances yourself instead:
 1. Close PIE. Double-click **`Scripts/LaunchInstances.bat`** (edit `UE_ROOT` at the top
    if the engine is not under `D:\EpicGames\UE_5.6`). It starts two 1280x720 windows side
    by side, each with its own log (`Saved/Logs/Instance1.log`, `Instance2.log`).
+   `LaunchInstances.bat 2 EOS` runs the same two windows on Epic Online Services
+   ([Docs/EOSSetup.md](../../../Docs/EOSSetup.md)).
 2. Allow the Windows Firewall prompt for private networks the first time — the LAN
    beacon needs it.
 3. Treat the left window as **A** (host) and the right one as **B** (client).
@@ -108,14 +114,16 @@ Equivalent manual command, run twice:
 
 | Service | Change |
 |---|---|
-| **Steam** | Enable `OnlineSubsystemSteam`; `DefaultPlatformService=Steam`; add the `[OnlineSubsystemSteam]` block (`bEnabled`, `SteamDevAppId=480`) and the Steam net driver definition. No code change. |
-| **EOS** | Enable `OnlineSubsystemEOS`; `DefaultPlatformService=EOS`; product/sandbox/deployment ids in `[OnlineSubsystemEOS]`. Needs an `IOnlineIdentity` login before Create/Find — the natural place is a `Login()` step in `UFrontendSessionBackend_OSS` or a subclass. |
+| **EOS** | Already wired: [Docs/EOSSetup.md](../../../Docs/EOSSetup.md). Product keys in the git-ignored `Saved/Config/WindowsEditor/Engine.ini`, `LaunchInstances.bat 2 EOS` or `-ini:Engine:[OnlineSubsystem]:DefaultPlatformService=EOS`. No code change. |
+| **Steam** | Enable `OnlineSubsystemSteam`; `DefaultPlatformService=Steam`; add the `[OnlineSubsystemSteam]` block (`bEnabled`, `SteamDevAppId=480`) and the Steam net driver definition. Steam signs in through the running client, so the credential chain is a no-op. No code change. |
 | **Dedicated / GameLift** | New `UFrontendSessionBackend` subclass that calls your matchmaking API and reports the connect string through `ReportSessionJoined`; the UI and travel logic stay the same. |
 
 ## Writing your own backend
 
 Subclass `UFrontendSessionBackend`, override the five requests, and answer **every**
 request with exactly one matching `Report*` call (success or failure). Call
-`ReportOperationStarted` first so the screens disable their buttons. Use `LogDebug`
-generously; it is free and shows up in the API debug panel. Select the class in
-Frontend Multiplayer Settings — nothing else needs to change.
+`ReportOperationStarted` first so the screens disable their buttons. If your service
+needs an account, override `IsLoggedIn` / `Login` / `GetLocalPlayerDisplayName` and
+answer `Login` with `ReportLoginChanged`. Use `LogDebug` generously; it is free and
+shows up in the API debug panel. Select the class in Frontend Multiplayer Settings —
+nothing else needs to change.

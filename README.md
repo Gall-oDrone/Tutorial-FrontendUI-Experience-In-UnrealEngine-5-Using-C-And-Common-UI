@@ -56,7 +56,8 @@ Plugins/
     Docs/Lobby.md                    Pre-match lobby authoring spec
     Docs/History.md                  How content was moved in during the split
 Docs/Demo.md                         Recording the demo video
-Scripts/LaunchInstances.bat          N game instances for LAN testing
+Docs/EOSSetup.md                     Epic Online Services: portal, keys, sign-in, test plan
+Scripts/LaunchInstances.bat          N game instances, LAN or EOS
 ```
 
 ## Architecture overview
@@ -75,7 +76,7 @@ The framework is extended by subclassing, never by editing it. Each seam has a P
 |---|---|---|
 | Options tabs | `UOptionsDataRegistry` subclass → **Frontend UI Settings → Options Data Registry Class** | `UGameUIOptionsDataRegistry` adds the demo image row to the Gameplay tab |
 | Applying settings | `UFrontendGameUserSettings` subclass → `GameUserSettingsClassName` in `DefaultEngine.ini`; override `ApplyAudioSettings()`, bind `OnGameDifficultyChanged` | `UGameUIGameUserSettings` |
-| Session backend | `UFrontendSessionBackend` subclass → **Frontend Multiplayer Settings → Session Backend Class** + **Host Map** | `UFrontendSessionBackend_OSS` over the Null subsystem (`UFrontendSessionBackend_Stub` is the framework default) |
+| Session backend | `UFrontendSessionBackend` subclass → **Frontend Multiplayer Settings → Session Backend Class** + **Host Map** | `UFrontendSessionBackend_OSS` over the Null subsystem (LAN) or EOS, chosen per launch (`UFrontendSessionBackend_Stub` is the framework default) |
 | Screens | tag + `FrontendWidgetMap` entry | main menu, story, credits, logo |
 | Loading screen | `RegisterLoadingScreenHold` / `ClearLoadingScreenHold` from any system | controller holds until the first screen is pushed |
 
@@ -162,10 +163,11 @@ Each tag is a working, tested state. Pick one to see how a feature was added.
 | `v0.5-session-backend` | `FrontendMultiplayerOSS`: real host / find / join over the OnlineSubsystem (Null on LAN), subsystem-owned travel, `Scripts/LaunchInstances.bat` | `Plugins/FrontendMultiplayer/Docs/SessionBackend.md` |
 | `v0.6-lobby` | Ready-gated pre-match lobby on `AGameMode` match states, replicated countdown, lobby widgets | `Plugins/GameUI/Docs/Lobby.md` |
 | `v0.6.1` | Polish: per-module log categories, EOS SDK disabled until used, readable lobby names, demo recipe | `Docs/Demo.md` |
+| `v0.7-eos` | Epic Online Services by config: lazy sign-in with a credential chain (`Login` / `IsLoggedIn` / `OnLoginStateChanged` on the subsystem), EOS lobbies, `NetDriverEOS` P2P with IP fallback, `LaunchInstances.bat 2 EOS`; product keys stay out of git | `Docs/EOSSetup.md` |
 
 ## Roadmap
 
-- **EOS by config**: identity login in `UFrontendSessionBackend_OSS`, `OnlineSubsystemEOS` + product ids; presence/lobby flags already flip off-Null. Then AWS GameLift for dedicated servers.
+- **Dedicated servers**: Server target + Linux container, `UFrontendSessionBackend_GameLift` (or Agones) reporting `IP:port`; the EOS driver already passes IP addresses through.
 - Studio logo as `FPreLoadScreenBase` so it precedes the loading screen.
 - Reconnect flow and match-specific HUD content against the real backend.
 
