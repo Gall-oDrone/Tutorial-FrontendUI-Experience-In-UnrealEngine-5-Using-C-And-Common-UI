@@ -57,6 +57,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Frontend Multiplayer")
 	void FetchLeaderboard(ELeaderboardCategory Category = ELeaderboardCategory::Main);
 
+	/**
+	 * Sign in to the online service explicitly (e.g. from a "Sign in" button). Not required:
+	 * Host and Find sign in on demand when the backend needs it.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Frontend Multiplayer|Identity")
+	void Login();
+
+	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer|Identity")
+	bool IsLoggedIn() const;
+
+	/** The local player's display name on the service ("" for the stub / LAN or before sign-in). */
+	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer|Identity")
+	FString GetLocalPlayerDisplayName() const;
+
 	/** The backend currently servicing requests. Null only if construction failed outright. */
 	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer")
 	UFrontendSessionBackend* GetSessionBackend() const { return ActiveBackend; }
@@ -89,6 +103,7 @@ public:
 	void NotifyFindSessionsFailed(const FText& ErrorText);
 	void NotifySessionJoined(bool bSucceeded, const FString& ConnectString, const FText& ErrorText);
 	void NotifySessionLeft();
+	void NotifyLoginChanged(bool bLoggedIn, const FText& ErrorText);
 	//~ End backend result sink.
 
 	/** Fired per line as it is logged. Read GetAPIDebugLogHistory() for lines logged before subscribing. */
@@ -112,6 +127,11 @@ public:
 	DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSessionOperationChanged, EFrontendSessionOperation, Operation, bool, bInProgress);
 	UPROPERTY(BlueprintAssignable)
 	FOnSessionOperationChanged OnSessionOperationChanged;
+
+	/** Sign-in state changed. Drive a "Signed in as ..." label or enable online buttons from this. */
+	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLoginStateChanged, bool, bIsLoggedIn);
+	UPROPERTY(BlueprintAssignable)
+	FOnLoginStateChanged OnLoginStateChanged;
 
 	/** Fired after a request fails. The subsystem has already shown an Ok confirm screen with the same text. */
 	DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnSessionOperationFailed, EFrontendSessionOperation, Operation, const FText&, Title, const FText&, Message);

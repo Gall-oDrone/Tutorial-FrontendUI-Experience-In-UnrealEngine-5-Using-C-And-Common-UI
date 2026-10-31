@@ -13,6 +13,7 @@ UENUM(BlueprintType)
 enum class EFrontendSessionOperation : uint8
 {
 	None,
+	LoggingIn,
 	Creating,
 	Finding,
 	Joining,

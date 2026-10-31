@@ -138,6 +138,30 @@ void UFrontendMultiplayerSubsystem::FetchLeaderboard(ELeaderboardCategory Catego
 	}
 }
 
+void UFrontendMultiplayerSubsystem::Login()
+{
+	if (ActiveBackend && CanStartOperation(EFrontendSessionOperation::LoggingIn))
+	{
+		if (ActiveBackend->IsLoggedIn())
+		{
+			OnLoginStateChanged.Broadcast(true);
+			return;
+		}
+
+		ActiveBackend->Login();
+	}
+}
+
+bool UFrontendMultiplayerSubsystem::IsLoggedIn() const
+{
+	return ActiveBackend ? ActiveBackend->IsLoggedIn() : false;
+}
+
+FString UFrontendMultiplayerSubsystem::GetLocalPlayerDisplayName() const
+{
+	return ActiveBackend ? ActiveBackend->GetLocalPlayerDisplayName() : FString();
+}
+
 bool UFrontendMultiplayerSubsystem::GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const
 {
 	OutDisplayName.Reset();
@@ -196,6 +220,39 @@ void UFrontendMultiplayerSubsystem::NotifySessionJoined(bool bSucceeded, const F
 void UFrontendMultiplayerSubsystem::NotifySessionLeft()
 {
 	FinishOperation(EFrontendSessionOperation::Leaving);
+}
+
+void UFrontendMultiplayerSubsystem::NotifyLoginChanged(bool bLoggedIn, const FText& ErrorText)
+{
+	// Login() owns the LoggingIn operation and its modal. A sign-in started lazily by
+	// Host / Find runs inside *that* operation, which reports the failure itself, so
+	// here we only log it to avoid a second modal.
+	const bool bExplicitLogin = CurrentOperation == EFrontendSessionOperation::LoggingIn;
+
+	if (!bLoggedIn && !ErrorText.IsEmpty())
+	{
+		if (bExplicitLogin)
+		{
+			FailOperation(EFrontendSessionOperation::LoggingIn, LOCTEXT("LoginFailedTitle", "Sign-in Failed"), ErrorText);
+		}
+		else
+		{
+			BroadcastDebugLog(FString::Printf(TEXT("Sign-in failed: %s"), *ErrorText.ToString()));
+		}
+	}
+	else
+	{
+		if (bExplicitLogin)
+		{
+			FinishOperation(EFrontendSessionOperation::LoggingIn);
+		}
+
+		BroadcastDebugLog(bLoggedIn
+			? FString::Printf(TEXT("Signed in as '%s'"), *GetLocalPlayerDisplayName())
+			: FString(TEXT("Signed out")));
+	}
+
+	OnLoginStateChanged.Broadcast(bLoggedIn);
 }
 
 //~ End backend result sink
