@@ -13,6 +13,6 @@ public class FrontendMultiplayerOSS : ModuleRules
 			"Core", "CoreUObject", "Engine", "OnlineSubsystem", "FrontendMultiplayer"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "OnlineSubsystemUtils" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "OnlineSubsystemUtils", "DeveloperSettings" });
 	}
 }

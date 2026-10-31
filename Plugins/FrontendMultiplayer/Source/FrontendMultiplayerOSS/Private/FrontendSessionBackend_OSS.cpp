@@ -2,6 +2,7 @@
 
 
 #include "FrontendSessionBackend_OSS.h"
+#include "FrontendMultiplayerOSSSettings.h"
 #include "FrontendMultiplayerSettings.h"
 #include "FrontendMultiplayerSubsystem.h"
 #include "FrontendSessionListEntryData.h"
@@ -12,8 +13,11 @@
 #include "OnlineSubsystemUtils.h"
 #include "OnlineSessionSettings.h"
 #include "Online/OnlineSessionNames.h"
+#include "Interfaces/OnlineIdentityInterface.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
 #define LOCTEXT_NAMESPACE "FrontendMultiplayerOSS"
 
@@ -26,6 +30,17 @@ namespace FrontendOSS
 	{
 		return LOCTEXT("NoSessionInterface",
 			"No online session interface is available. Enable an OnlineSubsystem plugin (e.g. OnlineSubsystemNull) and set [OnlineSubsystem] DefaultPlatformService in DefaultEngine.ini.");
+	}
+
+	static FText NoIdentityInterfaceText()
+	{
+		return LOCTEXT("NoIdentityInterface",
+			"The online subsystem has no identity interface, so nobody can sign in. Check that the subsystem plugin is enabled and configured.");
+	}
+
+	static const TCHAR* BoolToString(bool bValue)
+	{
+		return bValue ? TEXT("true") : TEXT("false");
 	}
 
 	static FText DescribeJoinResult(EOnJoinSessionCompleteResult::Type Result)
@@ -97,57 +112,26 @@ void UFrontendSessionBackend_OSS::CreateSession(FName SessionName, int32 MaxPlay
 	PendingDisplayName = SessionName.ToString();
 	PendingMaxPlayers = FMath::Max(1, MaxPlayers);
 
-	IOnlineSessionPtr SessionInterface = GetSessionInterface();
-	if (!SessionInterface.IsValid())
+	if (!GetSessionInterface().IsValid())
 	{
 		ReportSessionCreated(false, FrontendOSS::NoSessionInterfaceText());
 		return;
 	}
 
-	// A session left over from a previous match would make CreateSession fail; the
-	// online service only allows one NAME_GameSession at a time.
-	if (SessionInterface->GetNamedSession(NAME_GameSession))
-	{
-		LogDebug(TEXT("[oss] A previous GameSession still exists; destroying it before hosting"));
-		DestroyStaleSessionThen(EFrontendOSSDeferredRequest::Create);
-		return;
-	}
-
-	CreateSessionNow();
+	EnsureLoggedInThen(EFrontendOSSDeferredRequest::Create);
 }
 
 void UFrontendSessionBackend_OSS::FindSessions()
 {
 	ReportOperationStarted(EFrontendSessionOperation::Finding);
 
-	IOnlineSessionPtr SessionInterface = GetSessionInterface();
-	if (!SessionInterface.IsValid())
+	if (!GetSessionInterface().IsValid())
 	{
 		ReportFindSessionsFailed(FrontendOSS::NoSessionInterfaceText());
 		return;
 	}
 
-	const UFrontendMultiplayerSettings* Settings = UFrontendMultiplayerSettings::Get();
-	const bool bLAN = IsLAN();
-
-	LastSearch = MakeShared<FOnlineSessionSearch>();
-	LastSearch->bIsLanQuery = bLAN;
-	LastSearch->MaxSearchResults = FMath::Max(1, Settings->MaxSearchResults);
-	if (!bLAN)
-	{
-		LastSearch->QuerySettings.Set(SEARCH_PRESENCE, true, EOnlineComparisonOp::Equals);
-	}
-
-	FindSessionsCompleteHandle = SessionInterface->AddOnFindSessionsCompleteDelegate_Handle(
-		FOnFindSessionsCompleteDelegate::CreateUObject(this, &ThisClass::HandleFindSessionsComplete));
-
-	LogDebug(FString::Printf(TEXT("[oss] FindSessions (LAN=%s, max=%d)"), bLAN ? TEXT("true") : TEXT("false"), LastSearch->MaxSearchResults));
-
-	if (!SessionInterface->FindSessions(0, LastSearch.ToSharedRef()))
-	{
-		SessionInterface->ClearOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteHandle);
-		ReportFindSessionsFailed(LOCTEXT("FindRejected", "The online service rejected the session search."));
-	}
+	EnsureLoggedInThen(EFrontendOSSDeferredRequest::Find);
 }
 
 void UFrontendSessionBackend_OSS::JoinSession(int32 SessionIndex)
@@ -162,21 +146,13 @@ void UFrontendSessionBackend_OSS::JoinSession(int32 SessionIndex)
 
 	PendingJoinIndex = SessionIndex;
 
-	IOnlineSessionPtr SessionInterface = GetSessionInterface();
-	if (!SessionInterface.IsValid())
+	if (!GetSessionInterface().IsValid())
 	{
 		ReportSessionJoined(false, FString(), FrontendOSS::NoSessionInterfaceText());
 		return;
 	}
 
-	if (SessionInterface->GetNamedSession(NAME_GameSession))
-	{
-		LogDebug(TEXT("[oss] A previous GameSession still exists; destroying it before joining"));
-		DestroyStaleSessionThen(EFrontendOSSDeferredRequest::Join);
-		return;
-	}
-
-	JoinSessionNow();
+	EnsureLoggedInThen(EFrontendOSSDeferredRequest::Join);
 }
 
 void UFrontendSessionBackend_OSS::LeaveSession()
@@ -228,6 +204,11 @@ IOnlineSessionPtr UFrontendSessionBackend_OSS::GetSessionInterface() const
 	return Online::GetSessionInterface(GetWorldForOnline());
 }
 
+IOnlineIdentityPtr UFrontendSessionBackend_OSS::GetIdentityInterface() const
+{
+	return Online::GetIdentityInterface(GetWorldForOnline());
+}
+
 UWorld* UFrontendSessionBackend_OSS::GetWorldForOnline() const
 {
 	const UFrontendMultiplayerSubsystem* Subsystem = GetOwningSubsystem();
@@ -246,6 +227,281 @@ bool UFrontendSessionBackend_OSS::IsLAN() const
 	// Null has no backend service, so sessions can only be found by LAN broadcast.
 	// Every other subsystem advertises through its service and uses presence/lobbies.
 	return GetSubsystemName() == NULL_SUBSYSTEM;
+}
+
+//~ Begin sign-in
+
+bool UFrontendSessionBackend_OSS::IsLoggedIn() const
+{
+	if (!RequiresLogin())
+	{
+		return true;
+	}
+
+	IOnlineIdentityPtr Identity = GetIdentityInterface();
+	return Identity.IsValid() && Identity->GetLoginStatus(0) == ELoginStatus::LoggedIn;
+}
+
+void UFrontendSessionBackend_OSS::Login()
+{
+	ReportOperationStarted(EFrontendSessionOperation::LoggingIn);
+
+	if (IsLoggedIn())
+	{
+		LogDebug(FString::Printf(TEXT("[oss] Login: already signed in on %s"), *GetSubsystemName().ToString()));
+		ReportLoginChanged(true);
+		return;
+	}
+
+	EnsureLoggedInThen(EFrontendOSSDeferredRequest::None);
+}
+
+FString UFrontendSessionBackend_OSS::GetLocalPlayerDisplayName() const
+{
+	IOnlineIdentityPtr Identity = GetIdentityInterface();
+	if (!Identity.IsValid() || Identity->GetLoginStatus(0) != ELoginStatus::LoggedIn)
+	{
+		return FString();
+	}
+
+	return Identity->GetPlayerNickname(0);
+}
+
+void UFrontendSessionBackend_OSS::EnsureLoggedInThen(EFrontendOSSDeferredRequest Request)
+{
+	if (IsLoggedIn())
+	{
+		ContinueAfterLogin(Request);
+		return;
+	}
+
+	IOnlineIdentityPtr Identity = GetIdentityInterface();
+	if (!Identity.IsValid())
+	{
+		const FText ErrorText = FrontendOSS::NoIdentityInterfaceText();
+		ReportLoginChanged(false, ErrorText);
+		FailDeferredRequest(Request, ErrorText);
+		return;
+	}
+
+	DeferredRequest = Request;
+
+	if (bLoginInFlight)
+	{
+		// The owning subsystem serialises operations, so this is only reachable if a
+		// backend caller bypasses it. Let the running sign-in pick the new request up.
+		LogDebug(TEXT("[oss] Sign-in already in progress; the new request will run when it completes"));
+		return;
+	}
+
+	// Bound once for the backend's lifetime so a sign-out (expired token, signed out
+	// elsewhere) reaches the UI even when nothing is in flight.
+	if (!LoginStatusChangedHandle.IsValid())
+	{
+		LoginStatusChangedHandle = Identity->AddOnLoginStatusChangedDelegate_Handle(0,
+			FOnLoginStatusChangedDelegate::CreateUObject(this, &ThisClass::HandleLoginStatusChanged));
+	}
+
+	bHasFallbackCredentials = false;
+	const FOnlineAccountCredentials FirstCredentials = BuildCredentials(bHasFallbackCredentials, FallbackCredentials);
+	StartLogin(FirstCredentials);
+}
+
+FOnlineAccountCredentials UFrontendSessionBackend_OSS::BuildCredentials(bool& bOutHasFallback, FOnlineAccountCredentials& OutFallback) const
+{
+	const UFrontendMultiplayerOSSSettings* Settings = UFrontendMultiplayerOSSSettings::Get();
+	bOutHasFallback = false;
+
+	// 1. Command line. This is how LaunchInstances.bat gives every window its own
+	//    Dev Auth Tool user; the same account cannot be signed in twice on EOS.
+	if (Settings->bAllowCommandLineCredentials)
+	{
+		FString Type;
+		if (FParse::Value(FCommandLine::Get(), TEXT("AUTH_TYPE="), Type) && !Type.IsEmpty())
+		{
+			FString Id;
+			FString Token;
+			FParse::Value(FCommandLine::Get(), TEXT("AUTH_LOGIN="), Id);
+			FParse::Value(FCommandLine::Get(), TEXT("AUTH_PASSWORD="), Token);
+			return FOnlineAccountCredentials(Type, Id, Token);
+		}
+	}
+
+	const FOnlineAccountCredentials Configured(Settings->CredentialType, Settings->LoginId, Settings->LoginToken);
+
+	// 2. A refresh token cached by an earlier interactive sign-in on this machine, so
+	//    the player is not sent to the browser every launch. Falls back to 3 on failure.
+	if (Settings->bTryPersistentAuthFirst && !Settings->CredentialType.Equals(TEXT("persistentauth"), ESearchCase::IgnoreCase))
+	{
+		bOutHasFallback = true;
+		OutFallback = Configured;
+		return FOnlineAccountCredentials(TEXT("persistentauth"), FString(), FString());
+	}
+
+	// 3. Project Settings > Game > Frontend Multiplayer OSS.
+	return Configured;
+}
+
+void UFrontendSessionBackend_OSS::StartLogin(const FOnlineAccountCredentials& Credentials)
+{
+	IOnlineIdentityPtr Identity = GetIdentityInterface();
+	if (!Identity.IsValid())
+	{
+		bLoginInFlight = true;
+		FinishLogin(false, TEXT("No identity interface"));
+		return;
+	}
+
+	CurrentCredentialType = Credentials.Type;
+	bLoginInFlight = true;
+	const int32 AttemptSerial = ++LoginAttemptSerial;
+
+	LoginCompleteHandle = Identity->AddOnLoginCompleteDelegate_Handle(0,
+		FOnLoginCompleteDelegate::CreateUObject(this, &ThisClass::HandleLoginComplete));
+
+	LogDebug(FString::Printf(TEXT("[oss] Login(%s) on %s%s"),
+		*CurrentCredentialType, *GetSubsystemName().ToString(),
+		bHasFallbackCredentials ? *FString::Printf(TEXT(", then %s if that fails"), *FallbackCredentials.Type) : TEXT("")));
+
+	// Some subsystems fire OnLoginComplete synchronously (and may already have moved on
+	// to the fallback attempt) before returning false; only report a rejection that
+	// produced no callback for *this* attempt.
+	if (!Identity->Login(0, Credentials) && bLoginInFlight && LoginAttemptSerial == AttemptSerial)
+	{
+		FinishLogin(false, TEXT("The login request was rejected"));
+	}
+}
+
+void UFrontendSessionBackend_OSS::HandleLoginComplete(int32 LocalUserNum, bool bWasSuccessful, const FUniqueNetId& UserId, const FString& Error)
+{
+	if (LocalUserNum != 0)
+	{
+		return;
+	}
+
+	FinishLogin(bWasSuccessful, Error);
+}
+
+void UFrontendSessionBackend_OSS::FinishLogin(bool bWasSuccessful, const FString& Error)
+{
+	if (!bLoginInFlight)
+	{
+		return;
+	}
+	bLoginInFlight = false;
+
+	if (IOnlineIdentityPtr Identity = GetIdentityInterface())
+	{
+		Identity->ClearOnLoginCompleteDelegate_Handle(0, LoginCompleteHandle);
+	}
+	LoginCompleteHandle.Reset();
+
+	LogDebug(FString::Printf(TEXT("[oss] OnLoginComplete (%s) -> %s%s%s"),
+		*CurrentCredentialType, bWasSuccessful ? TEXT("OK") : TEXT("FAILED"),
+		Error.IsEmpty() ? TEXT("") : TEXT(": "), *Error));
+
+	if (!bWasSuccessful && bHasFallbackCredentials)
+	{
+		bHasFallbackCredentials = false;
+		StartLogin(FallbackCredentials);
+		return;
+	}
+
+	const EFrontendOSSDeferredRequest Request = DeferredRequest;
+	DeferredRequest = EFrontendOSSDeferredRequest::None;
+
+	if (bWasSuccessful)
+	{
+		LogDebug(FString::Printf(TEXT("[oss] Signed in as '%s'"), *GetLocalPlayerDisplayName()));
+		ReportLoginChanged(true);
+		ContinueAfterLogin(Request);
+		return;
+	}
+
+	const FText ErrorText = FText::Format(
+		LOCTEXT("LoginFailed", "Could not sign in to {0} ({1}): {2}"),
+		FText::FromName(GetSubsystemName()),
+		FText::FromString(CurrentCredentialType),
+		FText::FromString(Error.IsEmpty() ? FString(TEXT("unknown error")) : Error));
+
+	ReportLoginChanged(false, ErrorText);
+	FailDeferredRequest(Request, ErrorText);
+}
+
+void UFrontendSessionBackend_OSS::ContinueAfterLogin(EFrontendOSSDeferredRequest Request)
+{
+	switch (Request)
+	{
+	case EFrontendOSSDeferredRequest::Create:
+		CreateSessionAfterLogin();
+		break;
+
+	case EFrontendOSSDeferredRequest::Find:
+		FindSessionsNow();
+		break;
+
+	case EFrontendOSSDeferredRequest::Join:
+		JoinSessionAfterLogin();
+		break;
+
+	default:
+		// Explicit Login(): ReportLoginChanged has already closed the operation.
+		break;
+	}
+}
+
+void UFrontendSessionBackend_OSS::FailDeferredRequest(EFrontendOSSDeferredRequest Request, const FText& ErrorText)
+{
+	switch (Request)
+	{
+	case EFrontendOSSDeferredRequest::Create:
+		ReportSessionCreated(false, ErrorText);
+		break;
+
+	case EFrontendOSSDeferredRequest::Find:
+		ReportFindSessionsFailed(ErrorText);
+		break;
+
+	case EFrontendOSSDeferredRequest::Join:
+		ReportSessionJoined(false, FString(), ErrorText);
+		break;
+
+	default:
+		break;
+	}
+}
+
+void UFrontendSessionBackend_OSS::HandleLoginStatusChanged(int32 LocalUserNum, ELoginStatus::Type OldStatus, ELoginStatus::Type NewStatus, const FUniqueNetId& NewId)
+{
+	if (LocalUserNum != 0)
+	{
+		return;
+	}
+
+	LogDebug(FString::Printf(TEXT("[oss] OnLoginStatusChanged %s -> %s"), ELoginStatus::ToString(OldStatus), ELoginStatus::ToString(NewStatus)));
+
+	// A completed sign-in is reported from FinishLogin; only sign-outs are surfaced here.
+	if (OldStatus == ELoginStatus::LoggedIn && NewStatus != ELoginStatus::LoggedIn && !bLoginInFlight)
+	{
+		ReportLoginChanged(false);
+	}
+}
+
+//~ End sign-in
+
+void UFrontendSessionBackend_OSS::CreateSessionAfterLogin()
+{
+	// A session left over from a previous match would make CreateSession fail; the
+	// online service only allows one NAME_GameSession at a time.
+	IOnlineSessionPtr SessionInterface = GetSessionInterface();
+	if (SessionInterface.IsValid() && SessionInterface->GetNamedSession(NAME_GameSession))
+	{
+		LogDebug(TEXT("[oss] A previous GameSession still exists; destroying it before hosting"));
+		DestroyStaleSessionThen(EFrontendOSSDeferredRequest::Create);
+		return;
+	}
+
+	CreateSessionNow();
 }
 
 void UFrontendSessionBackend_OSS::CreateSessionNow()
@@ -287,6 +543,55 @@ void UFrontendSessionBackend_OSS::CreateSessionNow()
 		SessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteHandle);
 		ReportSessionCreated(false, LOCTEXT("CreateRejected", "The online service rejected the session request."));
 	}
+}
+
+void UFrontendSessionBackend_OSS::FindSessionsNow()
+{
+	IOnlineSessionPtr SessionInterface = GetSessionInterface();
+	if (!SessionInterface.IsValid())
+	{
+		ReportFindSessionsFailed(FrontendOSS::NoSessionInterfaceText());
+		return;
+	}
+
+	const UFrontendMultiplayerSettings* Settings = UFrontendMultiplayerSettings::Get();
+	const bool bLAN = IsLAN();
+
+	LastSearch = MakeShared<FOnlineSessionSearch>();
+	LastSearch->bIsLanQuery = bLAN;
+	LastSearch->MaxSearchResults = FMath::Max(1, Settings->MaxSearchResults);
+	if (!bLAN)
+	{
+		// The host sets bUseLobbiesIfAvailable, so on EOS the match is a lobby, and EOS
+		// only returns lobbies when the search asks for them. Steam ignores the key.
+		LastSearch->QuerySettings.Set(SEARCH_PRESENCE, true, EOnlineComparisonOp::Equals);
+		LastSearch->QuerySettings.Set(SEARCH_LOBBIES, true, EOnlineComparisonOp::Equals);
+	}
+
+	FindSessionsCompleteHandle = SessionInterface->AddOnFindSessionsCompleteDelegate_Handle(
+		FOnFindSessionsCompleteDelegate::CreateUObject(this, &ThisClass::HandleFindSessionsComplete));
+
+	LogDebug(FString::Printf(TEXT("[oss] FindSessions (LAN=%s, lobbies=%s, max=%d)"),
+		FrontendOSS::BoolToString(bLAN), FrontendOSS::BoolToString(!bLAN), LastSearch->MaxSearchResults));
+
+	if (!SessionInterface->FindSessions(0, LastSearch.ToSharedRef()))
+	{
+		SessionInterface->ClearOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteHandle);
+		ReportFindSessionsFailed(LOCTEXT("FindRejected", "The online service rejected the session search."));
+	}
+}
+
+void UFrontendSessionBackend_OSS::JoinSessionAfterLogin()
+{
+	IOnlineSessionPtr SessionInterface = GetSessionInterface();
+	if (SessionInterface.IsValid() && SessionInterface->GetNamedSession(NAME_GameSession))
+	{
+		LogDebug(TEXT("[oss] A previous GameSession still exists; destroying it before joining"));
+		DestroyStaleSessionThen(EFrontendOSSDeferredRequest::Join);
+		return;
+	}
+
+	JoinSessionNow();
 }
 
 void UFrontendSessionBackend_OSS::JoinSessionNow()
@@ -339,16 +644,23 @@ void UFrontendSessionBackend_OSS::DestroyStaleSessionThen(EFrontendOSSDeferredRe
 
 void UFrontendSessionBackend_OSS::ClearDelegateHandles()
 {
-	IOnlineSessionPtr SessionInterface = GetSessionInterface();
-	if (!SessionInterface.IsValid())
+	if (IOnlineSessionPtr SessionInterface = GetSessionInterface())
 	{
-		return;
+		SessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteHandle);
+		SessionInterface->ClearOnStartSessionCompleteDelegate_Handle(StartSessionCompleteHandle);
+		SessionInterface->ClearOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteHandle);
+		SessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteHandle);
 	}
 
-	SessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteHandle);
-	SessionInterface->ClearOnStartSessionCompleteDelegate_Handle(StartSessionCompleteHandle);
-	SessionInterface->ClearOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteHandle);
-	SessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteHandle);
+	if (IOnlineIdentityPtr Identity = GetIdentityInterface())
+	{
+		Identity->ClearOnLoginCompleteDelegate_Handle(0, LoginCompleteHandle);
+		Identity->ClearOnLoginStatusChangedDelegate_Handle(0, LoginStatusChangedHandle);
+	}
+
+	bLoginInFlight = false;
+	LoginCompleteHandle.Reset();
+	LoginStatusChangedHandle.Reset();
 }
 
 //~ Begin IOnlineSession completion handlers
