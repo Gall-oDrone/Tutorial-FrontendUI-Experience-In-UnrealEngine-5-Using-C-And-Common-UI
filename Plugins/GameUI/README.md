@@ -43,15 +43,9 @@ Both are opt-in so the project behaves identically until you flip them.
   Takes effect after an editor restart. Saved `GameUserSettings.ini` values start from
   defaults once after the switch.
 
-## Moving content in (Phase 1 of the plugin split)
+## Scratch assets
 
-Do every move in the **Content Browser**, then right-click the source folder →
-**Fix Up Redirectors**, then commit. Never move `.uasset` files with git or Explorer.
+`Content/Developers/` is excluded from cooking (`DirectoriesToNeverCook` in `DefaultGame.ini`).
+Put test widgets and throwaway maps there (`WBP_CAW_Test` lives there) so they never ship.
 
-1. `UI/Input/IA_*`, `IMC_Default` → `GameUI/Content/Input`
-2. `T_StudioLogo`, `WBP_CAW_LogoScreen` → `GameUI/Content/Brand`
-   (startup movies **stay** in `Content/Movies` — MoviePlayer only reads that folder)
-3. `WBP_CAW_MainMenu`, `WBP_CAW_StoryScreen`, `WBP_CAW_CreditScreen` → `GameUI/Content/UI/Screens`
-4. `BP_FrontendController`, `BP_FrontendGameMode`, `WBP_CUW_PrimaryLayout` → `GameUI/Content/Core`
-5. Update `Config/DefaultGame.ini` `FrontendWidgetMap` paths (`/FrontendUI/...` → `/GameUI/...`)
-   and `DefaultEngine.ini` GameMode / startup-movie references. PIE after every step.
+How the content was originally moved into this plugin is recorded in `Docs/History.md`.

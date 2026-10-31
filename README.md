@@ -28,7 +28,7 @@ The demo project additionally enables `MediaMovieStreamer` for the startup movie
 FrontendUI.uproject
 Config/                              Project settings that drive the plugins
 Content/
-  Maps/FrontEndTestMap               The level you launch
+  Maps/FrontEndTestMap, L_MatchTest  Frontend map and the match map the lobby/HUD run in
   Movies/                            Startup and loading movies (must stay under Content/)
   Assets/                            LevelVisuals (mannequins), non-UI art
 Plugins/
@@ -43,11 +43,20 @@ Plugins/
     Docs/WidgetDesignTemplate.md     Authoring spec for the multiplayer Blueprints
     Docs/SessionBackend.md           Backend contract, OSS setup, LAN test plan
   GameUI/                            This game's UI layer
-    Source/GameUI/Settings/          UGameUIOptionsDataRegistry, UGameUIGameUserSettings
-    Content/Core/                    BP_FrontendController, BP_FrontendGameMode, WBP_CUW_PrimaryLayout
-    Content/UI/Screens/              Main Menu, Story, Credits
+    Source/GameUI/Settings/          UGameUIOptionsDataRegistry, UGameUIGameUserSettings, UGameUIDeveloperSettings
+    Source/GameUI/GameModes/         AGameUIMatchGameMode / GameState / PlayerState (lobby + match)
+    Source/GameUI/Controllers/       AGameUIMatchPlayerController
+    Source/GameUI/Widgets/           HUD base, pause menu, lobby screen and row
+    Content/Core/                    BP_FrontendController, BP_FrontendGameMode, BP_MatchGameMode, WBP_CUW_PrimaryLayout
+    Content/UI/Screens/              Main Menu, Story, Credits, HUD, Pause Menu, Lobby/
     Content/Brand/                   Studio logo screen and texture
-    Content/Input/                   IMC_Default, IA_*
+    Content/Input/                   IMC_Default, IMC_Match, IA_*, DT_GameUIInputActions
+    Content/Developers/              Scratch assets, never cooked
+    Docs/InGameUI.md                 Pause menu + HUD authoring spec
+    Docs/Lobby.md                    Pre-match lobby authoring spec
+    Docs/History.md                  How content was moved in during the split
+Docs/Demo.md                         Recording the demo video
+Scripts/LaunchInstances.bat          N game instances for LAN testing
 ```
 
 ## Architecture overview
@@ -142,11 +151,23 @@ Set these through the UI rather than pasting ini lines; the editor writes them c
 
 Subclass `UOptionsDataRegistry` and `UFrontendGameUserSettings` in your game module and point the two settings in the table above at them. See `Plugins/GameUI/README.md` for the pattern and `Plugins/GameUI/Source/GameUI/Settings/` for the code.
 
+## Releases
+
+Each tag is a working, tested state. Pick one to see how a feature was added.
+
+| Tag | Adds | Read |
+|---|---|---|
+| `v0.3-plugin-split` | Three-plugin split; `FrontendUI` proven standalone in a blank project; loading-screen holds; session backend seam with a stub | `Plugins/GameUI/README.md`, `Plugins/FrontendMultiplayer/Docs/WidgetDesignTemplate.md` |
+| `v0.4-in-game-ui` | Match player controller / game mode, HUD, pause menu, return-to-frontend and network-failure recovery | `Plugins/GameUI/Docs/InGameUI.md` |
+| `v0.5-session-backend` | `FrontendMultiplayerOSS`: real host / find / join over the OnlineSubsystem (Null on LAN), subsystem-owned travel, `Scripts/LaunchInstances.bat` | `Plugins/FrontendMultiplayer/Docs/SessionBackend.md` |
+| `v0.6-lobby` | Ready-gated pre-match lobby on `AGameMode` match states, replicated countdown, lobby widgets | `Plugins/GameUI/Docs/Lobby.md` |
+| `v0.6.1` | Polish: per-module log categories, EOS SDK disabled until used, readable lobby names, demo recipe | `Docs/Demo.md` |
+
 ## Roadmap
 
-- Real sessions are in: `UFrontendSessionBackend_OSS` hosts, finds and joins over the Null subsystem on LAN (`Plugins/FrontendMultiplayer/Docs/SessionBackend.md`). Next: EOS login + config, then AWS GameLift for dedicated-server hosting and session placement, selected purely from Project Settings.
-- Studio logo as a startup movie or `FPreLoadScreenBase` so it precedes the loading screen.
-- Pause menu, HUD and a ready-gated pre-match lobby are in (`Plugins/GameUI/Docs/InGameUI.md`, `Docs/Lobby.md`); next is a reconnect flow against the real backend.
+- **EOS by config**: identity login in `UFrontendSessionBackend_OSS`, `OnlineSubsystemEOS` + product ids; presence/lobby flags already flip off-Null. Then AWS GameLift for dedicated servers.
+- Studio logo as `FPreLoadScreenBase` so it precedes the loading screen.
+- Reconnect flow and match-specific HUD content against the real backend.
 
 ## License
 
