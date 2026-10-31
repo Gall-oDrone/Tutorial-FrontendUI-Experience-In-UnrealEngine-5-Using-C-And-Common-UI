@@ -2,6 +2,7 @@
 
 
 #include "FrontendMultiplayerSubsystem.h"
+#include "FrontendMultiplayerLog.h"
 #include "FrontendMultiplayerSettings.h"
 #include "Backends/FrontendSessionBackend.h"
 #include "Backends/FrontendSessionBackend_Stub.h"
@@ -58,7 +59,7 @@ void UFrontendMultiplayerSubsystem::CreateSessionBackend()
 	{
 		if (!Settings->SessionBackendClass.IsNull())
 		{
-			UE_LOG(LogTemp, Warning, TEXT("FrontendMultiplayer: Session Backend Class '%s' could not be loaded; falling back to the stub backend."),
+			UE_LOG(LogFrontendMultiplayer, Warning, TEXT("Session Backend Class '%s' could not be loaded; falling back to the stub backend."),
 				*Settings->SessionBackendClass.ToString());
 		}
 
@@ -73,7 +74,7 @@ void UFrontendMultiplayerSubsystem::CreateSessionBackend()
 
 void UFrontendMultiplayerSubsystem::BroadcastDebugLog(const FString& LogLine)
 {
-	UE_LOG(LogTemp, Log, TEXT("%s"), *LogLine);
+	UE_LOG(LogFrontendMultiplayer, Log, TEXT("%s"), *LogLine);
 
 	const FString StampedLine = FString::Printf(TEXT("[%s] %s"), *FDateTime::Now().ToString(TEXT("%H:%M:%S")), *LogLine);
 

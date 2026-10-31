@@ -2,6 +2,7 @@
 
 
 #include "Subsystems/GameUIFlowSubsystem.h"
+#include "GameUILog.h"
 #include "Settings/GameUIDeveloperSettings.h"
 #include "Subsystems/FrontendUISubsystem.h"
 #include "FrontendMultiplayerSubsystem.h"
@@ -52,14 +53,14 @@ void UGameUIFlowSubsystem::ReturnToFrontend()
 
 	if (Settings->FrontendMap.IsNull())
 	{
-		UE_LOG(LogTemp, Error, TEXT("GameUI: Game UI Settings -> Maps -> Frontend Map is not set; cannot return to the frontend."));
+		UE_LOG(LogGameUI, Error, TEXT("Game UI Settings -> Maps -> Frontend Map is not set; cannot return to the frontend."));
 		return;
 	}
 
 	APlayerController* PC = GetGameInstance() ? GetGameInstance()->GetFirstLocalPlayerController() : nullptr;
 	if (!PC)
 	{
-		UE_LOG(LogTemp, Error, TEXT("GameUI: no local player controller to travel with."));
+		UE_LOG(LogGameUI, Error, TEXT("no local player controller to travel with."));
 		return;
 	}
 
@@ -107,7 +108,7 @@ void UGameUIFlowSubsystem::HandleNetworkFailure(UWorld* World, UNetDriver* NetDr
 		return;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("GameUI: network failure %s - %s. Returning to the frontend."), ENetworkFailure::ToString(FailureType), *ErrorString);
+	UE_LOG(LogGameUI, Warning, TEXT("network failure %s - %s. Returning to the frontend."), ENetworkFailure::ToString(FailureType), *ErrorString);
 
 	const FText Message = ErrorString.IsEmpty()
 		? FText::FromString(ENetworkFailure::ToString(FailureType))
@@ -123,7 +124,7 @@ void UGameUIFlowSubsystem::HandleTravelFailure(UWorld* World, ETravelFailure::Ty
 		return;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("GameUI: travel failure %s - %s. Returning to the frontend."), ETravelFailure::ToString(FailureType), *ErrorString);
+	UE_LOG(LogGameUI, Warning, TEXT("travel failure %s - %s. Returning to the frontend."), ETravelFailure::ToString(FailureType), *ErrorString);
 
 	const FText Message = ErrorString.IsEmpty()
 		? FText::FromString(ETravelFailure::ToString(FailureType))

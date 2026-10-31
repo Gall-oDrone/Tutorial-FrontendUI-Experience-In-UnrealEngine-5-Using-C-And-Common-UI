@@ -2,6 +2,7 @@
 
 
 #include "FrontendFunctionLibrary.h"
+#include "FrontendUILog.h"
 #include "FrontendSettings/FrontendDeveloperSettings.h"
 
 TSoftClassPtr<UWidget_ActivatableBase> UFrontendFunctionLibrary::GetFrontendSoftWidgetClassByTag(UPARAM(meta = (Categories = "Frontend.Widget")) FGameplayTag InWidgetTag)
@@ -25,7 +26,7 @@ TSoftObjectPtr<UTexture2D> UFrontendFunctionLibrary::GetOptionsSoftImageByTag(FG
 		return *FoundImage;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("FrontendUI: no image mapped to tag %s in Frontend UI Settings -> Options Image Reference."), *InImageTag.ToString());
+	UE_LOG(LogFrontendUI, Warning, TEXT("no image mapped to tag %s in Frontend UI Settings -> Options Image Reference."), *InImageTag.ToString());
 	return TSoftObjectPtr<UTexture2D>();
 }
 
