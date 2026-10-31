@@ -72,6 +72,24 @@ FString UFrontendSessionBackend_OSS::GetBackendDisplayName() const
 	return FString::Printf(TEXT("OnlineSubsystem (%s)"), *GetSubsystemName().ToString());
 }
 
+bool UFrontendSessionBackend_OSS::GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const
+{
+	IOnlineSessionPtr SessionInterface = GetSessionInterface();
+	const FNamedOnlineSession* NamedSession = SessionInterface.IsValid() ? SessionInterface->GetNamedSession(NAME_GameSession) : nullptr;
+	if (!NamedSession)
+	{
+		return false;
+	}
+
+	if (!NamedSession->SessionSettings.Get(FrontendOSS::SettingKey_DisplayName, OutDisplayName) || OutDisplayName.IsEmpty())
+	{
+		OutDisplayName = NamedSession->OwningUserName;
+	}
+
+	OutMaxPlayers = NamedSession->SessionSettings.NumPublicConnections;
+	return true;
+}
+
 void UFrontendSessionBackend_OSS::CreateSession(FName SessionName, int32 MaxPlayers)
 {
 	ReportOperationStarted(EFrontendSessionOperation::Creating);

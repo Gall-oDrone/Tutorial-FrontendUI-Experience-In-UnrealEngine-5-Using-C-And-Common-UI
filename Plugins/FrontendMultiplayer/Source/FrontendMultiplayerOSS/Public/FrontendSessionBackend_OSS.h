@@ -44,6 +44,7 @@ public:
 	virtual void LeaveSession() override;
 	virtual void FetchLeaderboard(ELeaderboardCategory Category) override;
 	virtual FString GetBackendDisplayName() const override;
+	virtual bool GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const override;
 	//~ End UFrontendSessionBackend Interface
 
 private:

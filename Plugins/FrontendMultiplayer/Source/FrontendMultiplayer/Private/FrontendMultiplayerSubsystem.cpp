@@ -137,6 +137,14 @@ void UFrontendMultiplayerSubsystem::FetchLeaderboard(ELeaderboardCategory Catego
 	}
 }
 
+bool UFrontendMultiplayerSubsystem::GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const
+{
+	OutDisplayName.Reset();
+	OutMaxPlayers = 0;
+
+	return ActiveBackend ? ActiveBackend->GetActiveSessionInfo(OutDisplayName, OutMaxPlayers) : false;
+}
+
 //~ End UI requests
 
 //~ Begin backend result sink

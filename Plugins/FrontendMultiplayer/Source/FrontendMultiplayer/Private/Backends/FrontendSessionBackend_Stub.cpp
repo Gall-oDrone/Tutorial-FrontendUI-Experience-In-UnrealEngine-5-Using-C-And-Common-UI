@@ -17,6 +17,9 @@ void UFrontendSessionBackend_Stub::CreateSession(FName SessionName, int32 MaxPla
 		*SessionName.ToString(),
 		MaxPlayers));
 
+	SimulatedSessionName = SessionName.ToString();
+	SimulatedMaxPlayers = FMath::Max(1, MaxPlayers);
+
 	LogDebug(TEXT("[stub] Session created (simulated); travelling to Host Map as listen server"));
 	ReportSessionCreated(true);
 }
@@ -45,7 +48,21 @@ void UFrontendSessionBackend_Stub::JoinSession(int32 SessionIndex)
 
 void UFrontendSessionBackend_Stub::LeaveSession()
 {
-	LogDebug(TEXT("[stub] LeaveSession() called; no session to leave"));
+	LogDebug(TEXT("[stub] LeaveSession() called; clearing the simulated session"));
+	SimulatedSessionName.Reset();
+	SimulatedMaxPlayers = 0;
+}
+
+bool UFrontendSessionBackend_Stub::GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const
+{
+	if (SimulatedSessionName.IsEmpty())
+	{
+		return false;
+	}
+
+	OutDisplayName = SimulatedSessionName;
+	OutMaxPlayers = SimulatedMaxPlayers;
+	return true;
 }
 
 void UFrontendSessionBackend_Stub::FetchLeaderboard(ELeaderboardCategory Category)

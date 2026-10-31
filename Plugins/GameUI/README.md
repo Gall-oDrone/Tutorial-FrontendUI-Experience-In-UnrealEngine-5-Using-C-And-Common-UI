@@ -17,15 +17,15 @@ never reference anything in this plugin.
 | Folder | Contents |
 |---|---|
 | `Content/Core` | `BP_FrontendController`, `BP_FrontendGameMode`, `WBP_CUW_PrimaryLayout` |
-| `Content/UI/Screens` | `WBP_CAW_MainMenu`, `WBP_CAW_StoryScreen`, `WBP_CAW_CreditScreen`, future pause menu / HUD |
+| `Content/UI/Screens` | `WBP_CAW_MainMenu`, `WBP_CAW_StoryScreen`, `WBP_CAW_CreditScreen`, `WBP_HUD`, `WBP_CAW_PauseMenu`, `WBP_CAW_LobbyScreen`, `WBP_ListEntry_LobbyPlayer` |
 | `Content/Brand` | `T_StudioLogo`, `WBP_CAW_LogoScreen`, startup movies |
 | `Content/Input` | `IMC_Default`, `IA_*` |
 | `Source/GameUI/Settings` | `UGameUIOptionsDataRegistry`, `UGameUIGameUserSettings`, `UGameUIDeveloperSettings` |
-| `Source/GameUI/Controllers`, `GameModes` | `AGameUIMatchPlayerController`, `AGameUIMatchGameMode` (gameplay maps) |
-| `Source/GameUI/Widgets` | `UWidget_HUDBase`, `UWidget_PauseMenu` |
+| `Source/GameUI/Controllers`, `GameModes` | `AGameUIMatchPlayerController`, `AGameUIMatchGameMode` (AGameMode: WaitingToStart = lobby), `AGameUIMatchGameState`, `AGameUIMatchPlayerState` |
+| `Source/GameUI/Widgets` | `UWidget_HUDBase`, `UWidget_PauseMenu`, `UWidget_LobbyScreen`, `UWidget_ListEntry_LobbyPlayer` |
 | `Source/GameUI/Subsystems` | `UGameUIFlowSubsystem` (return to frontend, network-failure recovery) |
-| `Source/GameUI/Backends` | (later) OnlineSubsystem / GameLift `UFrontendSessionBackend` implementations |
 | `Docs/InGameUI.md` | Authoring spec for `WBP_HUD`, `WBP_CAW_PauseMenu`, settings and test checklist |
+| `Docs/Lobby.md` | Authoring spec for the pre-match lobby, settings and test checklist |
 
 ## Activating the C++ extension points
 

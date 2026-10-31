@@ -24,6 +24,10 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Game UI|HUD")
 	void BP_OnPauseMenuVisibilityChanged(bool bIsPauseMenuOpen);
 
+	/** Session name and occupancy, sent on arrival and whenever a player joins or leaves. MaxPlayers is 0 if unknown. */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Game UI|HUD")
+	void BP_OnMatchInfoChanged(const FText& SessionName, int32 CurrentPlayers, int32 MaxPlayers);
+
 protected:
 	//~ Begin UCommonActivatableWidget Interface
 	virtual TOptional<FUIInputConfig> GetDesiredInputConfig() const override;

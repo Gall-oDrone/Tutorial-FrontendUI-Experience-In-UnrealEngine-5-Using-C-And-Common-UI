@@ -60,7 +60,23 @@ void UFrontendUISubsystem::PushSoftWidgetToStackAsync(const FGameplayTag& InWidg
 			{
 				UClass* LoadedWidgetClass = InSoftWidgetClass.Get();
 
-				check(LoadedWidgetClass && CreatedPrimaryLayout);
+				// Configuration slips must not take the game down. Both failures below are
+				// loud (ensure = callstack + log) but recoverable: the push is simply skipped.
+				if (!ensureAlwaysMsgf(LoadedWidgetClass,
+					TEXT("FrontendUI: widget class '%s' did not load. Check its FrontendWidgetMap entry (Project Settings -> Game -> Frontend UI Settings): ")
+					TEXT("the asset must exist at exactly that path and be saved to disk - standalone / -game instances cannot see unsaved assets."),
+					*InSoftWidgetClass.ToString()))
+				{
+					return;
+				}
+
+				if (!ensureAlwaysMsgf(CreatedPrimaryLayout,
+					TEXT("FrontendUI: no primary layout is registered while pushing '%s'. The owning player controller must create its Widget_PrimaryLayout ")
+					TEXT("and call RegisterCreatedPrimaryLayout before anything is pushed."),
+					*LoadedWidgetClass->GetName()))
+				{
+					return;
+				}
 
 				UCommonActivatableWidgetContainerBase* FoundWidgetStack = CreatedPrimaryLayout->FindWidgetStackByTag(InWidgetStackTag);
 

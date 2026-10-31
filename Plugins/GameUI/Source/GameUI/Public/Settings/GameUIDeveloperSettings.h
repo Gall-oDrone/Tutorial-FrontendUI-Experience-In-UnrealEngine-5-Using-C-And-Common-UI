@@ -46,4 +46,20 @@ public:
 	/** Pause the world while the pause menu is open. Only takes effect where the local player has authority (single player / listen host). */
 	UPROPERTY(Config, EditAnywhere, Category = "Pause Menu")
 	bool bPauseGameWhileMenuOpen = true;
+
+	/** Hold players in a lobby (WaitingToStart) until the host starts the match. Off = spawn on arrival, as before. */
+	UPROPERTY(Config, EditAnywhere, Category = "Lobby")
+	bool bUseLobby = true;
+
+	/** The host cannot start with fewer connected players than this. */
+	UPROPERTY(Config, EditAnywhere, Category = "Lobby", meta = (EditCondition = "bUseLobby", ClampMin = "1", UIMin = "1", UIMax = "16"))
+	int32 MinPlayersToStart = 1;
+
+	/** Seconds between Start and the match beginning. Any player un-readying cancels it. 0 starts immediately. */
+	UPROPERTY(Config, EditAnywhere, Category = "Lobby", meta = (EditCondition = "bUseLobby", ClampMin = "0", UIMin = "0", UIMax = "30"))
+	float StartCountdownSeconds = 3.f;
+
+	/** When there is no host player (dedicated server), start automatically once everyone is ready. Listen hosts still press Start. */
+	UPROPERTY(Config, EditAnywhere, Category = "Lobby", meta = (EditCondition = "bUseLobby"))
+	bool bAutoStartWhenAllReady = false;
 };

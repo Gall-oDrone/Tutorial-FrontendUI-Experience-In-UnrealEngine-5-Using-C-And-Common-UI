@@ -64,6 +64,12 @@ public:
 	/** Shown in the API debug log when the backend is created. */
 	virtual FString GetBackendDisplayName() const { return GetClass()->GetName(); }
 
+	/**
+	 * Describe the session this player currently hosts or has joined, for in-match UI
+	 * (lobby title, player count). Return false if there is none.
+	 */
+	virtual bool GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const { return false; }
+
 protected:
 	UFrontendMultiplayerSubsystem* GetOwningSubsystem() const { return OwningSubsystem.Get(); }
 
