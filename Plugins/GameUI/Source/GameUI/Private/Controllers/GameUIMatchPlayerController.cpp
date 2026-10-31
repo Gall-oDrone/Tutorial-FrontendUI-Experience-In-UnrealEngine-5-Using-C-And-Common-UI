@@ -2,6 +2,7 @@
 
 
 #include "Controllers/GameUIMatchPlayerController.h"
+#include "GameUILog.h"
 #include "GameUIGameplayTags.h"
 #include "Settings/GameUIDeveloperSettings.h"
 #include "GameModes/GameUIMatchGameMode.h"
@@ -86,14 +87,14 @@ void AGameUIMatchPlayerController::SetupInputComponent()
 	UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(InputComponent);
 	if (!EnhancedInputComponent)
 	{
-		UE_LOG(LogTemp, Error, TEXT("GameUI: input component is not UEnhancedInputComponent. Set DefaultInputComponentClass in DefaultInput.ini."));
+		UE_LOG(LogGameUI, Error, TEXT("input component is not UEnhancedInputComponent. Set DefaultInputComponentClass in DefaultInput.ini."));
 		return;
 	}
 
 	const UGameUIDeveloperSettings* Settings = UGameUIDeveloperSettings::Get();
 	if (Settings->PauseAction.IsNull())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("GameUI: Game UI Settings -> Pause Menu -> Pause Action is not set; the pause menu can only be opened from code or Blueprint."));
+		UE_LOG(LogGameUI, Warning, TEXT("Game UI Settings -> Pause Menu -> Pause Action is not set; the pause menu can only be opened from code or Blueprint."));
 		return;
 	}
 
@@ -126,14 +127,14 @@ void AGameUIMatchPlayerController::CreatePrimaryLayout()
 	const UGameUIDeveloperSettings* Settings = UGameUIDeveloperSettings::Get();
 	if (Settings->MatchPrimaryLayoutClass.IsNull())
 	{
-		UE_LOG(LogTemp, Error, TEXT("GameUI: Game UI Settings -> Match -> Match Primary Layout Class is not set; no in-match UI will be created."));
+		UE_LOG(LogGameUI, Error, TEXT("Game UI Settings -> Match -> Match Primary Layout Class is not set; no in-match UI will be created."));
 		return;
 	}
 
 	UClass* LayoutClass = Settings->MatchPrimaryLayoutClass.LoadSynchronous();
 	if (!LayoutClass)
 	{
-		UE_LOG(LogTemp, Error, TEXT("GameUI: Match Primary Layout Class failed to load."));
+		UE_LOG(LogGameUI, Error, TEXT("Match Primary Layout Class failed to load."));
 		return;
 	}
 
@@ -205,7 +206,7 @@ void AGameUIMatchPlayerController::PushHUD()
 
 void AGameUIMatchPlayerController::OnPauseActionTriggered()
 {
-	UE_LOG(LogTemp, Verbose, TEXT("GameUI: pause action triggered (menu open=%d, world paused=%d)"), bIsPauseMenuOpen ? 1 : 0, IsPaused() ? 1 : 0);
+	UE_LOG(LogGameUI, Verbose, TEXT("pause action triggered (menu open=%d, world paused=%d)"), bIsPauseMenuOpen ? 1 : 0, IsPaused() ? 1 : 0);
 
 	// Only opens. Closing is CommonUI's Back action on the menu itself, so the same key
 	// never races between "open" here and "close" there.
@@ -216,7 +217,7 @@ void AGameUIMatchPlayerController::OpenPauseMenu()
 {
 	if (bIsPauseMenuOpen || bIsLobbyOpen || !IsLocalPlayerController())
 	{
-		UE_LOG(LogTemp, Verbose, TEXT("GameUI: OpenPauseMenu ignored (already open=%d, lobby open=%d, local=%d)"), bIsPauseMenuOpen ? 1 : 0, bIsLobbyOpen ? 1 : 0, IsLocalPlayerController() ? 1 : 0);
+		UE_LOG(LogGameUI, Verbose, TEXT("OpenPauseMenu ignored (already open=%d, lobby open=%d, local=%d)"), bIsPauseMenuOpen ? 1 : 0, bIsLobbyOpen ? 1 : 0, IsLocalPlayerController() ? 1 : 0);
 		return;
 	}
 
@@ -248,7 +249,7 @@ void AGameUIMatchPlayerController::OpenPauseMenu()
 
 			if (InPushState == EAsyncPushWidgetState::OnCreatedBeforePush)
 			{
-				UE_LOG(LogTemp, Verbose, TEXT("GameUI: pause menu widget created/reused: %s"), *PushedWidget->GetName());
+				UE_LOG(LogGameUI, Verbose, TEXT("pause menu widget created/reused: %s"), *PushedWidget->GetName());
 				PushedWidget->SetOwningPlayer(WeakThis.Get());
 
 				if (UWidget_PauseMenu* PauseMenu = Cast<UWidget_PauseMenu>(PushedWidget))
@@ -259,12 +260,12 @@ void AGameUIMatchPlayerController::OpenPauseMenu()
 				}
 				else
 				{
-					UE_LOG(LogTemp, Error, TEXT("GameUI: widget mapped to Frontend.Widget.PauseMenu is not a Widget_PauseMenu; close events will not reach the controller."));
+					UE_LOG(LogGameUI, Error, TEXT("widget mapped to Frontend.Widget.PauseMenu is not a Widget_PauseMenu; close events will not reach the controller."));
 				}
 			}
 			else if (InPushState == EAsyncPushWidgetState::AfterPush)
 			{
-				UE_LOG(LogTemp, Verbose, TEXT("GameUI: pause menu pushed (activated=%d)"), PushedWidget->IsActivated() ? 1 : 0);
+				UE_LOG(LogGameUI, Verbose, TEXT("pause menu pushed (activated=%d)"), PushedWidget->IsActivated() ? 1 : 0);
 
 				if (UWidget* WidgetToFocus = PushedWidget->GetDesiredFocusTarget())
 				{
@@ -307,7 +308,7 @@ void AGameUIMatchPlayerController::TogglePauseMenu()
 
 void AGameUIMatchPlayerController::HandlePauseMenuCloseRequested()
 {
-	UE_LOG(LogTemp, Verbose, TEXT("GameUI: pause menu close requested"));
+	UE_LOG(LogGameUI, Verbose, TEXT("pause menu close requested"));
 
 	bIsPauseMenuOpen = false;
 	ActivePauseMenu.Reset();
@@ -365,7 +366,7 @@ void AGameUIMatchPlayerController::BindToGameState(AGameStateBase* GameState)
 	{
 		if (GameState && !MatchGameState)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("GameUI: game state %s is not an AGameUIMatchGameState; no lobby will be shown."), *GameState->GetName());
+			UE_LOG(LogGameUI, Warning, TEXT("game state %s is not an AGameUIMatchGameState; no lobby will be shown."), *GameState->GetName());
 		}
 		return;
 	}
@@ -386,7 +387,7 @@ void AGameUIMatchPlayerController::HandleMatchPhaseChanged()
 		return;
 	}
 
-	UE_LOG(LogTemp, Verbose, TEXT("GameUI: match phase -> %s"), *MatchGameState->GetMatchState().ToString());
+	UE_LOG(LogGameUI, Verbose, TEXT("match phase -> %s"), *MatchGameState->GetMatchState().ToString());
 
 	if (MatchGameState->IsInLobby())
 	{
@@ -442,7 +443,7 @@ void AGameUIMatchPlayerController::OpenLobby()
 				WeakThis->ActiveLobby = Cast<UWidget_LobbyScreen>(PushedWidget);
 				if (!WeakThis->ActiveLobby.IsValid())
 				{
-					UE_LOG(LogTemp, Error, TEXT("GameUI: widget mapped to Frontend.Widget.LobbyScreen is not a Widget_LobbyScreen."));
+					UE_LOG(LogGameUI, Error, TEXT("widget mapped to Frontend.Widget.LobbyScreen is not a Widget_LobbyScreen."));
 				}
 			}
 			else if (InPushState == EAsyncPushWidgetState::AfterPush)

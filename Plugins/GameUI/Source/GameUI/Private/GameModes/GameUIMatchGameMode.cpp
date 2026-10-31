@@ -2,6 +2,7 @@
 
 
 #include "GameModes/GameUIMatchGameMode.h"
+#include "GameUILog.h"
 #include "GameModes/GameUIMatchGameState.h"
 #include "GameModes/GameUIMatchPlayerState.h"
 #include "Controllers/GameUIMatchPlayerController.h"
@@ -38,7 +39,7 @@ void AGameUIMatchGameMode::InitGameState()
 	AGameUIMatchGameState* MatchGameState = GetMatchGameState();
 	if (!MatchGameState)
 	{
-		UE_LOG(LogTemp, Error, TEXT("GameUI: Game State Class must derive from AGameUIMatchGameState for the lobby to work (check BP_MatchGameMode > Classes)."));
+		UE_LOG(LogGameUI, Error, TEXT("Game State Class must derive from AGameUIMatchGameState for the lobby to work (check BP_MatchGameMode > Classes)."));
 		return;
 	}
 
@@ -157,7 +158,7 @@ void AGameUIMatchGameMode::HandleLobbyStateChanged()
 	// Someone un-readied or left mid-countdown: stop it so nobody is dragged into a match.
 	if (MatchGameState->IsStartCountdownActive() && !bCanStart)
 	{
-		UE_LOG(LogTemp, Log, TEXT("GameUI: start countdown cancelled (%s)"), *Reason.ToString());
+		UE_LOG(LogGameUI, Log, TEXT("start countdown cancelled (%s)"), *Reason.ToString());
 		CancelStartCountdown();
 		return;
 	}
@@ -182,12 +183,12 @@ void AGameUIMatchGameMode::BeginStartCountdown()
 	const float CountdownSeconds = FMath::Max(0.f, UGameUIDeveloperSettings::Get()->StartCountdownSeconds);
 	if (CountdownSeconds <= KINDA_SMALL_NUMBER)
 	{
-		UE_LOG(LogTemp, Log, TEXT("GameUI: starting match immediately (no countdown)."));
+		UE_LOG(LogGameUI, Log, TEXT("starting match immediately (no countdown)."));
 		StartMatch();
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("GameUI: start countdown began (%.1fs)."), CountdownSeconds);
+	UE_LOG(LogGameUI, Log, TEXT("start countdown began (%.1fs)."), CountdownSeconds);
 
 	MatchGameState->SetStartCountdownEndServerTime(MatchGameState->GetServerWorldTimeSeconds() + CountdownSeconds);
 	GetWorldTimerManager().SetTimer(StartCountdownTimerHandle, this, &ThisClass::OnStartCountdownFinished, CountdownSeconds, false);
@@ -198,12 +199,12 @@ void AGameUIMatchGameMode::OnStartCountdownFinished()
 	FText Reason;
 	if (!CanStartMatch(Reason))
 	{
-		UE_LOG(LogTemp, Log, TEXT("GameUI: countdown finished but the lobby is no longer ready (%s)."), *Reason.ToString());
+		UE_LOG(LogGameUI, Log, TEXT("countdown finished but the lobby is no longer ready (%s)."), *Reason.ToString());
 		CancelStartCountdown();
 		return;
 	}
 
-	UE_LOG(LogTemp, Log, TEXT("GameUI: countdown finished; starting match."));
+	UE_LOG(LogGameUI, Log, TEXT("countdown finished; starting match."));
 	StartMatch();
 }
 

@@ -224,7 +224,9 @@ is set, so Start visibly spawns something.
 ## Notes
 
 - Player names come from `APlayerState::GetPlayerName()`. The Null subsystem generates
-  machine-based names; EOS/Steam provide real display names with no code change here.
+  `MACHINE-<32 hex>` names; the lobby row shortens those to `MACHINE-xxxx` (first four hex
+  digits) so two instances on one PC stay distinct. EOS/Steam display names pass through
+  untouched.
 - The host leaving ends the session for everyone (no host migration). The Leave confirm
   says so to the host.
 - The lobby never pauses the world, so the countdown and replication keep running even

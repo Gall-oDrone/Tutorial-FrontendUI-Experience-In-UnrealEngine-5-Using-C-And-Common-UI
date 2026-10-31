@@ -15,6 +15,38 @@
 
 #define LOCTEXT_NAMESPACE "GameUILobby"
 
+namespace
+{
+	/**
+	 * Player names from the Null subsystem look like "DESKTOP-J5NTATE-0FB5BF0B476C874809913195958F621A":
+	 * machine name plus a 32-hex-digit GUID. Keep the machine name and the first four hex
+	 * digits so two instances on one PC stay distinguishable without flooding the row.
+	 * Real services (Steam, EOS) return display names, which pass through untouched.
+	 */
+	FString MakeLobbyDisplayName(const FString& RawName)
+	{
+		constexpr int32 MaxDisplayLength = 24;
+
+		int32 LastDash = INDEX_NONE;
+		if (RawName.FindLastChar(TEXT('-'), LastDash) && LastDash > 0)
+		{
+			const FString Tail = RawName.Mid(LastDash + 1);
+			bool bLooksLikeGuid = Tail.Len() >= 16;
+			for (int32 Index = 0; bLooksLikeGuid && Index < Tail.Len(); ++Index)
+			{
+				bLooksLikeGuid = FChar::IsHexDigit(Tail[Index]);
+			}
+
+			if (bLooksLikeGuid)
+			{
+				return RawName.Left(LastDash + 1) + Tail.Left(4);
+			}
+		}
+
+		return RawName.Len() > MaxDisplayLength ? RawName.Left(MaxDisplayLength - 3) + TEXT("...") : RawName;
+	}
+}
+
 UWidget_LobbyScreen::UWidget_LobbyScreen(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
@@ -281,7 +313,7 @@ void UWidget_LobbyScreen::RefreshPlayerList()
 	for (const AGameUIMatchPlayerState* MatchPlayerState : Sorted)
 	{
 		UGameUILobbyPlayerEntryData* Entry = NewObject<UGameUILobbyPlayerEntryData>(this);
-		Entry->PlayerName = MatchPlayerState->GetPlayerName();
+		Entry->PlayerName = MakeLobbyDisplayName(MatchPlayerState->GetPlayerName());
 		Entry->PlayerId = MatchPlayerState->GetPlayerId();
 		Entry->bIsReady = MatchPlayerState->IsReady();
 		Entry->bIsHost = MatchPlayerState->IsHost();

@@ -2,6 +2,7 @@
 
 
 #include "Controllers/FrontendPlayerController.h"
+#include "FrontendUILog.h"
 #include "Kismet/GameplayStatics.h"
 #include "Camera/CameraActor.h"
 #include "FrontendSettings/FrontendGameUserSettings.h"
@@ -24,7 +25,7 @@ void AFrontendPlayerController::OnPossess(APawn* aPawn)
 	UFrontendGameUserSettings* GameUserSettings = UFrontendGameUserSettings::TryGet();
 	if (!GameUserSettings)
 	{
-		UE_LOG(LogTemp, Error, TEXT("FrontendUI: GameUserSettingsClassName is not UFrontendGameUserSettings (or a subclass). ")
+		UE_LOG(LogFrontendUI, Error, TEXT("GameUserSettingsClassName is not UFrontendGameUserSettings (or a subclass). ")
 			TEXT("Set it in Config/DefaultEngine.ini under [/Script/Engine.Engine] and restart the editor. Skipping hardware benchmark."));
 		return;
 	}
