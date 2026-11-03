@@ -29,10 +29,11 @@ artifact and picks the net driver.
 Why two accounts: EOS rejects the same Epic account signing in twice, so two game
 windows on one PC need two users.
 
-## 2. Product keys (`Saved/Config/WindowsEditor/Engine.ini`)
+## 2. Product keys (`Config/UserEngine.ini`)
 
-`Saved/` is git-ignored. Create the file if it does not exist and add **one** line
-with the ids from section 1, under the same section the project already configures:
+Create **`Config/UserEngine.ini`** next to `DefaultEngine.ini` (it does not exist yet)
+and put **one** line in it with the ids from section 1, under the same section the
+project already configures:
 
 ```ini
 [/Script/OnlineSubsystemEOS.EOSSettings]
@@ -43,10 +44,17 @@ with the ids from section 1, under the same section the project already configur
 |---|---|
 | `ArtifactName` | must equal `DefaultArtifactName` in `DefaultEngine.ini` (`FrontendUI`) |
 | `EncryptionKey` | any 64 hex characters; only Player Data Storage uses it, but the field is required |
-| Everything else | from the portal, step 1–3 |
+| Everything else | from the portal, step 1-3; each id is 32 characters |
 
-For a packaged game the same line goes in a non-git copy of the project ini or in
-your build pipeline; never commit it.
+Why this file: `User<Type>.ini` in the project `Config/` folder is the last layer of the
+engine's config hierarchy. It is read before any plugin starts, it overrides
+`DefaultEngine.ini`, and the engine **never rewrites it** - unlike
+`Saved/Config/<Platform>/Engine.ini`, which every editor and game instance regenerates
+on exit and which is merged too late for the EOS plugin to see. `.gitignore` excludes
+`Config/User*.ini`, so the keys stay out of the repository.
+
+For a packaged game the same line goes in your build pipeline's copy of the project
+ini; never commit it.
 
 ## 3. Build
 
@@ -106,9 +114,9 @@ Dev Auth Tool running on 6547 with `Client1` / `Client2`, then `Scripts\LaunchIn
 | `OnLoginComplete (developer) -> FAILED: ... connection refused` | Dev Auth Tool not running or on a different port; `DEVAUTH_HOST` in the launcher |
 | `-> FAILED: ... EOS_InvalidCredentials` on `Client2` | that credential name does not exist in the tool, or the second account is not in your organisation |
 | `OnCreateSessionComplete -> FAILED` right after a successful login | EAS application missing the **Online Presence** permission, or the client policy is not Peer2Peer |
-| `Session backend: OnlineSubsystem (NULL)` in EOS mode | the `+Artifacts=` line is missing / `ArtifactName` differs from `DefaultArtifactName`; the EOS subsystem refused to initialise and the engine fell back. Look for `LogEOSSDK` errors at the top of `Saved/Logs/Instance1.log` |
+| `Session backend: OnlineSubsystem (NULL)` in EOS mode, log shows `UEOSSettings::GetSelectedArtifactSettings ArtifactName=[FrontendUI] ... no settings found` | the `+Artifacts=` line was not read: wrong file (it must be `Config/UserEngine.ini`), `ArtifactName` differs from `DefaultArtifactName`, or a typo in the line. The EOS subsystem refused to initialise and the engine fell back to Null |
 | B finds nothing | both windows must be in the **same sandbox + deployment**; also check that A's `CreateSession` log says `LAN=false` |
-| Join travels to an `EOS:` address but never connects | `[/Script/OnlineSubsystemEOS.NetDriverEOS] bIsUsingP2PSockets=true` missing, or the net driver definition was not applied (`!NetDriverDefinitions=ClearArray` must precede the `+` line) |
+| Join travels to an `EOS:` address but never connects | the net driver definition was not applied: `!NetDriverDefinitions=ClearArray` must precede the `+` line in `DefaultEngine.ini`, and the log should say `NetDriverEOS` (not `IpNetDriver`) when the EOS host listens |
 | LAN mode broke after this change | the host URL must end in `?listen?bIsLanMatch`; that option is what keeps `NetDriverEOS` on IP sockets |
 
 ## 7. What is next

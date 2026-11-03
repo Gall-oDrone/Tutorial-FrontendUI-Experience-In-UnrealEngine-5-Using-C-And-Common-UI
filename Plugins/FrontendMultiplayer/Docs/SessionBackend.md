@@ -114,7 +114,7 @@ Equivalent manual command, run twice:
 
 | Service | Change |
 |---|---|
-| **EOS** | Already wired: [Docs/EOSSetup.md](../../../Docs/EOSSetup.md). Product keys in the git-ignored `Saved/Config/WindowsEditor/Engine.ini`, `LaunchInstances.bat 2 EOS` or `-ini:Engine:[OnlineSubsystem]:DefaultPlatformService=EOS`. No code change. |
+| **EOS** | Already wired: [Docs/EOSSetup.md](../../../Docs/EOSSetup.md). Product keys in the git-ignored `Config/UserEngine.ini`, `LaunchInstances.bat 2 EOS` or `-ini:Engine:[OnlineSubsystem]:DefaultPlatformService=EOS`. No code change. |
 | **Steam** | Enable `OnlineSubsystemSteam`; `DefaultPlatformService=Steam`; add the `[OnlineSubsystemSteam]` block (`bEnabled`, `SteamDevAppId=480`) and the Steam net driver definition. Steam signs in through the running client, so the credential chain is a no-op. No code change. |
 | **Dedicated / GameLift** | New `UFrontendSessionBackend` subclass that calls your matchmaking API and reports the connect string through `ReportSessionJoined`; the UI and travel logic stay the same. |
 

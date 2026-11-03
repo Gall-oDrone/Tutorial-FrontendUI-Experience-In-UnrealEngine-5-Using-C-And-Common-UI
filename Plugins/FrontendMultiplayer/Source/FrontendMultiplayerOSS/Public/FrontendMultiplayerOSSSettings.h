@@ -15,7 +15,7 @@
  *   2. persistentauth                                                  (if enabled)
  *   3. Credential Type / Login Id / Login Token below
  *
- * Nothing here is a secret: product keys live in Saved/Config/<Platform>/Engine.ini
+ * Nothing here is a secret: product keys live in the git-ignored Config/UserEngine.ini
  * under [/Script/OnlineSubsystemEOS.EOSSettings] (see Docs/EOSSetup.md).
  */
 UCLASS(Config = Game, defaultconfig, meta = (DisplayName = "Frontend Multiplayer OSS"))
