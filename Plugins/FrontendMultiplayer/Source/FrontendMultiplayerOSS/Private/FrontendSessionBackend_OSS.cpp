@@ -29,7 +29,7 @@ namespace FrontendOSS
 
 	/**
 	 * Advertised by every online session and required by every online search. EOS strips
-	 * SEARCH_PRESENCE / SEARCH_LOBBIES from a lobby query and rejects an empty one, so
+	 * SEARCH_LOBBIES from a lobby query and rejects an empty one, so
 	 * this is the one attribute that always matches (and isolates builds by value).
 	 */
 	static const FName SettingKey_Bucket(TEXT("FRONTEND_SESSION_BUCKET"));
@@ -601,9 +601,9 @@ void UFrontendSessionBackend_OSS::FindSessionsNow()
 	{
 		// The host sets bUseLobbiesIfAvailable, so on EOS the match is a lobby, and EOS
 		// only returns lobbies when the search asks for them. Steam ignores the key.
-		LastSearch->QuerySettings.Set(SEARCH_PRESENCE, true, EOnlineComparisonOp::Equals);
+		// (SEARCH_PRESENCE is deprecated in 5.6 and not needed for the lobby path.)
 		LastSearch->QuerySettings.Set(SEARCH_LOBBIES, true, EOnlineComparisonOp::Equals);
-		// EOS treats the two keys above as flags, not attributes, and refuses a search
+		// EOS treats the key above as a flag, not an attribute, and refuses a search
 		// with no attribute at all ("Search query is empty"). The bucket is that attribute.
 		LastSearch->QuerySettings.Set(FrontendOSS::SettingKey_Bucket, Bucket, EOnlineComparisonOp::Equals);
 	}
