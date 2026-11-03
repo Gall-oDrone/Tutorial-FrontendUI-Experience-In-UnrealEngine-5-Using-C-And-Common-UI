@@ -55,4 +55,21 @@ public:
 	 */
 	UPROPERTY(Config, EditAnywhere, Category = "Login")
 	bool bAllowCommandLineCredentials = true;
+
+	/**
+	 * Give up on a sign-in after this many seconds and release Host / Find with an error.
+	 * An interactive sign-in (browser) that the player never finishes would otherwise block
+	 * the menu indefinitely. 0 disables the timeout.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Login", meta = (ClampMin = "0", UIMin = "0", UIMax = "600"))
+	float LoginTimeoutSeconds = 120.f;
+
+	/**
+	 * Value of the FRONTEND_SESSION_BUCKET attribute every online (non-LAN) session
+	 * advertises and every search filters on. EOS rejects a lobby search with no
+	 * parameters, and this also keeps builds with different values from seeing each
+	 * other's sessions (e.g. "FrontendUI-dev" vs "FrontendUI").
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Sessions")
+	FString SessionBucket = TEXT("FrontendUI");
 };

@@ -9,8 +9,10 @@
 #include "Subsystems/FrontendUISubsystem.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
+#include "Engine/NetDriver.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "UObject/CoreUObjectDelegates.h"
 
 #define LOCTEXT_NAMESPACE "FrontendMultiplayer"
 
@@ -30,10 +32,14 @@ void UFrontendMultiplayerSubsystem::Initialize(FSubsystemCollectionBase& Collect
 	Super::Initialize(Collection);
 
 	CreateSessionBackend();
+
+	PostLoadMapHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &ThisClass::HandlePostLoadMap);
 }
 
 void UFrontendMultiplayerSubsystem::Deinitialize()
 {
+	FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(PostLoadMapHandle);
+
 	if (ActiveBackend)
 	{
 		ActiveBackend->Shutdown();
@@ -41,6 +47,34 @@ void UFrontendMultiplayerSubsystem::Deinitialize()
 	}
 
 	Super::Deinitialize();
+}
+
+void UFrontendMultiplayerSubsystem::HandlePostLoadMap(UWorld* LoadedWorld)
+{
+	// Which transport the match actually runs on is decided by the engine from
+	// NetDriverDefinitions + the travel URL, not by the backend. Say so after every
+	// travel so an EOS host that silently fell back to IP sockets is visible in the panel.
+	if (!LoadedWorld || LoadedWorld->GetGameInstance() != GetGameInstance())
+	{
+		return;
+	}
+
+	const UNetDriver* NetDriver = LoadedWorld->GetNetDriver();
+	if (!NetDriver)
+	{
+		return;
+	}
+
+	const TCHAR* NetModeName = TEXT("Standalone");
+	switch (LoadedWorld->GetNetMode())
+	{
+	case NM_ListenServer:    NetModeName = TEXT("ListenServer"); break;
+	case NM_DedicatedServer: NetModeName = TEXT("DedicatedServer"); break;
+	case NM_Client:          NetModeName = TEXT("Client"); break;
+	default: break;
+	}
+
+	BroadcastDebugLog(FString::Printf(TEXT("Net driver: %s (%s)"), *NetDriver->GetClass()->GetName(), NetModeName));
 }
 
 void UFrontendMultiplayerSubsystem::CreateSessionBackend()
@@ -323,7 +357,7 @@ void UFrontendMultiplayerSubsystem::TravelToHostMap()
 	// "?listen" turns the loaded map into a listen server; the online session created by
 	// the backend outlives the map change because it belongs to the online subsystem.
 	// The backend may add options the net driver reads (a LAN host says ?bIsLanMatch so
-	// NetDriverEOS, if configured, binds IP sockets instead of EOS P2P ones).
+	// NetDriverEOSBase, if configured, binds IP sockets instead of EOS P2P ones).
 	const FString TravelURL = Settings->HostMap.ToSoftObjectPath().GetLongPackageName()
 		+ TEXT("?listen")
 		+ (ActiveBackend ? ActiveBackend->GetHostTravelOptions() : FString());

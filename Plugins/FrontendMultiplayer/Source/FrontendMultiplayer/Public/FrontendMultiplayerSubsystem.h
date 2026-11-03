@@ -141,6 +141,10 @@ public:
 private:
 	void CreateSessionBackend();
 
+	/** Logs the net driver class and net mode after every travel (EOS P2P vs IP is decided by the engine). */
+	void HandlePostLoadMap(UWorld* LoadedWorld);
+	FDelegateHandle PostLoadMapHandle;
+
 	/** True if a request may start now; otherwise logs why it was ignored. */
 	bool CanStartOperation(EFrontendSessionOperation Operation);
 

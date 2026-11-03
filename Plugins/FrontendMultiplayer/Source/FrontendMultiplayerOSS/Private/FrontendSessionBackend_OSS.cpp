@@ -18,6 +18,7 @@
 #include "Engine/World.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Containers/Ticker.h"
 
 #define LOCTEXT_NAMESPACE "FrontendMultiplayerOSS"
 
@@ -25,6 +26,13 @@ namespace FrontendOSS
 {
 	/** Custom session setting carrying the name typed on the Host screen. */
 	static const FName SettingKey_DisplayName(TEXT("FRONTEND_SESSION_DISPLAY_NAME"));
+
+	/**
+	 * Advertised by every online session and required by every online search. EOS strips
+	 * SEARCH_PRESENCE / SEARCH_LOBBIES from a lobby query and rejects an empty one, so
+	 * this is the one attribute that always matches (and isolates builds by value).
+	 */
+	static const FName SettingKey_Bucket(TEXT("FRONTEND_SESSION_BUCKET"));
 
 	static FText NoSessionInterfaceText()
 	{
@@ -107,7 +115,7 @@ bool UFrontendSessionBackend_OSS::GetActiveSessionInfo(FString& OutDisplayName, 
 
 FString UFrontendSessionBackend_OSS::GetHostTravelOptions() const
 {
-	// NetDriverEOS checks this option in InitListen and falls back to plain IP sockets,
+	// NetDriverEOSBase checks this option in InitListen and falls back to plain IP sockets,
 	// so a LAN host stays reachable by address even when the EOS driver is configured.
 	return IsLAN() ? TEXT("?bIsLanMatch") : TEXT("");
 }
@@ -366,6 +374,21 @@ void UFrontendSessionBackend_OSS::StartLogin(const FOnlineAccountCredentials& Cr
 	LoginCompleteHandle = Identity->AddOnLoginCompleteDelegate_Handle(0,
 		FOnLoginCompleteDelegate::CreateUObject(this, &ThisClass::HandleLoginComplete));
 
+	// A browser sign-in the player never finishes would otherwise park Host / Find forever.
+	const float TimeoutSeconds = UFrontendMultiplayerOSSSettings::Get()->LoginTimeoutSeconds;
+	FTSTicker::GetCoreTicker().RemoveTicker(LoginTimeoutHandle);
+	if (TimeoutSeconds > 0.f)
+	{
+		LoginTimeoutHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this, [this, AttemptSerial](float)
+		{
+			if (bLoginInFlight && LoginAttemptSerial == AttemptSerial)
+			{
+				FinishLogin(false, TEXT("Timed out waiting for the sign-in to complete"));
+			}
+			return false;
+		}), TimeoutSeconds);
+	}
+
 	LogDebug(FString::Printf(TEXT("[oss] Login(%s) on %s%s"),
 		*CurrentCredentialType, *GetSubsystemName().ToString(),
 		bHasFallbackCredentials ? *FString::Printf(TEXT(", then %s if that fails"), *FallbackCredentials.Type) : TEXT("")));
@@ -396,6 +419,8 @@ void UFrontendSessionBackend_OSS::FinishLogin(bool bWasSuccessful, const FString
 		return;
 	}
 	bLoginInFlight = false;
+	FTSTicker::GetCoreTicker().RemoveTicker(LoginTimeoutHandle);
+	LoginTimeoutHandle.Reset();
 
 	if (IOnlineIdentityPtr Identity = GetIdentityInterface())
 	{
@@ -538,6 +563,10 @@ void UFrontendSessionBackend_OSS::CreateSessionNow()
 	const FString MapName = Settings->HostMap.IsNull() ? FString() : Settings->HostMap.GetAssetName();
 	SessionSettings.Set(SETTING_MAPNAME, MapName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 	SessionSettings.Set(FrontendOSS::SettingKey_DisplayName, PendingDisplayName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	if (!bLAN)
+	{
+		SessionSettings.Set(FrontendOSS::SettingKey_Bucket, UFrontendMultiplayerOSSSettings::Get()->SessionBucket, EOnlineDataAdvertisementType::ViaOnlineService);
+	}
 
 	CreateSessionCompleteHandle = SessionInterface->AddOnCreateSessionCompleteDelegate_Handle(
 		FOnCreateSessionCompleteDelegate::CreateUObject(this, &ThisClass::HandleCreateSessionComplete));
@@ -567,19 +596,23 @@ void UFrontendSessionBackend_OSS::FindSessionsNow()
 	LastSearch = MakeShared<FOnlineSessionSearch>();
 	LastSearch->bIsLanQuery = bLAN;
 	LastSearch->MaxSearchResults = FMath::Max(1, Settings->MaxSearchResults);
+	const FString Bucket = UFrontendMultiplayerOSSSettings::Get()->SessionBucket;
 	if (!bLAN)
 	{
 		// The host sets bUseLobbiesIfAvailable, so on EOS the match is a lobby, and EOS
 		// only returns lobbies when the search asks for them. Steam ignores the key.
 		LastSearch->QuerySettings.Set(SEARCH_PRESENCE, true, EOnlineComparisonOp::Equals);
 		LastSearch->QuerySettings.Set(SEARCH_LOBBIES, true, EOnlineComparisonOp::Equals);
+		// EOS treats the two keys above as flags, not attributes, and refuses a search
+		// with no attribute at all ("Search query is empty"). The bucket is that attribute.
+		LastSearch->QuerySettings.Set(FrontendOSS::SettingKey_Bucket, Bucket, EOnlineComparisonOp::Equals);
 	}
 
 	FindSessionsCompleteHandle = SessionInterface->AddOnFindSessionsCompleteDelegate_Handle(
 		FOnFindSessionsCompleteDelegate::CreateUObject(this, &ThisClass::HandleFindSessionsComplete));
 
-	LogDebug(FString::Printf(TEXT("[oss] FindSessions (LAN=%s, lobbies=%s, max=%d)"),
-		FrontendOSS::BoolToString(bLAN), FrontendOSS::BoolToString(!bLAN), LastSearch->MaxSearchResults));
+	LogDebug(FString::Printf(TEXT("[oss] FindSessions (LAN=%s, lobbies=%s, bucket=%s, max=%d)"),
+		FrontendOSS::BoolToString(bLAN), FrontendOSS::BoolToString(!bLAN), bLAN ? TEXT("-") : *Bucket, LastSearch->MaxSearchResults));
 
 	if (!SessionInterface->FindSessions(0, LastSearch.ToSharedRef()))
 	{
@@ -666,6 +699,8 @@ void UFrontendSessionBackend_OSS::ClearDelegateHandles()
 	}
 
 	bLoginInFlight = false;
+	FTSTicker::GetCoreTicker().RemoveTicker(LoginTimeoutHandle);
+	LoginTimeoutHandle.Reset();
 	LoginCompleteHandle.Reset();
 	LoginStatusChangedHandle.Reset();
 }

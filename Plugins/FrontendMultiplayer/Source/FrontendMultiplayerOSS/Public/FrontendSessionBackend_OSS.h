@@ -7,6 +7,7 @@
 #include "OnlineSubsystem.h"
 #include "Interfaces/OnlineSessionInterface.h"
 #include "Interfaces/OnlineIdentityInterface.h"
+#include "Containers/Ticker.h"
 #include "FrontendSessionBackend_OSS.generated.h"
 
 class FOnlineSessionSearch;
@@ -134,4 +135,5 @@ private:
 	FOnlineAccountCredentials FallbackCredentials;
 	FString CurrentCredentialType;
 	int32 LoginAttemptSerial = 0;
+	FTSTicker::FDelegateHandle LoginTimeoutHandle;
 };

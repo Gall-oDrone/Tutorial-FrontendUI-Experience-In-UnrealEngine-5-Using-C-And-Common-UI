@@ -163,7 +163,7 @@ Each tag is a working, tested state. Pick one to see how a feature was added.
 | `v0.5-session-backend` | `FrontendMultiplayerOSS`: real host / find / join over the OnlineSubsystem (Null on LAN), subsystem-owned travel, `Scripts/LaunchInstances.bat` | `Plugins/FrontendMultiplayer/Docs/SessionBackend.md` |
 | `v0.6-lobby` | Ready-gated pre-match lobby on `AGameMode` match states, replicated countdown, lobby widgets | `Plugins/GameUI/Docs/Lobby.md` |
 | `v0.6.1` | Polish: per-module log categories, EOS SDK disabled until used, readable lobby names, demo recipe | `Docs/Demo.md` |
-| `v0.7-eos` | Epic Online Services by config: lazy sign-in with a credential chain (`Login` / `IsLoggedIn` / `OnLoginStateChanged` on the subsystem), EOS lobbies, `NetDriverEOS` P2P with IP fallback, `LaunchInstances.bat 2 EOS`; product keys stay out of git | `Docs/EOSSetup.md` |
+| `v0.7-eos` | Epic Online Services by config: lazy sign-in with a credential chain (`Login` / `IsLoggedIn` / `OnLoginStateChanged` on the subsystem), EOS lobbies, `NetDriverEOSBase` P2P with IP fallback, `LaunchInstances.bat 2 EOS`; product keys stay out of git | `Docs/EOSSetup.md` |
 
 ## Roadmap
 

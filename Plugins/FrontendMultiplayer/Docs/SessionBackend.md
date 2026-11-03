@@ -37,11 +37,11 @@ Both travels go through the existing `UFrontendLoadingScreenSubsystem` map hooks
    [OnlineSubsystem]
    DefaultPlatformService=Null
 
-   [/Script/Engine.GameEngine]
+   [/Script/Engine.Engine]
    !NetDriverDefinitions=ClearArray
-   +NetDriverDefinitions=(DefName="GameNetDriver",DriverClassName="OnlineSubsystemEOS.NetDriverEOS",DriverClassNameFallback="OnlineSubsystemUtils.IpNetDriver")
+   +NetDriverDefinitions=(DefName="GameNetDriver",DriverClassName="/Script/SocketSubsystemEOS.NetDriverEOSBase",DriverClassNameFallback="/Script/OnlineSubsystemUtils.IpNetDriver")
    ```
-   `NetDriverEOS` passes through to IP sockets whenever the address is not an EOS one,
+   `NetDriverEOSBase` passes through to IP sockets whenever the address is not an EOS one,
    and a LAN host travels with `?bIsLanMatch`, so this driver is safe for the Null path.
 3. **Project Settings → Game → Frontend Multiplayer Settings**
 
