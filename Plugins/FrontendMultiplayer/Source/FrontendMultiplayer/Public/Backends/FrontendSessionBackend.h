@@ -64,11 +64,28 @@ public:
 	/** Shown in the API debug log when the backend is created. */
 	virtual FString GetBackendDisplayName() const { return GetClass()->GetName(); }
 
+	//~ Begin identity. Services that need a signed-in user (EOS, Steam) override these;
+	//~ the stub and LAN-only subsystems are always "logged in".
+	virtual bool IsLoggedIn() const { return true; }
+
+	/** Start a sign-in. Answer with ReportLoginChanged. Default: nothing to do. */
+	virtual void Login() { ReportLoginChanged(true); }
+
+	/** Display name of the local player on the service, or empty if unknown / not signed in. */
+	virtual FString GetLocalPlayerDisplayName() const { return FString(); }
+	//~ End identity.
+
 	/**
 	 * Describe the session this player currently hosts or has joined, for in-match UI
 	 * (lobby title, player count). Return false if there is none.
 	 */
 	virtual bool GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const { return false; }
+
+	/**
+	 * Extra URL options appended to the host's "?listen" travel, e.g. "?bIsLanMatch".
+	 * Net drivers read these: NetDriverEOSBase only binds plain IP sockets for a LAN match.
+	 */
+	virtual FString GetHostTravelOptions() const { return FString(); }
 
 protected:
 	UFrontendMultiplayerSubsystem* GetOwningSubsystem() const { return OwningSubsystem.Get(); }
@@ -88,6 +105,9 @@ protected:
 	void ReportSessionJoined(bool bSucceeded, const FString& ConnectString, const FText& ErrorText = FText::GetEmpty()) const;
 
 	void ReportSessionLeft() const;
+
+	/** Sign-in state changed. On failure ErrorText is shown to the player. */
+	void ReportLoginChanged(bool bLoggedIn, const FText& ErrorText = FText::GetEmpty()) const;
 
 	/** Deliver ranked leaderboard rows to the screens. Rows must arrive already ranked. */
 	void ReportLeaderboard(ELeaderboardCategory Category, const TArray<UFrontendLeaderboardEntryData*>& Entries) const;

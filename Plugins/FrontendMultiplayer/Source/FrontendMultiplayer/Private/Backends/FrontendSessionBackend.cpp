@@ -57,6 +57,14 @@ void UFrontendSessionBackend::ReportSessionLeft() const
 	}
 }
 
+void UFrontendSessionBackend::ReportLoginChanged(bool bLoggedIn, const FText& ErrorText) const
+{
+	if (UFrontendMultiplayerSubsystem* Subsystem = OwningSubsystem.Get())
+	{
+		Subsystem->NotifyLoginChanged(bLoggedIn, ErrorText);
+	}
+}
+
 void UFrontendSessionBackend::ReportLeaderboard(ELeaderboardCategory Category, const TArray<UFrontendLeaderboardEntryData*>& Entries) const
 {
 	if (UFrontendMultiplayerSubsystem* Subsystem = OwningSubsystem.Get())

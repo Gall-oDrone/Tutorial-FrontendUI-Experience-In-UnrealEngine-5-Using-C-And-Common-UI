@@ -9,8 +9,10 @@
 #include "Subsystems/FrontendUISubsystem.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
+#include "Engine/NetDriver.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "UObject/UObjectGlobals.h"
 
 #define LOCTEXT_NAMESPACE "FrontendMultiplayer"
 
@@ -30,10 +32,14 @@ void UFrontendMultiplayerSubsystem::Initialize(FSubsystemCollectionBase& Collect
 	Super::Initialize(Collection);
 
 	CreateSessionBackend();
+
+	PostLoadMapHandle = FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &ThisClass::HandlePostLoadMap);
 }
 
 void UFrontendMultiplayerSubsystem::Deinitialize()
 {
+	FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(PostLoadMapHandle);
+
 	if (ActiveBackend)
 	{
 		ActiveBackend->Shutdown();
@@ -41,6 +47,34 @@ void UFrontendMultiplayerSubsystem::Deinitialize()
 	}
 
 	Super::Deinitialize();
+}
+
+void UFrontendMultiplayerSubsystem::HandlePostLoadMap(UWorld* LoadedWorld)
+{
+	// Which transport the match actually runs on is decided by the engine from
+	// NetDriverDefinitions + the travel URL, not by the backend. Say so after every
+	// travel so an EOS host that silently fell back to IP sockets is visible in the panel.
+	if (!LoadedWorld || LoadedWorld->GetGameInstance() != GetGameInstance())
+	{
+		return;
+	}
+
+	const UNetDriver* NetDriver = LoadedWorld->GetNetDriver();
+	if (!NetDriver)
+	{
+		return;
+	}
+
+	const TCHAR* NetModeName = TEXT("Standalone");
+	switch (LoadedWorld->GetNetMode())
+	{
+	case NM_ListenServer:    NetModeName = TEXT("ListenServer"); break;
+	case NM_DedicatedServer: NetModeName = TEXT("DedicatedServer"); break;
+	case NM_Client:          NetModeName = TEXT("Client"); break;
+	default: break;
+	}
+
+	BroadcastDebugLog(FString::Printf(TEXT("Net driver: %s (%s)"), *NetDriver->GetClass()->GetName(), NetModeName));
 }
 
 void UFrontendMultiplayerSubsystem::CreateSessionBackend()
@@ -138,6 +172,30 @@ void UFrontendMultiplayerSubsystem::FetchLeaderboard(ELeaderboardCategory Catego
 	}
 }
 
+void UFrontendMultiplayerSubsystem::Login()
+{
+	if (ActiveBackend && CanStartOperation(EFrontendSessionOperation::LoggingIn))
+	{
+		if (ActiveBackend->IsLoggedIn())
+		{
+			OnLoginStateChanged.Broadcast(true);
+			return;
+		}
+
+		ActiveBackend->Login();
+	}
+}
+
+bool UFrontendMultiplayerSubsystem::IsLoggedIn() const
+{
+	return ActiveBackend ? ActiveBackend->IsLoggedIn() : false;
+}
+
+FString UFrontendMultiplayerSubsystem::GetLocalPlayerDisplayName() const
+{
+	return ActiveBackend ? ActiveBackend->GetLocalPlayerDisplayName() : FString();
+}
+
 bool UFrontendMultiplayerSubsystem::GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const
 {
 	OutDisplayName.Reset();
@@ -196,6 +254,39 @@ void UFrontendMultiplayerSubsystem::NotifySessionJoined(bool bSucceeded, const F
 void UFrontendMultiplayerSubsystem::NotifySessionLeft()
 {
 	FinishOperation(EFrontendSessionOperation::Leaving);
+}
+
+void UFrontendMultiplayerSubsystem::NotifyLoginChanged(bool bLoggedIn, const FText& ErrorText)
+{
+	// Login() owns the LoggingIn operation and its modal. A sign-in started lazily by
+	// Host / Find runs inside *that* operation, which reports the failure itself, so
+	// here we only log it to avoid a second modal.
+	const bool bExplicitLogin = CurrentOperation == EFrontendSessionOperation::LoggingIn;
+
+	if (!bLoggedIn && !ErrorText.IsEmpty())
+	{
+		if (bExplicitLogin)
+		{
+			FailOperation(EFrontendSessionOperation::LoggingIn, LOCTEXT("LoginFailedTitle", "Sign-in Failed"), ErrorText);
+		}
+		else
+		{
+			BroadcastDebugLog(FString::Printf(TEXT("Sign-in failed: %s"), *ErrorText.ToString()));
+		}
+	}
+	else
+	{
+		if (bExplicitLogin)
+		{
+			FinishOperation(EFrontendSessionOperation::LoggingIn);
+		}
+
+		BroadcastDebugLog(bLoggedIn
+			? FString::Printf(TEXT("Signed in as '%s'"), *GetLocalPlayerDisplayName())
+			: FString(TEXT("Signed out")));
+	}
+
+	OnLoginStateChanged.Broadcast(bLoggedIn);
 }
 
 //~ End backend result sink
@@ -265,7 +356,11 @@ void UFrontendMultiplayerSubsystem::TravelToHostMap()
 
 	// "?listen" turns the loaded map into a listen server; the online session created by
 	// the backend outlives the map change because it belongs to the online subsystem.
-	const FString TravelURL = Settings->HostMap.ToSoftObjectPath().GetLongPackageName() + TEXT("?listen");
+	// The backend may add options the net driver reads (a LAN host says ?bIsLanMatch so
+	// NetDriverEOSBase, if configured, binds IP sockets instead of EOS P2P ones).
+	const FString TravelURL = Settings->HostMap.ToSoftObjectPath().GetLongPackageName()
+		+ TEXT("?listen")
+		+ (ActiveBackend ? ActiveBackend->GetHostTravelOptions() : FString());
 
 	BroadcastDebugLog(FString::Printf(TEXT("ServerTravel %s"), *TravelURL));
 	World->ServerTravel(TravelURL);
