@@ -109,6 +109,13 @@ The last line is printed after every travel. On EOS it must say `NetDriverEOSBas
 `IpNetDriver` there means the engine fell back to IP sockets and EOS clients will not
 be able to connect.
 
+Sign-in happens **once per process**. After `OnLoginComplete -> OK` the access token
+lives for two hours and the Dev Auth Tool is not consulted again, so deleting the
+credential or closing the tool does not affect a window that is already signed in; the
+next *launch* is what fails. If the developer login cannot complete, EOS SDK 1.17 falls
+back to a browser device-code page on its own (`falling back to browser based flow` in
+the log); a browser that already has an Epic session finishes it in one click.
+
 ## 5. Test plan
 
 Dev Auth Tool running on 6547 with `User1` / `User2`, then `Scripts\LaunchInstances.bat 2 EOS`
@@ -122,7 +129,7 @@ from a command prompt (double-clicking the file runs LAN mode).
 | 4 | B: Join | `ClientTravel EOS:<puid>:GameNetDriver:7777` → `Net driver: NetDriverEOSBase (Client)`; lobby shows 2 / 4 |
 | 5 | Ready / Start / pause / Return to Main Menu | identical to v0.6 |
 | 6 | Stop the Dev Auth Tool, A: Host | `Login(developer)` fails → Ok modal "Could Not Host: Could not sign in to EOS (developer): ...". Explicit command-line credentials never fall back, by design; launch without the `-AUTH_*` args to exercise `persistentauth` → `accountportal` (browser sign-in, then the host continues) |
-| 7 | `Scripts\LaunchInstances.bat 2 LAN` | unchanged Null flow: no `Login` lines, `ServerTravel ...?listen?bIsLanMatch`, `Net driver: IpNetDriver (ListenServer)`, `ClientTravel 127.0.0.1:7777` |
+| 7 | `Scripts\LaunchInstances.bat 2 LAN` | unchanged Null flow: `Session backend: OnlineSubsystem (NULL)`, no `Login` lines, `ServerTravel ...?listen?bIsLanMatch`, `Net driver: IpNetDriver (ListenServer)`, B: `FindSessions (LAN=true, lobbies=false, bucket=-, ...)` → `ClientTravel <LAN-IP>:7777` → `Net driver: IpNetDriver (Client)` |
 | 8 | Two PCs on different networks | B finds and joins A without port forwarding (EOS P2P relays) |
 
 ## 6. Troubleshooting
@@ -139,6 +146,8 @@ from a command prompt (double-clicking the file runs LAN mode).
 | B finds nothing | both windows must be in the **same sandbox + deployment** and use the same `Session Bucket`; also check that A's `CreateSession` log says `LAN=false` |
 | `Net driver: IpNetDriver` on an EOS host, or Join travels to an `EOS:` address but never connects | the net driver definition was not applied: `DefaultEngine.ini` must contain `!NetDriverDefinitions=ClearArray` followed by the `/Script/SocketSubsystemEOS.NetDriverEOSBase` entry (section 3 of the committed ini) |
 | LAN mode broke after this change | the host URL must end in `?listen?bIsLanMatch`; that option is what keeps `NetDriverEOSBase` on IP sockets |
+| `LogSockets: Warning: Unable to load SocketSubsystem module EOS` in LAN mode | harmless. `NetDriverEOSBase` is first in `NetDriverDefinitions`; with the Null subsystem it declines and the engine falls through to `IpNetDriver`, which is the intended LAN path |
+| Hosting still works after deleting the Dev Auth Tool credential | expected: the window was already signed in (see section 4). Relaunch to see the failure |
 
 ## 7. What is next
 
