@@ -30,6 +30,17 @@ void UWidget_HostSessionScreen::NativeOnInitialized()
 	}
 }
 
+void UWidget_HostSessionScreen::NativeDestruct()
+{
+	// Subsystem delegates outlive this widget; unbind so a destroyed screen is never called.
+	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
+	{
+		MultiplayerSubsystem->OnSessionOperationChanged.RemoveDynamic(this, &ThisClass::HandleSessionOperationChanged);
+	}
+
+	Super::NativeDestruct();
+}
+
 UWidget* UWidget_HostSessionScreen::NativeGetDesiredFocusTarget() const
 {
 	return EditableTextBox_SessionName;

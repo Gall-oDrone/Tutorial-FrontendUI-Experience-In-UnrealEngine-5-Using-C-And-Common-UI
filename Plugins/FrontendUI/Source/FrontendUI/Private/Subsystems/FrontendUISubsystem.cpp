@@ -14,15 +14,17 @@
 
 UFrontendUISubsystem* UFrontendUISubsystem::Get(const UObject* WorldContextObject)
 {
+	// Callers include widgets tearing down with their world; answer null instead of asserting.
 	if (GEngine)
 	{
-		UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::Assert);
-
-		return UGameInstance::GetSubsystem< UFrontendUISubsystem>(World->GetGameInstance());
+		if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::ReturnNull))
+		{
+			return UGameInstance::GetSubsystem<UFrontendUISubsystem>(World->GetGameInstance());
+		}
 	}
 
 	return nullptr;
-	}
+}
 
 bool UFrontendUISubsystem::ShouldCreateSubsystem(UObject* Outer) const
 {

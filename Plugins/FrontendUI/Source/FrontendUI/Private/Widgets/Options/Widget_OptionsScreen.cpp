@@ -132,7 +132,13 @@ void UWidget_OptionsScreen::OnResetBoundActionTriggered()
 
 	const FText SelectedTabButtonName = CastChecked<UFrontendCommonButtonBase>(SelectedTabButton)->GetButtonDisplayText();
 
-	UFrontendUISubsystem::Get(this)->PushConfirmScreenToModalStackAsync(
+	UFrontendUISubsystem* FrontendUISubsystem = UFrontendUISubsystem::Get(this);
+	if (!FrontendUISubsystem)
+	{
+		return;
+	}
+
+	FrontendUISubsystem->PushConfirmScreenToModalStackAsync(
 		EConfirmScreenType::YesNo,
 		LOCTEXT("ResetTitle", "Reset"),
 		FText::Format(LOCTEXT("ResetTabMessageFmt", "Are you sure you want to reset all the settings under the {0} tab?"), SelectedTabButtonName),

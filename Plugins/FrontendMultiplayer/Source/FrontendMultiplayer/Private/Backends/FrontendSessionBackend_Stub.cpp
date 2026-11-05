@@ -51,6 +51,7 @@ void UFrontendSessionBackend_Stub::LeaveSession()
 	LogDebug(TEXT("[stub] LeaveSession() called; clearing the simulated session"));
 	SimulatedSessionName.Reset();
 	SimulatedMaxPlayers = 0;
+	ReportSessionLeft();
 }
 
 bool UFrontendSessionBackend_Stub::GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const

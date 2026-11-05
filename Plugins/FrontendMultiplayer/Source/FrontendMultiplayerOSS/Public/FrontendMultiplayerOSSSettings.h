@@ -52,6 +52,7 @@ public:
 	/**
 	 * Let -AUTH_TYPE / -AUTH_LOGIN / -AUTH_PASSWORD on the command line override everything.
 	 * This is how Scripts/LaunchInstances.bat gives each window its own Dev Auth Tool user.
+	 * Ignored in Shipping builds regardless of this value.
 	 */
 	UPROPERTY(Config, EditAnywhere, Category = "Login")
 	bool bAllowCommandLineCredentials = true;

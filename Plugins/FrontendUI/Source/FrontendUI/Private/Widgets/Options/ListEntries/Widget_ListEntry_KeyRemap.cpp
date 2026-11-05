@@ -40,7 +40,13 @@ void UWidget_ListEntry_KeyRemap::OnRemapKeyButtonClicked()
 {
 	SelectThisEntryWidget();
 
-	UFrontendUISubsystem::Get(this)->PushSoftWidgetToStackAsync(
+	UFrontendUISubsystem* FrontendUISubsystem = UFrontendUISubsystem::Get(this);
+	if (!FrontendUISubsystem)
+	{
+		return;
+	}
+
+	FrontendUISubsystem->PushSoftWidgetToStackAsync(
 		FrontendGameplayTags::Frontend_WidgetStack_Modal,
 		UFrontendFunctionLibrary::GetFrontendSoftWidgetClassByTag(FrontendGameplayTags::Frontend_Widget_KeyRemapScreen),
 		[WeakThis = TWeakObjectPtr<UWidget_ListEntry_KeyRemap>(this)](EAsyncPushWidgetState PushState, UWidget_ActivatableBase* PushedWidget)
@@ -75,7 +81,13 @@ void UWidget_ListEntry_KeyRemap::OnResetKeyBindingButtonClicked()
 	// Already the default key: tell the player instead of silently doing nothing.
 	if (!CachedOwningKeyRemapDataObject->CanResetBackToDefaultValue())
 	{
-		UFrontendUISubsystem::Get(this)->PushConfirmScreenToModalStackAsync(
+		UFrontendUISubsystem* FrontendUISubsystem = UFrontendUISubsystem::Get(this);
+		if (!FrontendUISubsystem)
+		{
+			return;
+		}
+
+		FrontendUISubsystem->PushConfirmScreenToModalStackAsync(
 			EConfirmScreenType::Ok,
 			LOCTEXT("ResetKeyMappingTitle", "Reset Key Mapping"),
 			FText::Format(LOCTEXT("KeyAlreadyDefaultFmt", "The key binding for {0} is already set to its default."), MappingName),
@@ -85,7 +97,13 @@ void UWidget_ListEntry_KeyRemap::OnResetKeyBindingButtonClicked()
 		return;
 	}
 
-	UFrontendUISubsystem::Get(this)->PushConfirmScreenToModalStackAsync(
+	UFrontendUISubsystem* FrontendUISubsystem = UFrontendUISubsystem::Get(this);
+	if (!FrontendUISubsystem)
+	{
+		return;
+	}
+
+	FrontendUISubsystem->PushConfirmScreenToModalStackAsync(
 		EConfirmScreenType::YesNo,
 		LOCTEXT("ResetKeyMappingTitle", "Reset Key Mapping"),
 		FText::Format(LOCTEXT("ResetKeyMappingMessageFmt", "Are you sure you want to reset the key binding for {0}?"), MappingName),
@@ -110,7 +128,13 @@ void UWidget_ListEntry_KeyRemap::OnKeyToRemapPressed(const FKey& PressedKey)
 
 void UWidget_ListEntry_KeyRemap::OnKeyRemapCanceled(const FString& CanceledReason)
 {
-	UFrontendUISubsystem::Get(this)->PushConfirmScreenToModalStackAsync(
+	UFrontendUISubsystem* FrontendUISubsystem = UFrontendUISubsystem::Get(this);
+	if (!FrontendUISubsystem)
+	{
+		return;
+	}
+
+	FrontendUISubsystem->PushConfirmScreenToModalStackAsync(
 		EConfirmScreenType::Ok,
 		LOCTEXT("KeyRemapTitle", "Key Remap"),
 		FText::FromString(CanceledReason),

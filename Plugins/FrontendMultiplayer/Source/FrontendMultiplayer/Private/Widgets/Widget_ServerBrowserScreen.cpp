@@ -43,6 +43,18 @@ void UWidget_ServerBrowserScreen::NativeOnInitialized()
 	}
 }
 
+void UWidget_ServerBrowserScreen::NativeDestruct()
+{
+	// Subsystem delegates outlive this widget; unbind so a destroyed screen is never called.
+	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
+	{
+		MultiplayerSubsystem->OnSessionListUpdated.RemoveDynamic(this, &ThisClass::HandleSessionListUpdated);
+		MultiplayerSubsystem->OnSessionOperationChanged.RemoveDynamic(this, &ThisClass::HandleSessionOperationChanged);
+	}
+
+	Super::NativeDestruct();
+}
+
 void UWidget_ServerBrowserScreen::NativeOnActivated()
 {
 	Super::NativeOnActivated();

@@ -2,6 +2,7 @@
 	"FileVersion": 3,
 	"Version": 1,
 	"VersionName": "1.0",
+	"EngineVersion": "5.6.0",
 	"FriendlyName": "Game UI",
 	"Description": "Per-game UI layer: boot flow, main menu, brand assets, pause menu, HUD, input actions and the game's extensions of the FrontendUI and FrontendMultiplayer frameworks.",
 	"Category": "UI",
@@ -16,7 +17,13 @@
 		}
 	],
 	"Plugins": [
-		{ "Name": "FrontendUI", "Enabled": true },
-		{ "Name": "FrontendMultiplayer", "Enabled": true }
+		{
+			"Name": "FrontendUI",
+			"Enabled": true
+		},
+		{
+			"Name": "FrontendMultiplayer",
+			"Enabled": true
+		}
 	]
 }

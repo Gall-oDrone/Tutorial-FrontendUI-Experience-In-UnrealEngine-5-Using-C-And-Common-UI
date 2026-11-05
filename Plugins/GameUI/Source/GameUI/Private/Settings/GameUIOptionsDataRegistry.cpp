@@ -7,6 +7,8 @@
 #include "FrontendFunctionLibrary.h"
 #include "FrontendGameplayTags.h"
 
+#define LOCTEXT_NAMESPACE "GameUI"
+
 void UGameUIOptionsDataRegistry::InitGameplayCollectionTab()
 {
 	// Framework rows first (Difficulty), then this game's additions.
@@ -20,15 +22,18 @@ void UGameUIOptionsDataRegistry::InitGameplayCollectionTab()
 
 	// Demonstrates a details-panel image driven from Project Settings
 	// (Frontend UI Settings -> Options Image Reference -> Frontend.Image.TestImage).
+	// Development-only: it is a showcase row, not a game option.
+#if !UE_BUILD_SHIPPING
 	{
 		UListDataObject_String* TestItem = NewObject<UListDataObject_String>();
 		TestItem->SetDataID(FName("TestItem"));
-		TestItem->SetDataDisplayName(FText::FromString(TEXT("Test Image Item")));
+		TestItem->SetDataDisplayName(LOCTEXT("TestImageItem", "Test Image Item"));
 		TestItem->SetSoftDescriptionImage(UFrontendFunctionLibrary::GetOptionsSoftImageByTag(FrontendGameplayTags::Frontend_Image_TestImage));
-		TestItem->SetDescriptionRichText(FText::FromString(TEXT("The image to display can be specified in the project settings. It can be anything the developer assigned in there")));
+		TestItem->SetDescriptionRichText(LOCTEXT("TestImageItemDesc", "The image shown here comes from Project Settings (Frontend UI Settings, Options Image Reference). Any texture the developer assigns there appears in this panel."));
 
 		GameplayTabCollection->AddChildListData(TestItem);
 	}
+#endif
 }
 
 UListDataObject_Collection* UGameUIOptionsDataRegistry::FindTabCollection(const FName& InTabID) const
@@ -43,3 +48,5 @@ UListDataObject_Collection* UGameUIOptionsDataRegistry::FindTabCollection(const 
 
 	return nullptr;
 }
+
+#undef LOCTEXT_NAMESPACE
