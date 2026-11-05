@@ -7,6 +7,8 @@
 #include "Widgets/Components/FrontendCommonButtonBase.h"
 #include "ICommonInputModule.h"
 
+#define LOCTEXT_NAMESPACE "FrontendUI"
+
 UConfirmScreenInfoObject* UConfirmScreenInfoObject::CreateOKScreen(const FText& InScreenTitle, const FText& InScreenMsg)
 {
 	UConfirmScreenInfoObject* InfoObject = NewObject<UConfirmScreenInfoObject>();
@@ -15,7 +17,7 @@ UConfirmScreenInfoObject* UConfirmScreenInfoObject::CreateOKScreen(const FText& 
 
 	FConfirmScreenButtonInfo OKButtonInfo;
 	OKButtonInfo.ConfirmScreenButtonType = EConfirmScreenButtonType::Closed;
-	OKButtonInfo.ButtonTextToDisplay = FText::FromString(TEXT("Ok"));
+	OKButtonInfo.ButtonTextToDisplay = LOCTEXT("ConfirmOk", "Ok");
 
 	InfoObject->AvailableScreenButtons.Add(OKButtonInfo);
 
@@ -30,11 +32,11 @@ UConfirmScreenInfoObject* UConfirmScreenInfoObject::CreateYesNoScreen(const FTex
 
 	FConfirmScreenButtonInfo YesButtonInfo;
 	YesButtonInfo.ConfirmScreenButtonType = EConfirmScreenButtonType::Confirmed;
-	YesButtonInfo.ButtonTextToDisplay = FText::FromString(TEXT("Yes"));
+	YesButtonInfo.ButtonTextToDisplay = LOCTEXT("ConfirmYes", "Yes");
 
 	FConfirmScreenButtonInfo NoButtonInfo;
 	NoButtonInfo.ConfirmScreenButtonType = EConfirmScreenButtonType::Cancelled;
-	NoButtonInfo.ButtonTextToDisplay = FText::FromString(TEXT("No"));
+	NoButtonInfo.ButtonTextToDisplay = LOCTEXT("ConfirmNo", "No");
 
 	InfoObject->AvailableScreenButtons.Add(YesButtonInfo);
 	InfoObject->AvailableScreenButtons.Add(NoButtonInfo);
@@ -50,11 +52,11 @@ UConfirmScreenInfoObject* UConfirmScreenInfoObject::CreateOkCancelScreen(const F
 
 	FConfirmScreenButtonInfo OkButtonInfo;
 	OkButtonInfo.ConfirmScreenButtonType = EConfirmScreenButtonType::Confirmed;
-	OkButtonInfo.ButtonTextToDisplay = FText::FromString(TEXT("Ok"));
+	OkButtonInfo.ButtonTextToDisplay = LOCTEXT("ConfirmOk", "Ok");
 
 	FConfirmScreenButtonInfo CancelButtonInfo;
 	CancelButtonInfo.ConfirmScreenButtonType = EConfirmScreenButtonType::Cancelled;
-	CancelButtonInfo.ButtonTextToDisplay = FText::FromString(TEXT("Cancel"));
+	CancelButtonInfo.ButtonTextToDisplay = LOCTEXT("ConfirmCancel", "Cancel");
 
 	InfoObject->AvailableScreenButtons.Add(OkButtonInfo);
 	InfoObject->AvailableScreenButtons.Add(CancelButtonInfo);
@@ -89,6 +91,9 @@ void UWidget_ConfirmScreen::InitConfirmScreen(UConfirmScreenInfoObject* InScreen
 	for (const FConfirmScreenButtonInfo& AvailableButtonInfo : InScreenInfoObject->AvailableScreenButtons)
 	{
 		UFrontendCommonButtonBase* AddedButton = DynamicEntryBox_Buttons->CreateEntry<UFrontendCommonButtonBase>();
+		// CreateEntry runs PreConstruct with the Blueprint's (empty) default text, which
+		// SetButtonText ignores, so the designer placeholder survives unless set here.
+		AddedButton->SetButtonText(AvailableButtonInfo.ButtonTextToDisplay);
 		AddedButton->OnClicked().AddLambda(
 			[ClickedButtonCallback, AvailableButtonInfo,this]()
 			{
@@ -102,14 +107,13 @@ void UWidget_ConfirmScreen::InitConfirmScreen(UConfirmScreenInfoObject* InScreen
 
 UWidget* UWidget_ConfirmScreen::NativeGetDesiredFocusTarget() const
 {
-	if (DynamicEntryBox_Buttons->GetNumEntries() != 0)
+	// Focus the last button: with Yes / No that is No, the safe default for a gamepad.
+	if (DynamicEntryBox_Buttons && DynamicEntryBox_Buttons->GetNumEntries() != 0)
 	{
-		/*
-		* Set focus on the last button. So if there are two buttons, one is yes, one is no.
-		* Our gamepad will focus on the No button.
-		*/
-		DynamicEntryBox_Buttons->GetAllEntries().Last()->SetFocus();
+		return DynamicEntryBox_Buttons->GetAllEntries().Last();
 	}
 
 	return Super::NativeGetDesiredFocusTarget();
 }
+
+#undef LOCTEXT_NAMESPACE

@@ -56,6 +56,8 @@ protected:
 	void SelectThisEntryWidget();
 
 private:
+	void UnbindFromOwningDataObject();
+
 	//***** Bound Widgets ***** //
 	UPROPERTY(BlueprintReadOnly,meta = (BindWidgetOptional,AllowPrivateAccess = "true"))
 	UCommonTextBlock* CommonText_SettingDisplayName;

@@ -9,8 +9,8 @@
 #include "Widgets/Widget_ConfirmScreen.h"
 #include "FrontendGameplayTags.h"
 #include "FrontendFunctionLibrary.h"
-
-#include "FrontendDebugHelper.h"
+#include "FrontendUILog.h"
+#include "Engine/StreamableManager.h"
 
 UFrontendUISubsystem* UFrontendUISubsystem::Get(const UObject* WorldContextObject)
 {
@@ -37,6 +37,23 @@ bool UFrontendUISubsystem::ShouldCreateSubsystem(UObject* Outer) const
 	return false;
 }
 
+void UFrontendUISubsystem::Deinitialize()
+{
+	// Loads still in flight would otherwise call back into a dead subsystem (PIE stop,
+	// game exit while a screen is streaming in).
+	for (const TSharedPtr<FStreamableHandle>& Handle : PendingWidgetLoads)
+	{
+		if (Handle.IsValid())
+		{
+			Handle->CancelHandle();
+		}
+	}
+	PendingWidgetLoads.Empty();
+	PendingConfirmScreenInfos.Empty();
+
+	Super::Deinitialize();
+}
+
 void UFrontendUISubsystem::RegisterCreatedPrimaryLayout(UWidget_PrimaryLayout* InCreatedWidget)
 {
 	checkf(InCreatedWidget,
@@ -45,19 +62,26 @@ void UFrontendUISubsystem::RegisterCreatedPrimaryLayout(UWidget_PrimaryLayout* I
 		TEXT("(a Cast node between them means the parent class is wrong)."));
 
 	CreatedPrimaryLayout = InCreatedWidget;
-
-	/*Debug::Print(TEXT("Primary Layout widget stored"));*/
 }
 
 void UFrontendUISubsystem::PushSoftWidgetToStackAsync(const FGameplayTag& InWidgetStackTag, TSoftClassPtr<UWidget_ActivatableBase> InSoftWidgetClass,TFunction<void(EAsyncPushWidgetState, UWidget_ActivatableBase*)> AsyncPushStateCallback)
 {
 	check(!InSoftWidgetClass.IsNull());
 
-	UAssetManager::Get().GetStreamableManager().RequestAsyncLoad(
+	TWeakObjectPtr<UFrontendUISubsystem> WeakThis(this);
+	TSharedPtr<FStreamableHandle> Handle = UAssetManager::Get().GetStreamableManager().RequestAsyncLoad(
 		InSoftWidgetClass.ToSoftObjectPath(),
 		FStreamableDelegate::CreateLambda(
-			[InSoftWidgetClass, this, InWidgetStackTag,AsyncPushStateCallback]()
+			[InSoftWidgetClass, WeakThis, InWidgetStackTag, AsyncPushStateCallback]()
 			{
+				UFrontendUISubsystem* This = WeakThis.Get();
+				if (!This)
+				{
+					return;
+				}
+
+				This->PendingWidgetLoads.RemoveAll([](const TSharedPtr<FStreamableHandle>& H) { return !H.IsValid() || H->HasLoadCompleted() || H->WasCanceled(); });
+
 				UClass* LoadedWidgetClass = InSoftWidgetClass.Get();
 
 				// Configuration slips must not take the game down. Both failures below are
@@ -70,7 +94,7 @@ void UFrontendUISubsystem::PushSoftWidgetToStackAsync(const FGameplayTag& InWidg
 					return;
 				}
 
-				if (!ensureAlwaysMsgf(CreatedPrimaryLayout,
+				if (!ensureAlwaysMsgf(This->CreatedPrimaryLayout,
 					TEXT("FrontendUI: no primary layout is registered while pushing '%s'. The owning player controller must create its Widget_PrimaryLayout ")
 					TEXT("and call RegisterCreatedPrimaryLayout before anything is pushed."),
 					*LoadedWidgetClass->GetName()))
@@ -78,7 +102,11 @@ void UFrontendUISubsystem::PushSoftWidgetToStackAsync(const FGameplayTag& InWidg
 					return;
 				}
 
-				UCommonActivatableWidgetContainerBase* FoundWidgetStack = CreatedPrimaryLayout->FindWidgetStackByTag(InWidgetStackTag);
+				UCommonActivatableWidgetContainerBase* FoundWidgetStack = This->CreatedPrimaryLayout->FindWidgetStackByTag(InWidgetStackTag);
+				if (!ensureAlwaysMsgf(FoundWidgetStack, TEXT("FrontendUI: no widget stack registered for tag '%s'."), *InWidgetStackTag.ToString()))
+				{
+					return;
+				}
 
 				UWidget_ActivatableBase* CreatedWidget = FoundWidgetStack->AddWidget<UWidget_ActivatableBase>(
 					LoadedWidgetClass,
@@ -93,6 +121,11 @@ void UFrontendUISubsystem::PushSoftWidgetToStackAsync(const FGameplayTag& InWidg
 		)
 	);
 
+	// Synchronous completion (already loaded) has already run the callback; track only loads still in flight.
+	if (Handle.IsValid() && !Handle->HasLoadCompleted() && !Handle->WasCanceled())
+	{
+		PendingWidgetLoads.Add(Handle);
+	}
 }
 
 void UFrontendUISubsystem::PushConfirmScreenToModalStackAsync(EConfirmScreenType InScreenType, const FText& InScreenTitle, const FText& InScreenMsg, TFunction<void(EConfirmScreenButtonType)> ButtonClickedCallback)
@@ -121,15 +154,24 @@ void UFrontendUISubsystem::PushConfirmScreenToModalStackAsync(EConfirmScreenType
 
 	check(CreatedInfoObject);
 
+	// The info object has no owner until the screen reads it; keep it referenced across
+	// the async load so a GC in between cannot collect it.
+	PendingConfirmScreenInfos.Add(CreatedInfoObject);
+
+	TWeakObjectPtr<UFrontendUISubsystem> WeakThis(this);
 	PushSoftWidgetToStackAsync(
 		FrontendGameplayTags::Frontend_WidgetStack_Modal,
 		UFrontendFunctionLibrary::GetFrontendSoftWidgetClassByTag(FrontendGameplayTags::Frontend_Widget_ConfirmScreen),
-		[CreatedInfoObject, ButtonClickedCallback](EAsyncPushWidgetState InPushState, UWidget_ActivatableBase* PushedWidget)
+		[WeakThis, CreatedInfoObject, ButtonClickedCallback](EAsyncPushWidgetState InPushState, UWidget_ActivatableBase* PushedWidget)
 		{
 			if (InPushState == EAsyncPushWidgetState::OnCreatedBeforePush)
 			{
 				UWidget_ConfirmScreen* CreatedConfirmScreen = CastChecked<UWidget_ConfirmScreen>(PushedWidget);
 				CreatedConfirmScreen->InitConfirmScreen(CreatedInfoObject, ButtonClickedCallback);
+			}
+			else if (UFrontendUISubsystem* This = WeakThis.Get())
+			{
+				This->PendingConfirmScreenInfos.Remove(CreatedInfoObject);
 			}
 		}
 	);

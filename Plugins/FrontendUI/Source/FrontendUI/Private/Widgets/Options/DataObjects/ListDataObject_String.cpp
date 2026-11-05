@@ -3,8 +3,9 @@
 
 #include "Widgets/Options/DataObjects/ListDataObject_String.h"
 #include "Widgets/Options/OptionsDataInteractionHelper.h"
+#include "FrontendUILog.h"
 
-#include "FrontendDebugHelper.h"
+#define LOCTEXT_NAMESPACE "FrontendUI"
 
 void UListDataObject_String::OnDataObjectInitialized()
 {
@@ -18,7 +19,7 @@ void UListDataObject_String::OnDataObjectInitialized()
 		CurrentStringValue = GetDefaultValueAsString();
 	}
 
-	//TODO::Read from the saved string value and use it to set the CurrentStringValue
+	// The saved value wins over the default when the getter has one.
 	if (DataDynamicGetter)
 	{
 		if (!DataDynamicGetter->GetValueAsString().IsEmpty())
@@ -29,7 +30,7 @@ void UListDataObject_String::OnDataObjectInitialized()
 
 	if (!TrySetDisplayTextFromStringValue(CurrentStringValue))
 	{
-		CurrentDisplayText = FText::FromString(TEXT("Invalid Option"));
+		CurrentDisplayText = LOCTEXT("InvalidOption", "Invalid Option");
 	}
 }
 
@@ -65,7 +66,7 @@ void UListDataObject_String::AdvanceToNextOption()
 	{
 		DataDynamicSetter->SetValueFromString(CurrentStringValue);
 
-		Debug::Print(TEXT("DataDynamicSetter is used. The latest value from Getter: ") + DataDynamicGetter->GetValueAsString());
+		UE_LOG(LogFrontendUI, Verbose, TEXT("Option '%s' advanced to '%s'"), *GetDataID().ToString(), *CurrentStringValue);
 		NotifyListDataModified(this);
 	}
 }
@@ -96,7 +97,7 @@ void UListDataObject_String::BackToPreviousOption()
 	{
 		DataDynamicSetter->SetValueFromString(CurrentStringValue);
 
-		Debug::Print(TEXT("DataDynamicSetter is used. The latest value from Getter: ") + DataDynamicGetter->GetValueAsString());
+		UE_LOG(LogFrontendUI, Verbose, TEXT("Option '%s' moved back to '%s'"), *GetDataID().ToString(), *CurrentStringValue);
 
 		NotifyListDataModified(this);
 	}
@@ -191,12 +192,12 @@ void UListDataObject_StringBool::TryInitBoolValues()
 {
 	if (!AvailableOptionsStringArray.Contains(TrueString))
 	{
-		AddDynamicOption(TrueString, FText::FromString(TEXT("ON")));
+		AddDynamicOption(TrueString, LOCTEXT("BoolOn", "ON"));
 	}
 
 	if (!AvailableOptionsStringArray.Contains(FalseString))
 	{
-		AddDynamicOption(FalseString, FText::FromString(TEXT("OFF")));
+		AddDynamicOption(FalseString, LOCTEXT("BoolOff", "OFF"));
 	}
 }
 
@@ -247,7 +248,7 @@ void UListDataObject_StringInteger::OnDataObjectInitialized()
 
 	if (!TrySetDisplayTextFromStringValue(CurrentStringValue))
 	{
-		CurrentDisplayText = FText::FromString(TEXT("Custom"));
+		CurrentDisplayText = LOCTEXT("CustomOption", "Custom");
 	}
 }
 
@@ -262,9 +263,11 @@ void UListDataObject_StringInteger::OnEditDependencyDataModified(UListDataObject
 
 		CurrentStringValue = DataDynamicGetter->GetValueAsString();
 
-		if (TrySetDisplayTextFromStringValue(CurrentStringValue))
+		// A value the dependency wrote that is not one of our presets reads as "Custom"
+		// (e.g. the overall quality preset set a shadow quality we do not list).
+		if (!TrySetDisplayTextFromStringValue(CurrentStringValue))
 		{
-			CurrentDisplayText = FText::FromString(TEXT("Custom"));
+			CurrentDisplayText = LOCTEXT("CustomOption", "Custom");
 		}
 
 		NotifyListDataModified(this, EOptionsListDataModifyReason::DependencyModified);
@@ -272,5 +275,7 @@ void UListDataObject_StringInteger::OnEditDependencyDataModified(UListDataObject
 
 	Super::OnEditDependencyDataModified(ModifiedDependencyData, ModifyReason);
 }
+
+#undef LOCTEXT_NAMESPACE
 
 //*********** UListDataObject_StringInteger *********** //

@@ -72,7 +72,10 @@ void UListDataObject_Base::NotifyListDataModified(UListDataObject_Base* Modified
 
 	if (bShouldApplyChangeImmediately)
 	{
-		UFrontendGameUserSettings::Get()->ApplySettings(true);
+		if (UFrontendGameUserSettings* Settings = UFrontendGameUserSettings::TryGet())
+		{
+			Settings->ApplySettings(true);
+		}
 	}
 }
 

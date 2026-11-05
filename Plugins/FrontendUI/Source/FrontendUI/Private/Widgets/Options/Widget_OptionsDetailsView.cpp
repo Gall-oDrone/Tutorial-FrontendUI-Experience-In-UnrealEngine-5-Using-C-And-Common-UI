@@ -28,6 +28,8 @@ void UWidget_OptionsDetailsView::UpdateDetailsViewInfo(UListDataObject_Base* InD
 		
 	CommonRichText_Description->SetText(InDataObject->GetDescriptionRichText());
 	
+	// Class names are developer information; players never need them.
+#if !UE_BUILD_SHIPPING
 	const FString DynamicDetails = FString::Printf(
 		TEXT("Data Object Class: <Bold>%s</>\n\nEntry Widget Class:<Bold>%s</>"),
 		*InDataObject->GetClass()->GetName(),
@@ -35,6 +37,9 @@ void UWidget_OptionsDetailsView::UpdateDetailsViewInfo(UListDataObject_Base* InD
 	);
 
 	CommonRichText_DynamicDetails->SetText(FText::FromString(DynamicDetails));
+#else
+	CommonRichText_DynamicDetails->SetText(FText::GetEmpty());
+#endif
 
 	CommonRichText_DisabledReason->SetText(InDataObject->IsDataCurrentlyEditable()? FText::GetEmpty() : InDataObject->GetDisableRichText());
 }

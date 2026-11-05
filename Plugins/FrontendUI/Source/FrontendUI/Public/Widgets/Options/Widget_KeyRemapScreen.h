@@ -28,6 +28,10 @@ public:
 
 protected:
 
+	//~ Begin UUserWidget Interface
+	virtual void NativeDestruct() override;
+	//~ End UUserWidget Interface
+
 	//~ Begin UCommonActivatableWidget Interface
 	virtual void NativeOnActivated() override;
 	virtual void NativeOnDeactivated() override;
@@ -40,12 +44,16 @@ private:
 	//Delay a tick to make sure the input key is captured properly before calling the PreDeactivateCallback and deactivating the widget
 	void RequestDeactivateWidget(TFunction<void()> PreDeactivateCallback);
 
+	void UnregisterInputPreprocessor();
+
 	//***** bound Widget ***** //
 	UPROPERTY(meta = (BindWidget))
 	UCommonRichTextBlock* CommonRichText_RemapMessage;
 	//***** bound Widget ***** //
 
 	TSharedPtr<FKeyRemapScreenInputPreprocessor> CachedInputPreprocessor;
+
+	FTSTicker::FDelegateHandle DeactivateTickerHandle;
 
 	ECommonInputType CachedDesiredInputType;
 };

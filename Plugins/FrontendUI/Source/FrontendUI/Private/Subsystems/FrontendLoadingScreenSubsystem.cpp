@@ -6,8 +6,11 @@
 #include "FrontendSettings/FrontendLoadingScreenSettings.h"
 #include "Blueprint/UserWidget.h"
 #include "Interfaces/FrontendLoadingScreenInterface.h"
+#include "Engine/GameViewportClient.h"
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
 
-#include "FrontendDebugHelper.h"
+#define LOCTEXT_NAMESPACE "FrontendUI"
 
 bool UFrontendLoadingScreenSubsystem::ShouldCreateSubsystem(UObject* Outer) const
 {
@@ -24,6 +27,8 @@ bool UFrontendLoadingScreenSubsystem::ShouldCreateSubsystem(UObject* Outer) cons
 
 void UFrontendLoadingScreenSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
+	Super::Initialize(Collection);
+
 	FCoreUObjectDelegates::PreLoadMapWithContext.AddUObject(this, &ThisClass::OnMapPreloaded);
 	FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &ThisClass::OnMapPostLoaded);
 }
@@ -32,6 +37,16 @@ void UFrontendLoadingScreenSubsystem::Deinitialize()
 {
 	FCoreUObjectDelegates::PreLoadMapWithContext.RemoveAll(this);
 	FCoreUObjectDelegates::PostLoadMapWithWorld.RemoveAll(this);
+
+	// PIE stop / exit while the screen is up: give the viewport back.
+	TryRemoveLoadingScreen();
+	if (UGameViewportClient* ViewportClient = GetGameInstance() ? GetGameInstance()->GetGameViewportClient() : nullptr)
+	{
+		ViewportClient->bDisableWorldRendering = false;
+	}
+	ActiveLoadingScreenHolds.Empty();
+
+	Super::Deinitialize();
 }
 
 UWorld* UFrontendLoadingScreenSubsystem::GetTickableGameObjectWorld() const
@@ -46,8 +61,6 @@ UWorld* UFrontendLoadingScreenSubsystem::GetTickableGameObjectWorld() const
 
 void UFrontendLoadingScreenSubsystem::Tick(float DeltaTime)
 {
-	//Debug::Print(TEXT("Ticking"));
-
 	TryUpdateLoadingScreen();
 }
 
@@ -72,8 +85,6 @@ TStatId UFrontendLoadingScreenSubsystem::GetStatId() const
 
 void UFrontendLoadingScreenSubsystem::OnMapPreloaded(const FWorldContext& WorldContext, const FString& MapName)
 {
-	/*Debug::Print(TEXT("On Map Pre Loaded"));*/
-
 	if (WorldContext.OwningGameInstance != GetGameInstance())
 	{
 		return;
@@ -88,8 +99,6 @@ void UFrontendLoadingScreenSubsystem::OnMapPreloaded(const FWorldContext& WorldC
 
 void UFrontendLoadingScreenSubsystem::OnMapPostLoaded(UWorld* LoadedWorld)
 {
-	/*Debug::Print(TEXT("On Map Post Loaded"));*/
-
 	if (LoadedWorld && LoadedWorld->GetGameInstance() == GetGameInstance())
 	{
 		bIsCurrentlyLoadingMap = false;
@@ -118,6 +127,13 @@ void UFrontendLoadingScreenSubsystem::ClearLoadingScreenHold(FName InHoldTag)
 
 void UFrontendLoadingScreenSubsystem::TryUpdateLoadingScreen()
 {
+	// Holds and map events can arrive before the viewport exists; the tick picks it up.
+	UGameViewportClient* ViewportClient = GetGameInstance() ? GetGameInstance()->GetGameViewportClient() : nullptr;
+	if (!ViewportClient)
+	{
+		return;
+	}
+
 	//Check if there's any start up loading screen that's currently active
 	if (IsPreLoadScreenActive())
 	{
@@ -137,7 +153,7 @@ void UFrontendLoadingScreenSubsystem::TryUpdateLoadingScreen()
 		//Try remove the current active loading screen
 		TryRemoveLoadingScreen();
 
-		HoldLoadingScreenStartUpTime = -1.f;
+		HoldLoadingScreenStartUpTime = -1.0;
 
 		//Notify the loading is complete
 		NotifyLoadingScreenVisibilityChange(false);
@@ -166,27 +182,29 @@ bool UFrontendLoadingScreenSubsystem::ShouldShowLoadingScreen()
 		return false;
 	}
 
+	UGameViewportClient* ViewportClient = GetGameInstance()->GetGameViewportClient();
+
 	//Check if the objects in the world need a loading screen
 	if (CheckTheNeedToShowLoadingScreen())
 	{
-		GetGameInstance()->GetGameViewportClient()->bDisableWorldRendering = true;
+		ViewportClient->bDisableWorldRendering = true;
 
 		return true;
 	}
 
-	CurrentLoadingReason = TEXT("Waiting for Texture Streaming");
+	CurrentLoadingReason = LOCTEXT("LoadingReasonTextureStreaming", "Waiting for texture streaming").ToString();
 
 	//There's no need to show the loading screen. Allow the world to be renderer to our viewport here
-	GetGameInstance()->GetGameViewportClient()->bDisableWorldRendering = false;
+	ViewportClient->bDisableWorldRendering = false;
 
-	const float CurrentTime = FPlatformTime::Seconds();
+	const double CurrentTime = FPlatformTime::Seconds();
 
-	if (HoldLoadingScreenStartUpTime < 0.f)
+	if (HoldLoadingScreenStartUpTime < 0.0)
 	{
 		HoldLoadingScreenStartUpTime = CurrentTime;
 	}
 
-	const float ElapsedTime = CurrentTime - HoldLoadingScreenStartUpTime;
+	const double ElapsedTime = CurrentTime - HoldLoadingScreenStartUpTime;
 
 	// Work the engine cannot observe (frontend building its first screen, session join,
 	// save streaming) keeps the screen up through explicit holds. Checked after world
@@ -214,7 +232,7 @@ bool UFrontendLoadingScreenSubsystem::CheckTheNeedToShowLoadingScreen()
 {
 	if (bIsCurrentlyLoadingMap)
 	{
-		CurrentLoadingReason = TEXT("Loading Level");
+		CurrentLoadingReason = LOCTEXT("LoadingReasonLevel", "Loading level").ToString();
 
 		return true;
 	}
@@ -223,27 +241,25 @@ bool UFrontendLoadingScreenSubsystem::CheckTheNeedToShowLoadingScreen()
 
 	if (!OwningWorld)
 	{
-		CurrentLoadingReason = TEXT("Initializing World");
+		CurrentLoadingReason = LOCTEXT("LoadingReasonWorld", "Initializing world").ToString();
 
 		return true;
 	}
 
 	if (!OwningWorld->HasBegunPlay())
 	{
-		CurrentLoadingReason = TEXT("World hasn't begun play yet");
+		CurrentLoadingReason = LOCTEXT("LoadingReasonBeginPlay", "Starting world").ToString();
 
 		return true;
 	}
 
 	if (!OwningWorld->GetFirstLocalPlayerFromController())
 	{
-		CurrentLoadingReason = TEXT("Player Controller is not valid yet");
+		CurrentLoadingReason = LOCTEXT("LoadingReasonPlayer", "Waiting for player").ToString();
 
 		return true;
 	}
 
-	//Check if the game states, player states, or player character, actor component are ready
- 
 	return false;
 }
 
@@ -281,10 +297,12 @@ void UFrontendLoadingScreenSubsystem::TryRemoveLoadingScreen()
 		return;
 	}
 
-	GetGameInstance()->GetGameViewportClient()->RemoveViewportWidgetContent(CachedCreatedLoadingScreenWidget.ToSharedRef());
+	if (UGameViewportClient* ViewportClient = GetGameInstance() ? GetGameInstance()->GetGameViewportClient() : nullptr)
+	{
+		ViewportClient->RemoveViewportWidgetContent(CachedCreatedLoadingScreenWidget.ToSharedRef());
+	}
 
 	CachedCreatedLoadingScreenWidget.Reset();
-
 }
 
 void UFrontendLoadingScreenSubsystem::NotifyLoadingScreenVisibilityChange(bool bIsVisible)
@@ -330,3 +348,5 @@ void UFrontendLoadingScreenSubsystem::NotifyLoadingScreenVisibilityChange(bool b
 		//The code for notifying other objects in the world goes here
 	}
 }
+
+#undef LOCTEXT_NAMESPACE

@@ -7,7 +7,7 @@
 FOptionsDataInteractionHelper::FOptionsDataInteractionHelper(const FString& InSetterOrGetterFuncPath)
 	: CachedDynamicFunctionPath(InSetterOrGetterFuncPath)
 {
-	CachedWeakGameUserSettings = UFrontendGameUserSettings::Get();
+	CachedWeakGameUserSettings = UFrontendGameUserSettings::TryGet();
 }
 
 FString FOptionsDataInteractionHelper::GetValueAsString() const

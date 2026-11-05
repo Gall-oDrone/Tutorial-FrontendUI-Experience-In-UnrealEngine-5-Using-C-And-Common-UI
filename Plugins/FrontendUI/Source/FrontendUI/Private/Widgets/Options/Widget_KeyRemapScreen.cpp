@@ -8,7 +8,7 @@
 #include "ICommonInputModule.h"
 #include "CommonUITypes.h"
 
-#include "FrontendDebugHelper.h"
+#define LOCTEXT_NAMESPACE "FrontendUI"
 
 class FKeyRemapScreenInputPreprocessor : public IInputProcessor
 {
@@ -34,12 +34,6 @@ protected:
 
 	virtual bool HandleKeyDownEvent(FSlateApplication& SlateApp, const FKeyEvent& InKeyEvent) override
 	{
-		/*Debug::Print(TEXT("Pressed Key: ") + InKeyEvent.GetKey().GetDisplayName().ToString());
-
-		UEnum* StaticCommonInputType = StaticEnum<ECommonInputType>();
-
-		Debug::Print(TEXT("Desired Input Key Type: ") + StaticCommonInputType->GetValueAsString(CachedInputTypeToListenTo));*/
-
 		ProcessPressedKey(InKeyEvent.GetKey());
 
 		return true;
@@ -47,8 +41,6 @@ protected:
 
 	virtual bool HandleMouseButtonDownEvent(FSlateApplication& SlateApp, const FPointerEvent& MouseEvent) override
 	{
-		/*Debug::Print(TEXT("Pressed Key: ") + MouseEvent.GetEffectingButton().GetDisplayName().ToString());*/
-
 		ProcessPressedKey(MouseEvent.GetEffectingButton());
 
 		return true;
@@ -58,7 +50,7 @@ protected:
 	{
 		if (InPressedKey == EKeys::Escape)
 		{
-			OnInputPreProcessorKeySelectCanceled.ExecuteIfBound(TEXT("Key Remap has been canceled"));
+			OnInputPreProcessorKeySelectCanceled.ExecuteIfBound(LOCTEXT("KeyRemapCanceled", "Key remap has been canceled.").ToString());
 
 			return;
 		}
@@ -75,7 +67,7 @@ protected:
 			
 			if (InPressedKey.IsGamepadKey() || CurrentInputType == ECommonInputType::Gamepad)
 			{
-				OnInputPreProcessorKeySelectCanceled.ExecuteIfBound(TEXT("Detected Gamepad Key pressed for keyboard inputs. Key Remap has been canceled."));
+				OnInputPreProcessorKeySelectCanceled.ExecuteIfBound(LOCTEXT("KeyRemapCanceledGamepadForKeyboard", "A gamepad key was pressed while remapping a keyboard input. Key remap has been canceled.").ToString());
 
 				return;
 			}
@@ -96,7 +88,7 @@ protected:
 
 			if (!InPressedKey.IsGamepadKey())
 			{
-				OnInputPreProcessorKeySelectCanceled.ExecuteIfBound(TEXT("Detected non Gamepad Key pressed for Gamepad inputs. Key Remap has been canceled."));
+				OnInputPreProcessorKeySelectCanceled.ExecuteIfBound(LOCTEXT("KeyRemapCanceledKeyboardForGamepad", "A non-gamepad key was pressed while remapping a gamepad input. Key remap has been canceled.").ToString());
 
 				return;
 			}
@@ -129,39 +121,53 @@ void UWidget_KeyRemapScreen::NativeOnActivated()
 
 	FSlateApplication::Get().RegisterInputPreProcessor(CachedInputPreprocessor, -1);
 
-	FString InputDeviceName;
+	FText InputDeviceName;
 
 	switch (CachedDesiredInputType)
 	{
 	case ECommonInputType::MouseAndKeyboard:
-		InputDeviceName = TEXT("Mouse & Keyboard");
+		InputDeviceName = LOCTEXT("InputDeviceMouseKeyboard", "Mouse & Keyboard");
 		break;
 
 	case ECommonInputType::Gamepad:
-		InputDeviceName = TEXT("Gamepad");
+		InputDeviceName = LOCTEXT("InputDeviceGamepad", "Gamepad");
 		break;
 
 	default:
 		break;
 	}
 
-	const FString DisplayRichMessage = FString::Printf(
-		TEXT("<KeyRemapDefault>Press any</> <KeyRemapHighlight>&s</> <KeyRemapDefault>key.</>"), *InputDeviceName
-	);
-
-	CommonRichText_RemapMessage->SetText(FText::FromString(DisplayRichMessage));
+	// The tags are the rich-text styles registered on the widget's text style set.
+	CommonRichText_RemapMessage->SetText(FText::Format(
+		LOCTEXT("KeyRemapPrompt", "<KeyRemapDefault>Press any</> <KeyRemapHighlight>{0}</> <KeyRemapDefault>key.</>"),
+		InputDeviceName));
 }
 
 void UWidget_KeyRemapScreen::NativeOnDeactivated()
 {
 	Super::NativeOnDeactivated();
 
-	if (CachedInputPreprocessor)
+	UnregisterInputPreprocessor();
+}
+
+void UWidget_KeyRemapScreen::NativeDestruct()
+{
+	// A world teardown destroys without deactivating; the preprocessor swallows every
+	// key and mouse event, so it must not outlive the screen.
+	UnregisterInputPreprocessor();
+	FTSTicker::GetCoreTicker().RemoveTicker(DeactivateTickerHandle);
+
+	Super::NativeDestruct();
+}
+
+void UWidget_KeyRemapScreen::UnregisterInputPreprocessor()
+{
+	if (CachedInputPreprocessor && FSlateApplication::IsInitialized())
 	{
 		FSlateApplication::Get().UnregisterInputPreProcessor(CachedInputPreprocessor);
-
-		CachedInputPreprocessor.Reset();
 	}
+
+	CachedInputPreprocessor.Reset();
 }
 
 void UWidget_KeyRemapScreen::OnValidKeyPressedDetected(const FKey& PressedKey)
@@ -169,7 +175,6 @@ void UWidget_KeyRemapScreen::OnValidKeyPressedDetected(const FKey& PressedKey)
 	RequestDeactivateWidget(
 		[this, PressedKey]()
 		{
-			/*Debug::Print(TEXT("Pressed Key: ") + PressedKey.GetDisplayName().ToString());*/
 			OnKeyRemapScreenKeyPressed.ExecuteIfBound(PressedKey);
 		}
 	);
@@ -180,7 +185,6 @@ void UWidget_KeyRemapScreen::OnKeySelectCanceled(const FString& CanceledReason)
 	RequestDeactivateWidget(
 		[this, CanceledReason]()
 		{
-			/*Debug::Print(CanceledReason);*/
 			OnKeyRemapScreenKeySelectCanceled.ExecuteIfBound(CanceledReason);
 		}
 	);
@@ -188,9 +192,11 @@ void UWidget_KeyRemapScreen::OnKeySelectCanceled(const FString& CanceledReason)
 
 void UWidget_KeyRemapScreen::RequestDeactivateWidget(TFunction<void()> PreDeactivateCallback)
 {
-	//Delay a tick to make sure the input is processed correctly
-	FTSTicker::GetCoreTicker().AddTicker(
-		FTickerDelegate::CreateLambda(
+	// Delay a tick so the key that closes the screen is not also delivered to whatever
+	// takes focus next. Weak lambda: the widget may be gone by then.
+	FTSTicker::GetCoreTicker().RemoveTicker(DeactivateTickerHandle);
+	DeactivateTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateWeakLambda(this,
 			[PreDeactivateCallback, this](float DeltaTime)->bool
 			{
 				PreDeactivateCallback();
@@ -202,3 +208,5 @@ void UWidget_KeyRemapScreen::RequestDeactivateWidget(TFunction<void()> PreDeacti
 		)
 	);
 }
+
+#undef LOCTEXT_NAMESPACE

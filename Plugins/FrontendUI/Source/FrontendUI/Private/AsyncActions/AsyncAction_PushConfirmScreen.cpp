@@ -26,15 +26,25 @@ UAsyncAction_PushConfirmScreen* UAsyncAction_PushConfirmScreen::PushConfirmScree
 
 void UAsyncAction_PushConfirmScreen::Activate()
 {
-	UFrontendUISubsystem::Get(CachedOwningWorld.Get())->PushConfirmScreenToModalStackAsync(
+	UFrontendUISubsystem* FrontendUISubsystem = UFrontendUISubsystem::Get(CachedOwningWorld.Get());
+	if (!FrontendUISubsystem)
+	{
+		SetReadyToDestroy();
+		return;
+	}
+
+	FrontendUISubsystem->PushConfirmScreenToModalStackAsync(
 		CachedScreenType,
 		CachedScreenTitle,
 		CachedScreenMessage,
-		[this](EConfirmScreenButtonType ClickedButtonType)
+		[WeakThis = TWeakObjectPtr<UAsyncAction_PushConfirmScreen>(this)](EConfirmScreenButtonType ClickedButtonType)
 		{
-			OnButtonClicked.Broadcast(ClickedButtonType);
+			if (UAsyncAction_PushConfirmScreen* This = WeakThis.Get())
+			{
+				This->OnButtonClicked.Broadcast(ClickedButtonType);
 
-			SetReadyToDestroy();
+				This->SetReadyToDestroy();
+			}
 		}
 	);
 }

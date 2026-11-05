@@ -4,8 +4,8 @@
 #include "Widgets/Options/DataObjects/ListDataObject_KeyRemap.h"
 #include "CommonInputBaseTypes.h"
 #include "CommonInputSubsystem.h"
+#include "FrontendUILog.h"
 
-#include "FrontendDebugHelper.h"
 void UListDataObject_KeyRemap::InitKeyRemapData(UEnhancedInputUserSettings* InOwningInputUserSettings, UEnhancedPlayerMappableKeyProfile* InKeyProfile, ECommonInputType InDesiredInputKeyType, const FPlayerKeyMapping& InOwningPlayerKeyMapping)
 {
 	CachedOwningInputUserSettings = InOwningInputUserSettings;
@@ -21,24 +21,26 @@ FSlateBrush UListDataObject_KeyRemap::GetIconFromCurrentKey() const
 
 	FSlateBrush FoundBrush;
 
+	const FPlayerKeyMapping* KeyMapping = GetOwningKeyMapping();
+	if (!KeyMapping)
+	{
+		return FoundBrush;
+	}
+
 	UCommonInputSubsystem* CommonInputSubsystem = UCommonInputSubsystem::Get(CachedOwningInputUserSettings->GetLocalPlayer());
 
 	check(CommonInputSubsystem);
 
 	const bool bHasFoundBrush = UCommonInputPlatformSettings::Get()->TryGetInputBrush(
 		FoundBrush,
-		GetOwningKeyMapping()->GetCurrentKey(),
+		KeyMapping->GetCurrentKey(),
 		CachedDesiredInputKeyType,
 		CommonInputSubsystem->GetCurrentGamepadName()
 	);
 
 	if (!bHasFoundBrush)
 	{
-		Debug::Print(
-			TEXT("Unable to find an icon for the key ") +
-			GetOwningKeyMapping()->GetCurrentKey().GetDisplayName().ToString() +
-			TEXT(" Empty brush was applied.")
-		);
+		UE_LOG(LogFrontendUI, Verbose, TEXT("No icon for key '%s'; empty brush applied"), *KeyMapping->GetCurrentKey().GetDisplayName().ToString());
 	}
 
 	return FoundBrush;
@@ -63,12 +65,14 @@ void UListDataObject_KeyRemap::BindNewInputKey(const FKey& InNewKey)
 
 bool UListDataObject_KeyRemap::HasDefaultValue() const
 {
-	return GetOwningKeyMapping()->GetDefaultKey().IsValid();
+	const FPlayerKeyMapping* KeyMapping = GetOwningKeyMapping();
+	return KeyMapping && KeyMapping->GetDefaultKey().IsValid();
 }
 
 bool UListDataObject_KeyRemap::CanResetBackToDefaultValue() const
 {
-	return HasDefaultValue() && GetOwningKeyMapping()->IsCustomized();
+	const FPlayerKeyMapping* KeyMapping = GetOwningKeyMapping();
+	return KeyMapping && KeyMapping->GetDefaultKey().IsValid() && KeyMapping->IsCustomized();
 }
 
 bool UListDataObject_KeyRemap::TryResetBackToDefaultValue()
