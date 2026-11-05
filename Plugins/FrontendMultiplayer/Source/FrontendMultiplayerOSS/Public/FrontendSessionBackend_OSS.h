@@ -56,6 +56,8 @@ public:
 	virtual void LeaveSession() override;
 	virtual void FetchLeaderboard(ELeaderboardCategory Category) override;
 	virtual FString GetBackendDisplayName() const override;
+	/** Null advertises by LAN broadcast and has no account; every other subsystem needs a signed-in user. */
+	virtual bool RequiresLogin() const override { return !IsLAN(); }
 	virtual bool IsLoggedIn() const override;
 	virtual void Login() override;
 	virtual FString GetLocalPlayerDisplayName() const override;
@@ -74,9 +76,6 @@ private:
 	UWorld* GetWorldForOnline() const;
 	FName GetSubsystemName() const;
 	bool IsLAN() const;
-
-	/** Null advertises by LAN broadcast and has no account; every other subsystem needs a signed-in user. */
-	bool RequiresLogin() const { return !IsLAN(); }
 
 	//~ Begin sign-in
 	/**

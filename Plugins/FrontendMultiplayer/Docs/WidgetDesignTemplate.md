@@ -128,6 +128,27 @@ shows buttons and pushes screens, which is exactly what Main Menu does with no n
   work — see [EventGraph work, by Blueprint](#eventgraph-work-by-blueprint). This is the one
   screen whose buttons the graph can reference directly, because it has no C++ parent.
 
+### 1a. `WBP_SignInPanel` (v1.0)
+
+Parent class `Widget_SignInPanel`. A small panel the hub hosts in its right column; on
+LAN / stub backends it collapses itself, so the hub looks exactly as before.
+
+```
+[WBP_SignInPanel]
+└─ Vertical Box
+   ├─ CommonTextBlock_Status      [BIND, optional] (Style_Text_Default)   "Not signed in"
+   └─ CommonButton_SignIn         [BIND] (WBP_Button_Default)            "Sign in"
+```
+
+- Place one instance in `WBP_CAW_MultiplayerScreen` under
+  `NamedSlot_MainRightExtendPoint` (or at the bottom of the left grid if you prefer it
+  near the buttons). No graph work: the panel binds to
+  `OnLoginStateChanged` / `OnSessionOperationChanged` itself.
+- Button text is set from C++ ("Sign in" → "Signed in"), so leave `Button Display Text`
+  empty or set it to "Sign in" for the designer preview.
+- The status line reads "Signed in as <name>" once `GetLocalPlayerDisplayName()` has a
+  value, "Signing in... check your browser" while the `LoggingIn` operation runs.
+
 ## 2. `WBP_CAW_HostSessionScreen`
 
 Parent class `Widget_HostSessionScreen`. A form, so it takes the blur wrapper.

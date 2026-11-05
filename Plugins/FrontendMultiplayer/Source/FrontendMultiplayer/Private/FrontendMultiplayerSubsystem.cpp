@@ -186,6 +186,11 @@ void UFrontendMultiplayerSubsystem::Login()
 	}
 }
 
+bool UFrontendMultiplayerSubsystem::RequiresLogin() const
+{
+	return ActiveBackend ? ActiveBackend->RequiresLogin() : false;
+}
+
 bool UFrontendMultiplayerSubsystem::IsLoggedIn() const
 {
 	return ActiveBackend ? ActiveBackend->IsLoggedIn() : false;

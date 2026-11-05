@@ -64,6 +64,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Frontend Multiplayer|Identity")
 	void Login();
 
+	/** True if the active backend has an account to sign in to (EOS, Steam); false for LAN / stub, where sign-in UI should be hidden. */
+	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer|Identity")
+	bool RequiresLogin() const;
+
 	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer|Identity")
 	bool IsLoggedIn() const;
 

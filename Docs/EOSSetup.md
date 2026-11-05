@@ -60,8 +60,25 @@ engine's config hierarchy. It is read before any plugin starts, it overrides
 on exit and which is merged too late for the EOS plugin to see. `.gitignore` excludes
 `Config/User*.ini`, so the keys stay out of the repository.
 
-For a packaged game the same line goes in your build pipeline's copy of the project
-ini; never commit it.
+### Packaged builds
+
+`Config/UserEngine.ini` is **not staged** by the packaging step, so a packaged game
+reads only `DefaultEngine.ini`. That file ships with the same `+Artifacts=` line
+**commented out**; for your own packaged builds uncomment it and paste your ids.
+
+What is and is not sensitive:
+
+| Value | Sensitive? | Why |
+|---|---|---|
+| `ProductId`, `SandboxId`, `DeploymentId`, `ClientId` | No | They identify the application. Every shipped EOS game carries them in its binary; the portal shows them in plain text. |
+| `ClientSecret` of a **Peer2Peer** client | No, by design | Epic's model: a *client* policy is limited to what a player may do anyway, and its secret is expected to be embedded in the game. The plugin refuses to start with an empty secret, so it must be present. |
+| `ClientSecret` of a **TrustedServer** client (Phase 8 dedicated servers) | **Yes** | Grants server-side rights; lives only on the server / in the backend, never in a client build. |
+| `EncryptionKey` | No (for this project) | Only Player Data Storage encrypts with it; any 64 hex chars. |
+
+So it is fine to commit a `DefaultEngine.ini` with your ids in **your** game's repo.
+This template keeps the line commented so the repository never carries anyone's ids.
+If your pipeline prefers injection, `-ini:Engine:[/Script/OnlineSubsystemEOS.EOSSettings]:+Artifacts=(...)`
+on the command line works in Development builds (not Shipping).
 
 ## 3. Build
 
@@ -131,6 +148,8 @@ from a command prompt (double-clicking the file runs LAN mode).
 | 6 | Stop the Dev Auth Tool, A: Host | `Login(developer)` fails → Ok modal "Could Not Host: Could not sign in to EOS (developer): ...". Explicit command-line credentials never fall back, by design; launch without the `-AUTH_*` args to exercise `persistentauth` → `accountportal` (browser sign-in, then the host continues) |
 | 7 | `Scripts\LaunchInstances.bat 2 LAN` | unchanged Null flow: `Session backend: OnlineSubsystem (NULL)`, no `Login` lines, `ServerTravel ...?listen?bIsLanMatch`, `Net driver: IpNetDriver (ListenServer)`, B: `FindSessions (LAN=true, lobbies=false, bucket=-, ...)` → `ClientTravel <LAN-IP>:7777` → `Net driver: IpNetDriver (Client)` |
 | 8 | Two PCs on different networks | B finds and joins A without port forwarding (EOS P2P relays) |
+| 9 | Package Development Win64, uncomment `+Artifacts` in `DefaultEngine.ini`, `Scripts\LaunchInstances.bat 2 EOS PACKAGED` | same lines as rows 1-4 from the staged exe; `EOSSDK Platform Properties [... ProductId=...]` proves the ids were read from `DefaultEngine.ini` |
+| 10 | Packaged exe launched by hand with no `-AUTH_*` args, Multiplayer → **Sign in** | browser opens once → `Login(accountportal) -> OK` → panel reads "Signed in as <EpicName>"; relaunch → `Login(persistentauth) -> OK` with no browser |
 
 ## 6. Troubleshooting
 
