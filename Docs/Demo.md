@@ -53,7 +53,8 @@ LogGameMode: Match State Changed from WaitingToStart to InProgress
 [oss] OnDestroySessionComplete GameSession -> OK
 ```
 
-Each instance writes `Saved/Logs/Instance1.log` / `Instance2.log`.
+Each instance writes `Saved/Logs/Instance1.log` / `Instance2.log` (editor builds) or
+`Saved/StagedBuilds/Windows/FrontendUI/Saved/Logs/InstanceN.log` (`PACKAGED`).
 
 ## Common capture problems
 

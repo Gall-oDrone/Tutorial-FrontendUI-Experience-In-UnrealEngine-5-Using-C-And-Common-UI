@@ -94,8 +94,19 @@ In order of visibility:
 
 Package a Development Win64 build and run `Scripts\LaunchInstances.bat 2 LAN PACKAGED`.
 Everything in this repo is tested that way; doing it on day one means a cooking problem
-is yours to notice when the diff is small. Common causes when the packaged frontend
-differs from PIE:
+is yours to notice when the diff is small.
+
+```
+"D:\EpicGames\UE_5.6\Engine\Build\BatchFiles\RunUAT.bat" BuildCookRun -project="D:\EpicGames\Projects\UE_5.6\FrontendUI\FrontendUI.uproject" -platform=Win64 -clientconfig=Development -build -cook -stage -pak -nop4 -utf8output
+```
+
+The staged game lands in `Saved\StagedBuilds\Windows\` (the launcher's default
+`PACKAGED_EXE`) and, because it runs in place, writes its logs to
+`Saved\StagedBuilds\Windows\FrontendUI\Saved\Logs\`, not the project's `Saved\Logs`.
+UBT sizes its parallelism by free memory (`Requested 1.5 GB memory per action ...
+limiting max parallel actions to N` in the output), so close the editor and browsers
+first on an 8 GB machine. Common causes when the packaged frontend differs from PIE:
+
 
 | Symptom | Cause |
 |---|---|
