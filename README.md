@@ -169,6 +169,7 @@ Each tag is a working, tested state. Pick one to see how a feature was added.
 | `v0.6.1` | Polish: per-module log categories, EOS SDK disabled until used, readable lobby names, demo recipe | `Docs/Demo.md` |
 | `v0.7-eos` | Epic Online Services by config: lazy sign-in with a credential chain (`Login` / `IsLoggedIn` / `OnLoginStateChanged` on the subsystem), EOS lobbies, `NetDriverEOSBase` P2P with IP fallback, `LaunchInstances.bat 2 EOS`; product keys stay out of git | `Docs/EOSSetup.md` |
 | `v1.0` | Template readiness: verified on a packaged Development build in LAN and EOS modes (`LaunchInstances.bat 2 LAN PACKAGED` / `2 EOS PACKAGED`), EOS ids for packaged games, `persistentauth` → `accountportal` sign-in without a Dev Auth Tool, Sign-in panel (`Widget_SignInPanel`, `RequiresLogin`), primary game module, hardening pass (LOCTEXT, delegate/async lifetimes, Shipping guards), new-game guide | `Docs/StartingANewGame.md` |
+| `v1.0.1` | Host advertises its name as `FRONTEND_SESSION_HOST_NAME` (EOS leaves `OwningUserName` empty for searchers); one disconnect = one return to the frontend (`bReturnToFrontendInFlight`); `DisableNativeTick` meta typo fixed in every widget header | `Plugins/FrontendMultiplayer/Docs/SessionBackend.md` |
 
 ## Roadmap
 
