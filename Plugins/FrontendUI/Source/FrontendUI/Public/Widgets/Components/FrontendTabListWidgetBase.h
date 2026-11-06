@@ -10,7 +10,7 @@ class UFrontendCommonButtonBase;
 /**
  * 
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class FRONTENDUI_API UFrontendTabListWidgetBase : public UCommonTabListWidgetBase
 {
 	GENERATED_BODY()

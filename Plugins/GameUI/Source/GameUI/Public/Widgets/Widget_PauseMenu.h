@@ -16,7 +16,7 @@ class UFrontendCommonButtonBase;
  * Pausing the world is the match player controller's job; this widget only reports
  * that it wants to close through OnCloseRequested.
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class GAMEUI_API UWidget_PauseMenu : public UWidget_ActivatableBase
 {
 	GENERATED_BODY()

@@ -21,7 +21,7 @@ class AGameUIMatchPlayerController;
  * action goes through the match player controller's server RPCs. Back = Leave (with
  * confirmation). The Blueprint handles styling through the BP_* events.
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class GAMEUI_API UWidget_LobbyScreen : public UWidget_ActivatableBase
 {
 	GENERATED_BODY()

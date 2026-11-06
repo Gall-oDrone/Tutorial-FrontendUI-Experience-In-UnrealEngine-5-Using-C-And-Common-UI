@@ -15,7 +15,7 @@ class UFrontendSessionListEntryData;
  * List row for one found session. Independent of Widget_ListEntry_Base so it
  * can bind UFrontendSessionListEntryData without CastChecked to ListDataObject_Base.
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class FRONTENDMULTIPLAYER_API UWidget_ListEntry_Session : public UCommonUserWidget, public IUserObjectListEntry
 {
 	GENERATED_BODY()

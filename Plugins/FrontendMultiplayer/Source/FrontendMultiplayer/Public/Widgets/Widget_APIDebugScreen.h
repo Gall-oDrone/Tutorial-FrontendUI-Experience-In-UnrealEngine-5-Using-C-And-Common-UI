@@ -13,7 +13,7 @@ class UScrollBox;
  * Scrollable API debug log. Shows UFrontendMultiplayerSubsystem's full log history
  * on open and follows new lines while visible.
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class FRONTENDMULTIPLAYER_API UWidget_APIDebugScreen : public UWidget_ActivatableBase
 {
 	GENERATED_BODY()

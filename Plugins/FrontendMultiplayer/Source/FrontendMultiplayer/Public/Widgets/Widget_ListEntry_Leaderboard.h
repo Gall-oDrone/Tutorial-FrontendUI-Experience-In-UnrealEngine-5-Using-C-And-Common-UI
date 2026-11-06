@@ -14,7 +14,7 @@ class UCommonTextBlock;
  * same reason Widget_ListEntry_Session is: that base CastChecks every item to
  * UListDataObject_Base, which a read-only ranking row is not.
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class FRONTENDMULTIPLAYER_API UWidget_ListEntry_Leaderboard : public UCommonUserWidget, public IUserObjectListEntry
 {
 	GENERATED_BODY()

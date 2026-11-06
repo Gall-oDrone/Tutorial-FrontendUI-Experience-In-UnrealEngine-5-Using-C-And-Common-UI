@@ -14,7 +14,7 @@ class USpinBox;
 /**
  * Host-session screen: name + max players, then create a (stubbed) session.
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class FRONTENDMULTIPLAYER_API UWidget_HostSessionScreen : public UWidget_ActivatableBase
 {
 	GENERATED_BODY()

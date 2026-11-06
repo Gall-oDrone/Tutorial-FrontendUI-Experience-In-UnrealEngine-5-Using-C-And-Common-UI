@@ -9,7 +9,7 @@
 /**
  * 
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class FRONTENDUI_API UFrontendCommonRotator : public UCommonRotator
 {
 	GENERATED_BODY()
