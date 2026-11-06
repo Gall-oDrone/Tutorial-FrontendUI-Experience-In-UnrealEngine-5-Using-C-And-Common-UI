@@ -7,26 +7,16 @@
 #include "FrontendTabListWidgetBase.generated.h"
 
 class UFrontendCommonButtonBase;
-
 /**
- * Tab list that creates its tab buttons from a configured button class and labels them.
- *
- * It always listens for the Next / Previous Tab input actions set in the designer
- * (Common UI only does so when "Auto Listen For Input" is ticked, which is easy to miss and
- * leaves the tabs unreachable from a gamepad or keyboard).
+ * 
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
 class FRONTENDUI_API UFrontendTabListWidgetBase : public UCommonTabListWidgetBase
 {
 	GENERATED_BODY()
 	
 public:
 	void RequestRegisterTab(const FName& InTabID, const FText& InTabDisplayName);
-
-protected:
-	//~ Begin UUserWidget Interface
-	virtual void NativeConstruct() override;
-	//~ End UUserWidget Interface
 
 private:
 	//~ Begin UWidget Interface

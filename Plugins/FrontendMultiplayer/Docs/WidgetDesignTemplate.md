@@ -388,19 +388,6 @@ it up. The four C++ screens register that action in `NativeOnInitialized`; the
 Blueprint-only hub gets it from the **Is Back Handler** and
 **Is Back Action Displayed In Action Bar** checkboxes.
 
-## Gamepad and keyboard
-
-Every screen must be fully usable with no mouse. Three rules cover it:
-
-| Rule | How |
-|---|---|
-| A screen focuses something when it opens | C++ screens override `NativeGetDesiredFocusTarget`. Blueprint-only screens (`WBP_CAW_MultiplayerScreen`, `WBP_CAW_CreditScreen`, ...) override **Get Desired Focus Target** and return their first button; without it the log says `No focus target for leaf-most node ... focusing the game viewport` and the first stick/arrow press goes nowhere |
-| Tabs switch with actions, not focus | Tab buttons are deliberately not focusable so focus stays on the list. The tab list binds `NextTabAction` / `PreviousTabAction` from `DT_CommonInputKeyMapping` (gamepad **LB / RB**, keyboard **Q / E**) and `UFrontendTabListWidgetBase` always listens for them, whatever the "Auto Listen For Input" checkbox says |
-| Everything else is a bound action | Back, Reset, Refresh, Confirm come from the same table and show in the action bar; keyboard keys live in each row's **Keyboard Input Type Info**, gamepad keys in **Default Gamepad Input Type Info** |
-
-If a keyboard hint does not appear in the action bar, the `Keyboard & Mouse` controller data
-has no brush for that key; the action still works.
-
 ## Data setup
 
 Add all five `Frontend.Widget.*` multiplayer tags to `FrontendWidgetMap` in Project
