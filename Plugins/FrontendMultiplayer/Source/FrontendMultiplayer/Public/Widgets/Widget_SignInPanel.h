@@ -19,7 +19,7 @@ class UCommonTextBlock;
  * the browser round-trip happens at a moment the player chose, and so a name is on
  * screen before they host.
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class FRONTENDMULTIPLAYER_API UWidget_SignInPanel : public UUserWidget
 {
 	GENERATED_BODY()

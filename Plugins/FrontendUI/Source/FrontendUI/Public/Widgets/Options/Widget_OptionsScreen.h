@@ -16,7 +16,7 @@ class UListDataObject_Base;
 /**
  * 
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class FRONTENDUI_API UWidget_OptionsScreen : public UWidget_ActivatableBase
 {
 	GENERATED_BODY()

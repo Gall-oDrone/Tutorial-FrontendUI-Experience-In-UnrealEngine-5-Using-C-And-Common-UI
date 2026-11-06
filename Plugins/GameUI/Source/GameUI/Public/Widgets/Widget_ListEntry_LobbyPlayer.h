@@ -13,7 +13,7 @@ class UCommonTextBlock;
  * One row of the lobby player list. Sets the name natively; the Blueprint styles the
  * ready / host / local markers from BP_OnPlayerEntryUpdated.
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class GAMEUI_API UWidget_ListEntry_LobbyPlayer : public UCommonUserWidget, public IUserObjectListEntry
 {
 	GENERATED_BODY()

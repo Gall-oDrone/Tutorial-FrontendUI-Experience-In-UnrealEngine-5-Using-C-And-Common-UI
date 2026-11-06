@@ -17,7 +17,7 @@ class UFrontendLeaderboardEntryData;
  * right-hand buttons sort, jump and page through them. Structurally the sibling of
  * UWidget_ServerBrowserScreen with Options' tab list on top.
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class FRONTENDMULTIPLAYER_API UWidget_LeaderboardScreen : public UWidget_ActivatableBase
 {
 	GENERATED_BODY()

@@ -22,7 +22,7 @@ struct FConfirmScreenButtonInfo
 	FText ButtonTextToDisplay;
 };
 
-UCLASS(BlueprintType, meta = (DisableNaiveTick))
+UCLASS(BlueprintType, meta = (DisableNativeTick))
 class FRONTENDUI_API UConfirmScreenInfoObject : public UObject
 {
 	GENERATED_BODY()
@@ -45,7 +45,7 @@ public:
 /**
  * 
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class FRONTENDUI_API UWidget_ConfirmScreen : public UWidget_ActivatableBase
 {
 	GENERATED_BODY()

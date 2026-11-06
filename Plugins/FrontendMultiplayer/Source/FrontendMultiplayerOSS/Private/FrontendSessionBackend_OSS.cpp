@@ -28,11 +28,30 @@ namespace FrontendOSS
 	static const FName SettingKey_DisplayName(TEXT("FRONTEND_SESSION_DISPLAY_NAME"));
 
 	/**
+	 * The host's own nickname, advertised with the session. FOnlineSession::OwningUserName
+	 * is only filled for players the local SDK already knows about; EOS leaves it empty for
+	 * strangers unless a UserInfo query runs first. Carrying it as an attribute costs nothing
+	 * and works on every subsystem.
+	 */
+	static const FName SettingKey_HostName(TEXT("FRONTEND_SESSION_HOST_NAME"));
+
+	/**
 	 * Advertised by every online session and required by every online search. EOS strips
 	 * SEARCH_LOBBIES from a lobby query and rejects an empty one, so
 	 * this is the one attribute that always matches (and isolates builds by value).
 	 */
 	static const FName SettingKey_Bucket(TEXT("FRONTEND_SESSION_BUCKET"));
+
+	/** Host name from the advertised attribute, falling back to what the SDK resolved. */
+	static FString ResolveHostName(const FOnlineSession& Session)
+	{
+		FString HostName;
+		if (!Session.SessionSettings.Get(SettingKey_HostName, HostName) || HostName.IsEmpty())
+		{
+			HostName = Session.OwningUserName;
+		}
+		return HostName;
+	}
 
 	static FText NoSessionInterfaceText()
 	{
@@ -122,7 +141,7 @@ bool UFrontendSessionBackend_OSS::GetActiveSessionInfo(FString& OutDisplayName, 
 
 	if (!NamedSession->SessionSettings.Get(FrontendOSS::SettingKey_DisplayName, OutDisplayName) || OutDisplayName.IsEmpty())
 	{
-		OutDisplayName = NamedSession->OwningUserName;
+		OutDisplayName = FrontendOSS::ResolveHostName(*NamedSession);
 	}
 
 	OutMaxPlayers = NamedSession->SessionSettings.NumPublicConnections;
@@ -582,6 +601,7 @@ void UFrontendSessionBackend_OSS::CreateSessionNow()
 	const FString MapName = Settings->HostMap.IsNull() ? FString() : Settings->HostMap.GetAssetName();
 	SessionSettings.Set(SETTING_MAPNAME, MapName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 	SessionSettings.Set(FrontendOSS::SettingKey_DisplayName, PendingDisplayName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	SessionSettings.Set(FrontendOSS::SettingKey_HostName, GetLocalPlayerDisplayName(), EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 	if (!bLAN)
 	{
 		SessionSettings.Set(FrontendOSS::SettingKey_Bucket, UFrontendMultiplayerOSSSettings::Get()->SessionBucket, EOnlineDataAdvertisementType::ViaOnlineService);
@@ -673,7 +693,7 @@ void UFrontendSessionBackend_OSS::JoinSessionNow()
 	JoinSessionCompleteHandle = SessionInterface->AddOnJoinSessionCompleteDelegate_Handle(
 		FOnJoinSessionCompleteDelegate::CreateUObject(this, &ThisClass::HandleJoinSessionComplete));
 
-	LogDebug(FString::Printf(TEXT("[oss] JoinSession index %d (host %s)"), PendingJoinIndex, *Result.Session.OwningUserName));
+	LogDebug(FString::Printf(TEXT("[oss] JoinSession index %d (host %s)"), PendingJoinIndex, *FrontendOSS::ResolveHostName(Result.Session)));
 
 	if (!SessionInterface->JoinSession(0, NAME_GameSession, Result))
 	{
@@ -792,10 +812,12 @@ void UFrontendSessionBackend_OSS::HandleFindSessionsComplete(bool bWasSuccessful
 
 		UFrontendSessionListEntryData* Entry = NewObject<UFrontendSessionListEntryData>(this);
 
+		const FString HostName = FrontendOSS::ResolveHostName(Result.Session);
+
 		FString DisplayName;
 		if (!ResultSettings.Get(FrontendOSS::SettingKey_DisplayName, DisplayName) || DisplayName.IsEmpty())
 		{
-			DisplayName = Result.Session.OwningUserName;
+			DisplayName = HostName;
 		}
 		Entry->SessionDisplayName = DisplayName;
 
@@ -805,7 +827,7 @@ void UFrontendSessionBackend_OSS::HandleFindSessionsComplete(bool bWasSuccessful
 
 		Entry->MaxPlayers = ResultSettings.NumPublicConnections;
 		Entry->CurrentPlayers = FMath::Clamp(ResultSettings.NumPublicConnections - Result.Session.NumOpenPublicConnections, 0, ResultSettings.NumPublicConnections);
-		Entry->HostName = Result.Session.OwningUserName;
+		Entry->HostName = HostName;
 		Entry->PingInMs = Result.PingInMs;
 
 		Sessions.Add(Entry);

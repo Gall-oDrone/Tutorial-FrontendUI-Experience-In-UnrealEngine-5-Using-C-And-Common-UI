@@ -15,7 +15,7 @@ class UFrontendSessionListEntryData;
  * Right-hand details panel for the server browser, the session counterpart of
  * UWidget_OptionsDetailsView.
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class FRONTENDMULTIPLAYER_API UWidget_SessionDetailsView : public UUserWidget
 {
 	GENERATED_BODY()

@@ -11,7 +11,7 @@ class UCommonActivatableWidgetContainerBase;
 /**
  * 
  */
-UCLASS(Abstract,BlueprintType,meta = (DisableNaiveTick))
+UCLASS(Abstract,BlueprintType,meta = (DisableNativeTick))
 class FRONTENDUI_API UWidget_PrimaryLayout : public UCommonUserWidget
 {
 	GENERATED_BODY()

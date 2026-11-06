@@ -14,7 +14,7 @@ class UWidget_SessionDetailsView;
 /**
  * Server browser: lists found sessions and refreshes via the multiplayer subsystem.
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class FRONTENDMULTIPLAYER_API UWidget_ServerBrowserScreen : public UWidget_ActivatableBase
 {
 	GENERATED_BODY()

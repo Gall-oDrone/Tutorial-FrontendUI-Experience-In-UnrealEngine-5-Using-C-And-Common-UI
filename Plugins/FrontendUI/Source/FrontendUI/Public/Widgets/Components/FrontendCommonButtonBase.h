@@ -11,7 +11,7 @@ class UCommonLazyImage;
 /**
  * 
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class FRONTENDUI_API UFrontendCommonButtonBase : public UCommonButtonBase
 {
 	GENERATED_BODY()

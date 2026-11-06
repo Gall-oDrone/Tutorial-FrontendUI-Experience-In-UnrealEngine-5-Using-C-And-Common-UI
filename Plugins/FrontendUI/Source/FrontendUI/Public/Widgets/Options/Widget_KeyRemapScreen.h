@@ -12,7 +12,7 @@ class FKeyRemapScreenInputPreprocessor;
 /**
  * 
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class FRONTENDUI_API UWidget_KeyRemapScreen : public UWidget_ActivatableBase
 {
 	GENERATED_BODY()

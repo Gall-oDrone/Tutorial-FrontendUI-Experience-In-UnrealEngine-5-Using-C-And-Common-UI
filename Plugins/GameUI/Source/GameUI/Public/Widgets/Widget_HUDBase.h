@@ -12,7 +12,7 @@
  * Subclass in Blueprint and add the actual widgets; react to the pause menu through
  * BP_OnPauseMenuVisibilityChanged.
  */
-UCLASS(Abstract, BlueprintType, meta = (DisableNaiveTick))
+UCLASS(Abstract, BlueprintType, meta = (DisableNativeTick))
 class GAMEUI_API UWidget_HUDBase : public UWidget_ActivatableBase
 {
 	GENERATED_BODY()
