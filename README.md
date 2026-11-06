@@ -29,6 +29,7 @@ The demo project additionally enables `MediaMovieStreamer` for the startup movie
 ```
 FrontendUI.uproject
 Config/                              Project settings that drive the plugins
+Source/FrontendUIGame/               Primary game module (empty by design; a packaged exe needs one)
 Content/
   Maps/FrontEndTestMap, L_MatchTest  Frontend map and the match map the lobby/HUD run in
   Movies/                            Startup and loading movies (must stay under Content/)

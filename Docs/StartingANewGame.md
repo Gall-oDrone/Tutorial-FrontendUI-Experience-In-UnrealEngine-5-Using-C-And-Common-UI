@@ -1,9 +1,10 @@
 # Starting a new game from this repository
 
 This repository is a **template**, not only a tutorial result. All code lives in three
-plugins; the project itself has no game module (`"Modules": []` in the `.uproject`), two
-test maps and the config that wires the plugins together. Starting a game from it means
-keeping the plugins, renaming the shell, and replacing the reference content with yours.
+plugins; the project itself has one deliberately empty primary game module
+(`Source/FrontendUIGame`, required for a packaged executable), two test maps and the
+config that wires the plugins together. Starting a game from it means keeping the
+plugins, renaming the shell, and replacing the reference content with yours.
 
 Allow an afternoon for the steps below. Everything after step 3 works in any order.
 
@@ -14,6 +15,7 @@ Allow an afternoon for the steps below. Everything after step 3 works in any ord
 | `Plugins/FrontendUI` | Widget stacks, loading-screen holds, options / key remap, modals, input routing. Game-agnostic. | **Keep as is.** Update it from this repo later by copying the folder. |
 | `Plugins/FrontendMultiplayer` (+ `FrontendMultiplayerOSS`) | Session subsystem, backend seam, Host / Browser / Leaderboard / Debug / Sign-in screens, LAN and EOS backends. Game-agnostic. | **Keep as is.** Swap or add backends (`Docs/SessionBackend.md`), never edit screens for game needs: subclass them. |
 | `Plugins/GameUI` | The *reference* game: player controller, game modes, HUD, pause, lobby, settings registries, brand assets, input mappings, widget Blueprints. | **Copy and own.** Rename to `<YourGame>UI` or merge into your game module. This is where your changes go. |
+| `Source/FrontendUIGame` | Primary game module. Empty apart from `IMPLEMENT_PRIMARY_GAME_MODULE`; a monolithic build needs exactly one. | **Rename** to `<YourGame>` (see below). Put code here only if it is truly project-specific. |
 | `Content/Maps/FrontEndTestMap`, `L_MatchTest` | Two test maps: frontend camera scene and an empty match level. | Replace with yours; keep the GameMode overrides they demonstrate. |
 | `Content/Movies`, `Content/Assets` | Startup movie placeholder, test assets. | Replace. |
 | `Config/*.ini` | Plugin wiring (sections listed in the README), EOS sections, net driver definitions. | Keep; edit values, not structure. |
@@ -28,13 +30,15 @@ cd MyGame
 git remote set-url origin <your-repo-url>
 ```
 
-Rename the project shell (no C++ module to rename, only files and strings):
+Rename the project shell:
 
 | Rename | To |
 |---|---|
 | `FrontendUI.uproject` | `MyGame.uproject` |
-| `Source/FrontendUI.Target.cs`, class `FrontendUITarget`, `ExtraModuleNames` (empty) | `MyGame.Target.cs`, `MyGameTarget` |
-| `Source/FrontendUIEditor.Target.cs`, class `FrontendUIEditorTarget` | `MyGameEditor.Target.cs`, `MyGameEditorTarget` |
+| `Source/FrontendUIGame/` folder, `FrontendUIGame.Build.cs` class, `FrontendUIGame.h/.cpp`, `FFrontendUIGameModule` | `MyGame/`, `MyGame`, `MyGame.h/.cpp`, `FMyGameModule`; in `.cpp`: `IMPLEMENT_PRIMARY_GAME_MODULE(FMyGameModule, MyGame, "MyGame")` |
+| `.uproject` → `"Modules"[0].Name` | `MyGame` |
+| `Source/FrontendUI.Target.cs`, class `FrontendUITarget`, `ExtraModuleNames.Add("FrontendUIGame")` | `MyGame.Target.cs`, `MyGameTarget`, `ExtraModuleNames.Add("MyGame")` |
+| `Source/FrontendUIEditor.Target.cs`, class `FrontendUIEditorTarget`, same `ExtraModuleNames` line | `MyGameEditor.Target.cs`, `MyGameEditorTarget` |
 | `Config/DefaultGame.ini` → `ProjectName`, `ProjectID` | your name, a new GUID |
 | `Config/DefaultEngine.ini` → `DefaultArtifactName=FrontendUI` (EOS only) | `MyGame`, and the same name in your `+Artifacts=` line |
 | `Scripts/LaunchInstances.bat` → `FrontendUI.uproject`, `FrontendUI.exe`, window titles | your names |
@@ -95,6 +99,7 @@ differs from PIE:
 
 | Symptom | Cause |
 |---|---|
+| Link errors for `GInternalProjectName`, `FMemory_Malloc`, `GIsGameAgnosticExe` | the project has no primary game module. The editor never needs one, a monolithic exe always does: keep `Source/<YourGame>/` with its `IMPLEMENT_PRIMARY_GAME_MODULE` and list the module in the `.uproject` and both `Target.cs` files. |
 | A screen never appears | its Blueprint is only reachable through a soft reference that nothing cooks. Add the folder to **Project Settings → Packaging → Additional Asset Directories to Cook**, or reference it from the Frontend Widget Map (which is cooked). |
 | Options tab missing | `bEnableUserSettings` or the registry class not set in the *packaged* config layer (`Default*.ini`, not `Saved/`). |
 | EOS falls back to Null | keys are in `Config/UserEngine.ini`, which is not staged. See `Docs/EOSSetup.md` section 2. |
