@@ -44,8 +44,17 @@ public:
 private:
 	void HandleNetworkFailure(UWorld* World, UNetDriver* NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString);
 	void HandleTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString);
+	void HandlePostLoadMap(UWorld* LoadedWorld);
 	void ReturnToFrontendWithMessage(UWorld* World, const FText& InTitle, const FText& InMessage);
 
 	FText PendingDisconnectTitle;
 	FText PendingDisconnectMessage;
+
+	/**
+	 * Set while a failure-driven return to the frontend is in progress. The engine reports
+	 * one lost connection as two broadcasts (FailureReceived, then ConnectionLost) in the
+	 * same frame; only the first should tear the session down and pick the message.
+	 * Cleared when the next map finishes loading.
+	 */
+	bool bFailureReturnInFlight = false;
 };

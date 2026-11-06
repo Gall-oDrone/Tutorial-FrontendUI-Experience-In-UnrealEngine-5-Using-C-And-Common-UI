@@ -15,6 +15,16 @@ void UFrontendTabListWidgetBase::RequestRegisterTab(const FName& InTabID, const 
 	}
 }
 
+void UFrontendTabListWidgetBase::NativeConstruct()
+{
+	Super::NativeConstruct();
+
+	// Binds NextTabInputActionData / PreviousTabInputActionData (set in the designer) to
+	// the action router. No-op if nothing is set, and if "Auto Listen For Input" already
+	// did it. The base NativeDestruct unbinds.
+	SetListeningForInput(true);
+}
+
 #if WITH_EDITOR
 void UFrontendTabListWidgetBase::ValidateCompiledDefaults(IWidgetCompilerLog& CompileLog) const
 {

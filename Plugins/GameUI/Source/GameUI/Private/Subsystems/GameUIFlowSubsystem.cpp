@@ -11,6 +11,7 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "UObject/UObjectGlobals.h"
 
 #define LOCTEXT_NAMESPACE "GameUIFlow"
 
@@ -34,6 +35,8 @@ void UGameUIFlowSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 		GEngine->OnNetworkFailure().AddUObject(this, &ThisClass::HandleNetworkFailure);
 		GEngine->OnTravelFailure().AddUObject(this, &ThisClass::HandleTravelFailure);
 	}
+
+	FCoreUObjectDelegates::PostLoadMapWithWorld.AddUObject(this, &ThisClass::HandlePostLoadMap);
 }
 
 void UGameUIFlowSubsystem::Deinitialize()
@@ -43,6 +46,8 @@ void UGameUIFlowSubsystem::Deinitialize()
 		GEngine->OnNetworkFailure().RemoveAll(this);
 		GEngine->OnTravelFailure().RemoveAll(this);
 	}
+
+	FCoreUObjectDelegates::PostLoadMapWithWorld.RemoveAll(this);
 
 	Super::Deinitialize();
 }
@@ -108,6 +113,12 @@ void UGameUIFlowSubsystem::HandleNetworkFailure(UWorld* World, UNetDriver* NetDr
 		return;
 	}
 
+	if (bFailureReturnInFlight)
+	{
+		UE_LOG(LogGameUI, Verbose, TEXT("network failure %s - %s ignored; already returning to the frontend."), ENetworkFailure::ToString(FailureType), *ErrorString);
+		return;
+	}
+
 	UE_LOG(LogGameUI, Warning, TEXT("network failure %s - %s. Returning to the frontend."), ENetworkFailure::ToString(FailureType), *ErrorString);
 
 	const FText Message = ErrorString.IsEmpty()
@@ -124,6 +135,12 @@ void UGameUIFlowSubsystem::HandleTravelFailure(UWorld* World, ETravelFailure::Ty
 		return;
 	}
 
+	if (bFailureReturnInFlight)
+	{
+		UE_LOG(LogGameUI, Verbose, TEXT("travel failure %s - %s ignored; already returning to the frontend."), ETravelFailure::ToString(FailureType), *ErrorString);
+		return;
+	}
+
 	UE_LOG(LogGameUI, Warning, TEXT("travel failure %s - %s. Returning to the frontend."), ETravelFailure::ToString(FailureType), *ErrorString);
 
 	const FText Message = ErrorString.IsEmpty()
@@ -133,8 +150,17 @@ void UGameUIFlowSubsystem::HandleTravelFailure(UWorld* World, ETravelFailure::Ty
 	ReturnToFrontendWithMessage(World, LOCTEXT("TravelFailedTitle", "Connection Failed"), Message);
 }
 
+void UGameUIFlowSubsystem::HandlePostLoadMap(UWorld* LoadedWorld)
+{
+	if (LoadedWorld && LoadedWorld->GetGameInstance() == GetGameInstance())
+	{
+		bFailureReturnInFlight = false;
+	}
+}
+
 void UGameUIFlowSubsystem::ReturnToFrontendWithMessage(UWorld* World, const FText& InTitle, const FText& InMessage)
 {
+	bFailureReturnInFlight = true;
 	PendingDisconnectTitle = InTitle;
 	PendingDisconnectMessage = InMessage;
 

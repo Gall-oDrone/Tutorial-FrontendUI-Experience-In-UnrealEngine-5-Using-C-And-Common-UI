@@ -185,8 +185,8 @@ menus reference was not cooked; add its folder to `DirectoriesToAlwaysCook` in
 | LAN mode broke after this change | the host URL must end in `?listen?bIsLanMatch`; that option is what keeps `NetDriverEOSBase` on IP sockets |
 | `LogSockets: Warning: Unable to load SocketSubsystem module EOS` in LAN mode | harmless. `NetDriverEOSBase` is first in `NetDriverDefinitions`; with the Null subsystem it declines and the engine falls through to `IpNetDriver`, which is the intended LAN path |
 | Hosting still works after deleting the Dev Auth Tool credential | expected: the window was already signed in (see section 4). Relaunch to see the failure |
-| `JoinSession index 0 (host )` - the host name is empty on EOS results; `LogEOSUserInfo: ... CopyBestDisplayNamePrivate Unable to find linked account` warnings | cosmetic. EOS does not resolve other players' display names without a UserInfo query; the row title still comes from the session's own `DisplayName` setting ("Alpha"). A `QueryUserInfo` pass is on the roadmap |
-| On the client, one host disconnect logs two failures (`FailureReceived` then `ConnectionLost`) and on EOS a second `DestroySession` reports `Already in process of destroying session` | engine behaviour: `UEngine::BroadcastNetworkFailure` fires once per stage. The flow subsystem handles both; one travel, one modal. Harmless |
+| Host column empty on EOS results, `LogEOSUserInfo: ... CopyBestDisplayNamePrivate Unable to find linked account` warnings | EOS does not resolve other players' display names without a UserInfo query, so `OwningUserName` is blank for strangers. The host advertises its own nickname as the `FRONTEND_SESSION_HOST_NAME` attribute and the browser reads that first; a blank column means the host runs a build older than `v1.0.1`. The SDK warnings themselves are harmless |
+| On the client, one host disconnect logs two failures (`FailureReceived` then `ConnectionLost`) | engine behaviour: `UEngine::BroadcastNetworkFailure` fires once per stage. The flow subsystem acts on the first and logs the second at Verbose (`ignored; already returning to the frontend`) until the frontend map has loaded |
 
 ## 7. What is next
 
