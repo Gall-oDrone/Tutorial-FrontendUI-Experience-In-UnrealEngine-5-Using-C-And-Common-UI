@@ -141,7 +141,7 @@ bool UFrontendSessionBackend_OSS::GetActiveSessionInfo(FString& OutDisplayName, 
 
 	if (!NamedSession->SessionSettings.Get(FrontendOSS::SettingKey_DisplayName, OutDisplayName) || OutDisplayName.IsEmpty())
 	{
-		OutDisplayName = NamedSession->OwningUserName;
+		OutDisplayName = FrontendOSS::ResolveHostName(*NamedSession);
 	}
 
 	OutMaxPlayers = NamedSession->SessionSettings.NumPublicConnections;

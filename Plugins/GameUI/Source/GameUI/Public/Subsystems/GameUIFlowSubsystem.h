@@ -51,10 +51,10 @@ private:
 	FText PendingDisconnectMessage;
 
 	/**
-	 * Set while a failure-driven return to the frontend is in progress. The engine reports
-	 * one lost connection as two broadcasts (FailureReceived, then ConnectionLost) in the
-	 * same frame; only the first should tear the session down and pick the message.
-	 * Cleared when the next map finishes loading.
+	 * Set when a trip back to the frontend has been issued (by a failure or by the player)
+	 * and no map has finished loading since. The engine reports one lost connection as two
+	 * broadcasts (FailureReceived, then ConnectionLost) in the same frame; only the first
+	 * should tear the session down and pick the message. Cleared on PostLoadMapWithWorld.
 	 */
-	bool bFailureReturnInFlight = false;
+	bool bReturnToFrontendInFlight = false;
 };

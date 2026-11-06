@@ -54,6 +54,12 @@ void UGameUIFlowSubsystem::Deinitialize()
 
 void UGameUIFlowSubsystem::ReturnToFrontend()
 {
+	if (bReturnToFrontendInFlight)
+	{
+		UE_LOG(LogGameUI, Verbose, TEXT("ReturnToFrontend ignored; a trip to the frontend is already in flight."));
+		return;
+	}
+
 	const UGameUIDeveloperSettings* Settings = UGameUIDeveloperSettings::Get();
 
 	if (Settings->FrontendMap.IsNull())
@@ -80,6 +86,7 @@ void UGameUIFlowSubsystem::ReturnToFrontend()
 	}
 
 	const FString FrontendMapPackage = Settings->FrontendMap.ToSoftObjectPath().GetLongPackageName();
+	bReturnToFrontendInFlight = true;
 	PC->ClientTravel(FrontendMapPackage, ETravelType::TRAVEL_Absolute);
 }
 
@@ -113,8 +120,10 @@ void UGameUIFlowSubsystem::HandleNetworkFailure(UWorld* World, UNetDriver* NetDr
 		return;
 	}
 
-	if (bFailureReturnInFlight)
+	if (bReturnToFrontendInFlight)
 	{
+		// The engine reports one disconnect as FailureReceived and then ConnectionLost;
+		// the first report carries the specific reason and has already started the trip.
 		UE_LOG(LogGameUI, Verbose, TEXT("network failure %s - %s ignored; already returning to the frontend."), ENetworkFailure::ToString(FailureType), *ErrorString);
 		return;
 	}
@@ -135,7 +144,7 @@ void UGameUIFlowSubsystem::HandleTravelFailure(UWorld* World, ETravelFailure::Ty
 		return;
 	}
 
-	if (bFailureReturnInFlight)
+	if (bReturnToFrontendInFlight)
 	{
 		UE_LOG(LogGameUI, Verbose, TEXT("travel failure %s - %s ignored; already returning to the frontend."), ETravelFailure::ToString(FailureType), *ErrorString);
 		return;
@@ -152,15 +161,16 @@ void UGameUIFlowSubsystem::HandleTravelFailure(UWorld* World, ETravelFailure::Ty
 
 void UGameUIFlowSubsystem::HandlePostLoadMap(UWorld* LoadedWorld)
 {
+	// Whatever map arrived (ours, or the engine's own fallback to the default map after a
+	// failure it handled itself), the trip is over and new failures count again.
 	if (LoadedWorld && LoadedWorld->GetGameInstance() == GetGameInstance())
 	{
-		bFailureReturnInFlight = false;
+		bReturnToFrontendInFlight = false;
 	}
 }
 
 void UGameUIFlowSubsystem::ReturnToFrontendWithMessage(UWorld* World, const FText& InTitle, const FText& InMessage)
 {
-	bFailureReturnInFlight = true;
 	PendingDisconnectTitle = InTitle;
 	PendingDisconnectMessage = InMessage;
 
