@@ -38,9 +38,9 @@ public:
 	bool IsLoadingScreenVisible() const { return CachedCreatedLoadingScreenWidget.IsValid(); }
 
 	//~ Begin USubsystem Interface
-	virtual bool ShouldCreateSubsystem(UObject* Outer) const;
-	virtual void Initialize(FSubsystemCollectionBase& Collection);
-	virtual void Deinitialize();
+	virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual void Deinitialize() override;
 	//~ End USubsystem Interface
 
 	//~ Begin FTickableGameObject Interface
@@ -72,7 +72,7 @@ private:
 
 	bool bIsCurrentlyLoadingMap = false;
 
-	float HoldLoadingScreenStartUpTime = -1.f;
+	double HoldLoadingScreenStartUpTime = -1.0;
 
 	FString CurrentLoadingReason;
 

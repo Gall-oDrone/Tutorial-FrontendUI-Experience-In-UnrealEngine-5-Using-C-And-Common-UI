@@ -33,25 +33,36 @@ UAsyncAction_PushSoftWidget* UAsyncAction_PushSoftWidget::PushSoftWidget(const U
 void UAsyncAction_PushSoftWidget::Activate()
 {
 	UFrontendUISubsystem* FrontendUISubsystem = UFrontendUISubsystem::Get(CachedOwningWorld.Get());
+	if (!FrontendUISubsystem)
+	{
+		SetReadyToDestroy();
+		return;
+	}
 
 	FrontendUISubsystem->PushSoftWidgetToStackAsync(CachedWidgetStackTag, CachedSoftWidgetClass,
-		[this](EAsyncPushWidgetState InPushState, UWidget_ActivatableBase* PushedWidget)
+		[WeakThis = TWeakObjectPtr<UAsyncAction_PushSoftWidget>(this)](EAsyncPushWidgetState InPushState, UWidget_ActivatableBase* PushedWidget)
 		{
+			UAsyncAction_PushSoftWidget* This = WeakThis.Get();
+			if (!This)
+			{
+				return;
+			}
+
 			switch (InPushState)
 			{
 			case EAsyncPushWidgetState::OnCreatedBeforePush:
 
-				PushedWidget->SetOwningPlayer(CachedOwningPC.Get());
+				PushedWidget->SetOwningPlayer(This->CachedOwningPC.Get());
 
-				OnWidgetCreatedBeforePush.Broadcast(PushedWidget);
+				This->OnWidgetCreatedBeforePush.Broadcast(PushedWidget);
 
 				break;
 
 			case EAsyncPushWidgetState::AfterPush:
 
-				AfterPush.Broadcast(PushedWidget);
+				This->AfterPush.Broadcast(PushedWidget);
 
-				if (bCachedFocusOnNewlyPushedWidget)
+				if (This->bCachedFocusOnNewlyPushedWidget)
 				{
 					if (UWidget* WidgetToFocus = PushedWidget->GetDesiredFocusTarget())
 					{
@@ -59,7 +70,7 @@ void UAsyncAction_PushSoftWidget::Activate()
 					}
 				}
 
-				SetReadyToDestroy();
+				This->SetReadyToDestroy();
 
 				break;
 			default:

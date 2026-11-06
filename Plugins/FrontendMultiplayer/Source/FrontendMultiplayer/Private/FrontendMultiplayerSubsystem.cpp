@@ -18,10 +18,13 @@
 
 UFrontendMultiplayerSubsystem* UFrontendMultiplayerSubsystem::Get(const UObject* WorldContextObject)
 {
+	// Callers include widgets tearing down with their world; answer null instead of asserting.
 	if (GEngine)
 	{
-		UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::Assert);
-		return UGameInstance::GetSubsystem<UFrontendMultiplayerSubsystem>(World->GetGameInstance());
+		if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::ReturnNull))
+		{
+			return UGameInstance::GetSubsystem<UFrontendMultiplayerSubsystem>(World->GetGameInstance());
+		}
 	}
 
 	return nullptr;
@@ -184,6 +187,11 @@ void UFrontendMultiplayerSubsystem::Login()
 
 		ActiveBackend->Login();
 	}
+}
+
+bool UFrontendMultiplayerSubsystem::RequiresLogin() const
+{
+	return ActiveBackend ? ActiveBackend->RequiresLogin() : false;
 }
 
 bool UFrontendMultiplayerSubsystem::IsLoggedIn() const

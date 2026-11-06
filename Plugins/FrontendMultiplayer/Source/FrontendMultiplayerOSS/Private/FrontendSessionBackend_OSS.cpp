@@ -86,8 +86,24 @@ namespace FrontendOSS
 
 void UFrontendSessionBackend_OSS::Shutdown()
 {
+	// A hosted or joined session must not outlive the game instance (PIE stop, exit):
+	// on EOS it would keep a ghost lobby alive until the service times it out.
+	if (IOnlineSessionPtr SessionInterface = GetSessionInterface())
+	{
+		if (SessionInterface->GetNamedSession(NAME_GameSession))
+		{
+			SessionInterface->DestroySession(NAME_GameSession);
+		}
+	}
+
 	ClearDelegateHandles();
+	FTSTicker::GetCoreTicker().RemoveTicker(LoginTimeoutHandle);
+	LoginTimeoutHandle.Reset();
 	LastSearch.Reset();
+	DeferredRequest = EFrontendOSSDeferredRequest::None;
+	PendingJoinIndex = INDEX_NONE;
+	bLoginInFlight = false;
+	bHasFallbackCredentials = false;
 }
 
 FString UFrontendSessionBackend_OSS::GetBackendDisplayName() const
@@ -329,6 +345,8 @@ FOnlineAccountCredentials UFrontendSessionBackend_OSS::BuildCredentials(bool& bO
 
 	// 1. Command line. This is how LaunchInstances.bat gives every window its own
 	//    Dev Auth Tool user; the same account cannot be signed in twice on EOS.
+	//    Never in Shipping: players must not be able to inject credentials.
+#if !UE_BUILD_SHIPPING
 	if (Settings->bAllowCommandLineCredentials)
 	{
 		FString Type;
@@ -341,6 +359,7 @@ FOnlineAccountCredentials UFrontendSessionBackend_OSS::BuildCredentials(bool& bO
 			return FOnlineAccountCredentials(Type, Id, Token);
 		}
 	}
+#endif
 
 	const FOnlineAccountCredentials Configured(Settings->CredentialType, Settings->LoginId, Settings->LoginToken);
 
@@ -363,7 +382,7 @@ void UFrontendSessionBackend_OSS::StartLogin(const FOnlineAccountCredentials& Cr
 	if (!Identity.IsValid())
 	{
 		bLoginInFlight = true;
-		FinishLogin(false, TEXT("No identity interface"));
+		FinishLogin(false, LOCTEXT("LoginNoIdentity", "The online service has no identity interface").ToString());
 		return;
 	}
 
@@ -383,7 +402,7 @@ void UFrontendSessionBackend_OSS::StartLogin(const FOnlineAccountCredentials& Cr
 		{
 			if (bLoginInFlight && LoginAttemptSerial == AttemptSerial)
 			{
-				FinishLogin(false, TEXT("Timed out waiting for the sign-in to complete"));
+				FinishLogin(false, LOCTEXT("LoginTimedOut", "Timed out waiting for the sign-in to complete").ToString());
 			}
 			return false;
 		}), TimeoutSeconds);
@@ -398,7 +417,7 @@ void UFrontendSessionBackend_OSS::StartLogin(const FOnlineAccountCredentials& Cr
 	// produced no callback for *this* attempt.
 	if (!Identity->Login(0, Credentials) && bLoginInFlight && LoginAttemptSerial == AttemptSerial)
 	{
-		FinishLogin(false, TEXT("The login request was rejected"));
+		FinishLogin(false, LOCTEXT("LoginRejected", "The login request was rejected").ToString());
 	}
 }
 

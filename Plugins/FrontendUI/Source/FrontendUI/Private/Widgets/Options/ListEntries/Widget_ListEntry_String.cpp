@@ -7,7 +7,6 @@
 #include "Widgets/Components/FrontendCommonButtonBase.h"
 #include "CommonInputSubsystem.h"
 
-#include "FrontendDebugHelper.h"
 
 void UWidget_ListEntry_String::NativeOnInitialized()
 {
@@ -49,7 +48,6 @@ void UWidget_ListEntry_String::OnToggleEditableState(bool bIsEditable)
 
 void UWidget_ListEntry_String::OnPreviousOptionButtonClicked()
 {
-	/*Debug::Print(TEXT("Previous option button clicked"));*/
 	if (CachedOwningStringDataObject)
 	{
 		CachedOwningStringDataObject->BackToPreviousOption();
@@ -60,7 +58,6 @@ void UWidget_ListEntry_String::OnPreviousOptionButtonClicked()
 
 void UWidget_ListEntry_String::OnNextOptionButtonClicked()
 {
-	/*Debug::Print(TEXT("Next option button clicked"));*/
 	if (CachedOwningStringDataObject)
 	{
 		CachedOwningStringDataObject->AdvanceToNextOption();

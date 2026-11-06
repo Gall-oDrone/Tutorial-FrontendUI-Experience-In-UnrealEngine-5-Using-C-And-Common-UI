@@ -62,6 +62,17 @@ void UWidget_LeaderboardScreen::NativeOnInitialized()
 	}
 }
 
+void UWidget_LeaderboardScreen::NativeDestruct()
+{
+	// Subsystem delegates outlive this widget; unbind so a destroyed screen is never called.
+	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
+	{
+		MultiplayerSubsystem->OnLeaderboardUpdated.RemoveDynamic(this, &ThisClass::HandleLeaderboardUpdated);
+	}
+
+	Super::NativeDestruct();
+}
+
 void UWidget_LeaderboardScreen::NativeOnActivated()
 {
 	Super::NativeOnActivated();

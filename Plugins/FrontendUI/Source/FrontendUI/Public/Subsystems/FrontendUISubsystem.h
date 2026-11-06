@@ -11,6 +11,7 @@ class UWidget_PrimaryLayout;
 struct FGameplayTag;
 class UWidget_ActivatableBase;
 class UFrontendCommonButtonBase;
+class UConfirmScreenInfoObject;
 
 enum class EAsyncPushWidgetState : uint8
 {
@@ -32,6 +33,7 @@ public:
 
 	//~ Begin USubsystem Interface
 	virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
+	virtual void Deinitialize() override;
 	//~ End USubsystem Interface
 
 	UFUNCTION(BlueprintCallable)
@@ -46,5 +48,12 @@ public:
 private:
 	UPROPERTY(Transient)
 	UWidget_PrimaryLayout* CreatedPrimaryLayout;
+
+	/** Widget class loads in flight; cancelled in Deinitialize so no callback outlives the subsystem. */
+	TArray<TSharedPtr<struct FStreamableHandle>> PendingWidgetLoads;
+
+	/** Confirm-screen descriptions waiting for their screen to load; the only reference that keeps them alive. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UConfirmScreenInfoObject>> PendingConfirmScreenInfos;
 
 };

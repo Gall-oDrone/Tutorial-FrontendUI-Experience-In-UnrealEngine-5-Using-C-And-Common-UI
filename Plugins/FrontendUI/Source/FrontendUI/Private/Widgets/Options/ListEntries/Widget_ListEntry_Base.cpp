@@ -41,7 +41,20 @@ void UWidget_ListEntry_Base::NativeOnEntryReleased()
 {
 	IUserObjectListEntry::NativeOnEntryReleased();
 
+	UnbindFromOwningDataObject();
+
 	NativeOnListEntryWidgetHovered(false);
+}
+
+void UWidget_ListEntry_Base::UnbindFromOwningDataObject()
+{
+	// Rows are pooled: a recycled row must stop listening to the data it used to show.
+	if (CachedOwningDataObject)
+	{
+		CachedOwningDataObject->OnListDataModified.RemoveAll(this);
+		CachedOwningDataObject->OnDependencyDataModified.RemoveAll(this);
+		CachedOwningDataObject = nullptr;
+	}
 }
 
 FReply UWidget_ListEntry_Base::NativeOnFocusReceived(const FGeometry& InGeometry, const FFocusEvent& InFocusEvent)
@@ -64,6 +77,11 @@ FReply UWidget_ListEntry_Base::NativeOnFocusReceived(const FGeometry& InGeometry
 
 void UWidget_ListEntry_Base::OnOwningListDataObjectSet(UListDataObject_Base * InOwningListDataObject)
 {
+	if (CachedOwningDataObject != InOwningListDataObject)
+	{
+		UnbindFromOwningDataObject();
+	}
+
 	if (CommonText_SettingDisplayName)
 	{
 		CommonText_SettingDisplayName->SetText(InOwningListDataObject->GetDataDisplayName());

@@ -66,6 +66,9 @@ public:
 
 	//~ Begin identity. Services that need a signed-in user (EOS, Steam) override these;
 	//~ the stub and LAN-only subsystems are always "logged in".
+	/** True if this backend has an account to sign in to at all. UI hides sign-in controls when false. */
+	virtual bool RequiresLogin() const { return false; }
+
 	virtual bool IsLoggedIn() const { return true; }
 
 	/** Start a sign-in. Answer with ReportLoginChanged. Default: nothing to do. */

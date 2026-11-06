@@ -22,6 +22,7 @@ class FRONTENDMULTIPLAYER_API UWidget_HostSessionScreen : public UWidget_Activat
 protected:
 	//~ Begin UUserWidget Interface
 	virtual void NativeOnInitialized() override;
+	virtual void NativeDestruct() override;
 	//~ End UUserWidget Interface
 
 	//~ Begin UCommonActivatableWidget Interface

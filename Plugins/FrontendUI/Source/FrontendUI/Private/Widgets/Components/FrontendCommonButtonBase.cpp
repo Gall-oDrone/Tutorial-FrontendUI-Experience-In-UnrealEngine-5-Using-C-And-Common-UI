@@ -54,7 +54,10 @@ void UFrontendCommonButtonBase::NativeOnHovered()
 
 	if (!ButtonDescriptionText.IsEmpty())
 	{
-		UFrontendUISubsystem::Get(this)->OnButtonDescriptionTextUpdated.Broadcast(this, ButtonDescriptionText);
+		if (UFrontendUISubsystem* FrontendUISubsystem = UFrontendUISubsystem::Get(this))
+		{
+			FrontendUISubsystem->OnButtonDescriptionTextUpdated.Broadcast(this, ButtonDescriptionText);
+		}
 	}
 }
 
@@ -62,5 +65,8 @@ void UFrontendCommonButtonBase::NativeOnUnhovered()
 {
 	Super::NativeOnUnhovered();
 
-	UFrontendUISubsystem::Get(this)->OnButtonDescriptionTextUpdated.Broadcast(this, FText::GetEmpty());
+	if (UFrontendUISubsystem* FrontendUISubsystem = UFrontendUISubsystem::Get(this))
+	{
+		FrontendUISubsystem->OnButtonDescriptionTextUpdated.Broadcast(this, FText::GetEmpty());
+	}
 }

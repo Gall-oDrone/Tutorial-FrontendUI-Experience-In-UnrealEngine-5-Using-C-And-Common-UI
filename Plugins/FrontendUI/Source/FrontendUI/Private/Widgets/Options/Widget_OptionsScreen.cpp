@@ -14,8 +14,9 @@
 #include "Widgets/Options/Widget_OptionsDetailsView.h"
 #include "Subsystems/FrontendUISubsystem.h"
 #include "Widgets/Components/FrontendCommonButtonBase.h"
+#include "FrontendUILog.h"
 
-#include "FrontendDebugHelper.h"
+#define LOCTEXT_NAMESPACE "FrontendUI"
 
 void UWidget_OptionsScreen::NativeOnInitialized()
 {
@@ -41,6 +42,11 @@ void UWidget_OptionsScreen::NativeOnInitialized()
 	);
 
 	TabListWidget_OptionsTabs->OnTabSelected.AddUniqueDynamic(this, &ThisClass::OnOptionsTabSelected);
+
+	// Bound once for the widget's lifetime; binding per activation (or per tab) stacks
+	// duplicate handlers every time the screen is reopened.
+	CommonListView_OptionsList->OnItemIsHoveredChanged().AddUObject(this, &ThisClass::OnListViewItemHovered);
+	CommonListView_OptionsList->OnItemSelectionChanged().AddUObject(this, &ThisClass::OnListViewItemSelected);
 }
 
 void UWidget_OptionsScreen::NativeOnActivated()
@@ -62,9 +68,6 @@ void UWidget_OptionsScreen::NativeOnActivated()
 		}
 
 		TabListWidget_OptionsTabs->RequestRegisterTab(TabID, TabCollection->GetDataDisplayName());
-
-		CommonListView_OptionsList->OnItemIsHoveredChanged().AddUObject(this, &ThisClass::OnListViewItemHovered);
-		CommonListView_OptionsList->OnItemSelectionChanged().AddUObject(this, &ThisClass::OnListViewItemSelected);
 	}
 }
 
@@ -72,7 +75,10 @@ void UWidget_OptionsScreen::NativeOnDeactivated()
 {
 	Super::NativeOnDeactivated();
 
-	UFrontendGameUserSettings::Get()->ApplySettings(true);
+	if (UFrontendGameUserSettings* Settings = UFrontendGameUserSettings::TryGet())
+	{
+		Settings->ApplySettings(true);
+	}
 }
 
 UWidget* UWidget_OptionsScreen::NativeGetDesiredFocusTarget() const
@@ -117,7 +123,6 @@ UOptionsDataRegistry* UWidget_OptionsScreen::GetOrCreateDataRegistry()
 
 void UWidget_OptionsScreen::OnResetBoundActionTriggered()
 {
-	/*Debug::Print(TEXT("Reset bound action triggered"));*/
 	if (ResettableDataArray.IsEmpty())
 	{
 		return;
@@ -125,23 +130,30 @@ void UWidget_OptionsScreen::OnResetBoundActionTriggered()
 
 	UCommonButtonBase* SelectedTabButton = TabListWidget_OptionsTabs->GetTabButtonBaseByID(TabListWidget_OptionsTabs->GetActiveTab());
 
-	const FString SelectedTabButtonName = CastChecked<UFrontendCommonButtonBase>(SelectedTabButton)->GetButtonDisplayText().ToString();
+	const FText SelectedTabButtonName = CastChecked<UFrontendCommonButtonBase>(SelectedTabButton)->GetButtonDisplayText();
 
-	UFrontendUISubsystem::Get(this)->PushConfirmScreenToModalStackAsync(
+	UFrontendUISubsystem* FrontendUISubsystem = UFrontendUISubsystem::Get(this);
+	if (!FrontendUISubsystem)
+	{
+		return;
+	}
+
+	FrontendUISubsystem->PushConfirmScreenToModalStackAsync(
 		EConfirmScreenType::YesNo,
-		FText::FromString(TEXT("Reset")),
-		FText::FromString(TEXT("Are you sure you want to reset all the settings under the ") + SelectedTabButtonName + TEXT(" tab.")),
-		[this](EConfirmScreenButtonType ClickedButtonType)
+		LOCTEXT("ResetTitle", "Reset"),
+		FText::Format(LOCTEXT("ResetTabMessageFmt", "Are you sure you want to reset all the settings under the {0} tab?"), SelectedTabButtonName),
+		[WeakThis = TWeakObjectPtr<UWidget_OptionsScreen>(this)](EConfirmScreenButtonType ClickedButtonType)
 		{
-			if (ClickedButtonType != EConfirmScreenButtonType::Confirmed)
+			UWidget_OptionsScreen* This = WeakThis.Get();
+			if (!This || ClickedButtonType != EConfirmScreenButtonType::Confirmed)
 			{
 				return;
 			}
 
-			bIsResettingData = true;
+			This->bIsResettingData = true;
 			bool bHasDataFailedToReset = false;
 
-			for (UListDataObject_Base* DataToReset : ResettableDataArray)
+			for (UListDataObject_Base* DataToReset : This->ResettableDataArray)
 			{
 				if (!DataToReset)
 				{
@@ -150,22 +162,22 @@ void UWidget_OptionsScreen::OnResetBoundActionTriggered()
 
 				if (DataToReset->TryResetBackToDefaultValue())
 				{
-					Debug::Print(DataToReset->GetDataDisplayName().ToString() + TEXT(" was reset"));
+					UE_LOG(LogFrontendUI, Verbose, TEXT("Option '%s' was reset"), *DataToReset->GetDataDisplayName().ToString());
 				}
 				else
 				{
 					bHasDataFailedToReset = true;
-					Debug::Print(DataToReset->GetDataDisplayName().ToString() + TEXT(" failed to reset"));
+					UE_LOG(LogFrontendUI, Warning, TEXT("Option '%s' failed to reset"), *DataToReset->GetDataDisplayName().ToString());
 				}
 			}
 
 			if (!bHasDataFailedToReset)
 			{
-				ResettableDataArray.Empty();
-				RemoveActionBinding(ResetActionHandle);
+				This->ResettableDataArray.Empty();
+				This->RemoveActionBinding(This->ResetActionHandle);
 			}
 
-			bIsResettingData = false;
+			This->bIsResettingData = false;
 		}
 	);
 }
@@ -179,7 +191,6 @@ void UWidget_OptionsScreen::OnOptionsTabSelected(FName TabId)
 {
 	DetailsView_ListEntryInfo->ClearDetailsViewInfo();
 
-	/*Debug::Print(TEXT("New Tab Selected. Tab ID: ") + TabId.ToString());*/
 	TArray<UListDataObject_Base*> FoundListSourceItems = GetOrCreateDataRegistry()->GetListSourceItemsBySelectedTabID(TabId);
 
 	CommonListView_OptionsList->SetListItems(FoundListSourceItems);
@@ -309,3 +320,5 @@ void UWidget_OptionsScreen::OnListViewListDataModified(UListDataObject_Base* Mod
 		RemoveActionBinding(ResetActionHandle);
 	}
 }
+
+#undef LOCTEXT_NAMESPACE

@@ -27,6 +27,18 @@ void UWidget_APIDebugScreen::NativeOnInitialized()
 	}
 }
 
+void UWidget_APIDebugScreen::NativeDestruct()
+{
+	// Subsystem delegates outlive this widget; unbind so a destroyed screen is never called.
+	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
+	{
+		MultiplayerSubsystem->OnAPIDebugLogUpdated.RemoveDynamic(this, &ThisClass::HandleAPIDebugLogUpdated);
+		MultiplayerSubsystem->OnAPIDebugLogCleared.RemoveDynamic(this, &ThisClass::HandleAPIDebugLogCleared);
+	}
+
+	Super::NativeDestruct();
+}
+
 void UWidget_APIDebugScreen::NativeOnActivated()
 {
 	Super::NativeOnActivated();

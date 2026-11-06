@@ -13,6 +13,8 @@ GameUI  ──►  FrontendMultiplayer  ──►  FrontendUI  ──►  Common
 - **`FrontendMultiplayer`** — host / server browser / leaderboard / API debug screens, built on FrontendUI, talking to a pluggable `UFrontendSessionBackend`. Ships with a simulated stub and, in a separate `FrontendMultiplayerOSS` module, a real OnlineSubsystem backend (Null / Steam / EOS by config).
 - **`GameUI`** — everything that names *this* game: boot flow, main menu, logo, input actions, and the game's subclasses of the framework extension points. A new game replaces this plugin and keeps the other two.
 
+> **Starting a game from this repository?** Read [Docs/StartingANewGame.md](Docs/StartingANewGame.md): what to keep, what to rename, what to replace, and why to package on day one.
+
 ## Requirements
 
 - **Unreal Engine 5.6** (`EngineAssociation` in `FrontendUI.uproject`)
@@ -27,6 +29,7 @@ The demo project additionally enables `MediaMovieStreamer` for the startup movie
 ```
 FrontendUI.uproject
 Config/                              Project settings that drive the plugins
+Source/FrontendUIGame/               Primary game module (empty by design; a packaged exe needs one)
 Content/
   Maps/FrontEndTestMap, L_MatchTest  Frontend map and the match map the lobby/HUD run in
   Movies/                            Startup and loading movies (must stay under Content/)
@@ -57,7 +60,8 @@ Plugins/
     Docs/History.md                  How content was moved in during the split
 Docs/Demo.md                         Recording the demo video
 Docs/EOSSetup.md                     Epic Online Services: portal, keys, sign-in, test plan
-Scripts/LaunchInstances.bat          N game instances, LAN or EOS
+Docs/StartingANewGame.md             Using the repository as a template for a new game
+Scripts/LaunchInstances.bat          N game instances, LAN or EOS, editor binary or packaged exe
 ```
 
 ## Architecture overview
@@ -164,6 +168,7 @@ Each tag is a working, tested state. Pick one to see how a feature was added.
 | `v0.6-lobby` | Ready-gated pre-match lobby on `AGameMode` match states, replicated countdown, lobby widgets | `Plugins/GameUI/Docs/Lobby.md` |
 | `v0.6.1` | Polish: per-module log categories, EOS SDK disabled until used, readable lobby names, demo recipe | `Docs/Demo.md` |
 | `v0.7-eos` | Epic Online Services by config: lazy sign-in with a credential chain (`Login` / `IsLoggedIn` / `OnLoginStateChanged` on the subsystem), EOS lobbies, `NetDriverEOSBase` P2P with IP fallback, `LaunchInstances.bat 2 EOS`; product keys stay out of git | `Docs/EOSSetup.md` |
+| `v1.0` | Template readiness: verified on a packaged Development build in LAN and EOS modes (`LaunchInstances.bat 2 LAN PACKAGED` / `2 EOS PACKAGED`), EOS ids for packaged games, `persistentauth` → `accountportal` sign-in without a Dev Auth Tool, Sign-in panel (`Widget_SignInPanel`, `RequiresLogin`), primary game module, hardening pass (LOCTEXT, delegate/async lifetimes, Shipping guards), new-game guide | `Docs/StartingANewGame.md` |
 
 ## Roadmap
 

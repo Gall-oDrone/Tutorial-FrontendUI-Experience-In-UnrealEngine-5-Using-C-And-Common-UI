@@ -60,8 +60,32 @@ engine's config hierarchy. It is read before any plugin starts, it overrides
 on exit and which is merged too late for the EOS plugin to see. `.gitignore` excludes
 `Config/User*.ini`, so the keys stay out of the repository.
 
-For a packaged game the same line goes in your build pipeline's copy of the project
-ini; never commit it.
+### Packaged builds
+
+`Config/UserEngine.ini` is **not staged** by the packaging step, so a packaged game
+reads only `DefaultEngine.ini`. That file ships with the same `+Artifacts=` line
+**commented out**; for your own packaged builds uncomment it and paste your ids.
+
+What is and is not sensitive:
+
+| Value | Sensitive? | Why |
+|---|---|---|
+| `ProductId`, `SandboxId`, `DeploymentId`, `ClientId` | No | They identify the application. Every shipped EOS game carries them in its binary; the portal shows them in plain text. |
+| `ClientSecret` of a **Peer2Peer** client | No, by design | Epic's model: a *client* policy is limited to what a player may do anyway, and its secret is expected to be embedded in the game. The plugin refuses to start with an empty secret, so it must be present. |
+| `ClientSecret` of a **TrustedServer** client (Phase 8 dedicated servers) | **Yes** | Grants server-side rights; lives only on the server / in the backend, never in a client build. |
+| `EncryptionKey` | No (for this project) | Only Player Data Storage encrypts with it; any 64 hex chars. |
+
+So it is fine to commit a `DefaultEngine.ini` with your ids in **your** game's repo.
+This template keeps the line commented so the repository never carries anyone's ids.
+If your pipeline prefers injection, `-ini:Engine:[/Script/OnlineSubsystemEOS.EOSSettings]:+Artifacts=(...)`
+on the command line works in Development builds (not Shipping).
+
+Two more things change once the game is packaged:
+
+| | Development / DebugGame | Shipping |
+|---|---|---|
+| Logs | `Saved\StagedBuilds\Windows\FrontendUI\Saved\Logs\` (a staged build run in place keeps `Saved\` next to its own `Content\`, not in the project's `Saved\Logs`) | `%LOCALAPPDATA%\FrontendUI\Saved\Logs\` |
+| Switching to EOS | `-ini:Engine:[OnlineSubsystem]:DefaultPlatformService=EOS` and `-AUTH_*` on the command line, which is what `LaunchInstances.bat ... EOS PACKAGED` passes | command-line ini overrides and credentials are compiled out. Set `DefaultPlatformService=EOS` in `DefaultEngine.ini` before packaging; sign-in then runs `persistentauth` → `accountportal` |
 
 ## 3. Build
 
@@ -102,12 +126,13 @@ Every step is in the API debug panel:
 [oss] CreateSession 'Alpha' (4 players, LAN=false, map=L_MatchTest)
 [oss] OnCreateSessionComplete GameSession -> OK
 ServerTravel /Game/Maps/L_MatchTest?listen
-Net driver: NetDriverEOSBase (ListenServer)
+Net driver: NetDriverEOS (ListenServer)
 ```
 
-The last line is printed after every travel. On EOS it must say `NetDriverEOSBase`;
-`IpNetDriver` there means the engine fell back to IP sockets and EOS clients will not
-be able to connect.
+The last line is printed after every travel and names the concrete driver class:
+`NetDriverEOS` with the stock plugin (its subclass of the `NetDriverEOSBase` named in the
+ini). On EOS it must be one of those two; `IpNetDriver` there means the engine fell back
+to IP sockets and EOS clients will not be able to connect.
 
 Sign-in happens **once per process**. After `OnLoginComplete -> OK` the access token
 lives for two hours and the Dev Auth Tool is not consulted again, so deleting the
@@ -124,13 +149,25 @@ from a command prompt (double-clicking the file runs LAN mode).
 | # | Step | Expect |
 |---|---|---|
 | 1 | A starts | debug panel `Session backend: OnlineSubsystem (EOS)` |
-| 2 | A: Host "Alpha", 4 | `Login(developer)` → (first time only: browser consent page) → `OnLoginComplete -> OK` → `Signed in as '<EpicName>'` → `OnCreateSessionComplete -> OK` → `ServerTravel /Game/Maps/L_MatchTest?listen` (no `bIsLanMatch`) → `Net driver: NetDriverEOSBase (ListenServer)`; lobby title "Alpha" |
+| 2 | A: Host "Alpha", 4 | `Login(developer)` → (first time only: browser consent page) → `OnLoginComplete -> OK` → `Signed in as '<EpicName>'` → `OnCreateSessionComplete -> OK` → `ServerTravel /Game/Maps/L_MatchTest?listen` (no `bIsLanMatch`) → `Net driver: NetDriverEOS (ListenServer)`; lobby title "Alpha" |
 | 3 | B: Server Browser → Refresh | B signs in as `User2`, then `FindSessions (LAN=false, lobbies=true, bucket=FrontendUI, max=50)` → `OnFindSessionsComplete -> 1 session(s)`; may take a few seconds, press Refresh again if empty |
-| 4 | B: Join | `ClientTravel EOS:<puid>:GameNetDriver:7777` → `Net driver: NetDriverEOSBase (Client)`; lobby shows 2 / 4 |
+| 4 | B: Join | `ClientTravel EOS:<puid>:GameNetDriver:7777` → `Net driver: NetDriverEOS (Client)`; lobby shows 2 / 4 |
 | 5 | Ready / Start / pause / Return to Main Menu | identical to v0.6 |
 | 6 | Stop the Dev Auth Tool, A: Host | `Login(developer)` fails → Ok modal "Could Not Host: Could not sign in to EOS (developer): ...". Explicit command-line credentials never fall back, by design; launch without the `-AUTH_*` args to exercise `persistentauth` → `accountportal` (browser sign-in, then the host continues) |
 | 7 | `Scripts\LaunchInstances.bat 2 LAN` | unchanged Null flow: `Session backend: OnlineSubsystem (NULL)`, no `Login` lines, `ServerTravel ...?listen?bIsLanMatch`, `Net driver: IpNetDriver (ListenServer)`, B: `FindSessions (LAN=true, lobbies=false, bucket=-, ...)` → `ClientTravel <LAN-IP>:7777` → `Net driver: IpNetDriver (Client)` |
 | 8 | Two PCs on different networks | B finds and joins A without port forwarding (EOS P2P relays) |
+| 9 | Package Development Win64, uncomment `+Artifacts` in `DefaultEngine.ini`, `Scripts\LaunchInstances.bat 2 EOS PACKAGED` | same lines as rows 1-4 from the staged exe; `EOSSDK Platform Properties [... ProductId=...]` proves the ids were read from `DefaultEngine.ini` |
+| 10 | Packaged exe launched by hand with `-ini:Engine:[OnlineSubsystem]:DefaultPlatformService=EOS` and no `-AUTH_*` args, Multiplayer → **Sign in** (or Host) | `Login(persistentauth) ... FAILED: ... EOS_InvalidAuth` → `Login(accountportal)` → browser opens once → `OnLoginComplete (accountportal) -> OK` → `Signed in as '<EpicName>'`; relaunch → `OnLoginComplete (persistentauth) -> OK` with no browser |
+
+A quick way to read any of these logs:
+
+```
+findstr /C:"Session backend" /C:"[oss]" /C:"Net driver" /C:"Signed in" /C:"LogEOSAuth" /C:"LogStreaming: Warning" Instance1.log
+```
+
+`LogStreaming: Warning ... Failed to load` lines in a packaged log mean an asset the
+menus reference was not cooked; add its folder to `DirectoriesToAlwaysCook` in
+`Config/DefaultGame.ini`.
 
 ## 6. Troubleshooting
 
@@ -148,6 +185,8 @@ from a command prompt (double-clicking the file runs LAN mode).
 | LAN mode broke after this change | the host URL must end in `?listen?bIsLanMatch`; that option is what keeps `NetDriverEOSBase` on IP sockets |
 | `LogSockets: Warning: Unable to load SocketSubsystem module EOS` in LAN mode | harmless. `NetDriverEOSBase` is first in `NetDriverDefinitions`; with the Null subsystem it declines and the engine falls through to `IpNetDriver`, which is the intended LAN path |
 | Hosting still works after deleting the Dev Auth Tool credential | expected: the window was already signed in (see section 4). Relaunch to see the failure |
+| `JoinSession index 0 (host )` - the host name is empty on EOS results; `LogEOSUserInfo: ... CopyBestDisplayNamePrivate Unable to find linked account` warnings | cosmetic. EOS does not resolve other players' display names without a UserInfo query; the row title still comes from the session's own `DisplayName` setting ("Alpha"). A `QueryUserInfo` pass is on the roadmap |
+| On the client, one host disconnect logs two failures (`FailureReceived` then `ConnectionLost`) and on EOS a second `DestroySession` reports `Already in process of destroying session` | engine behaviour: `UEngine::BroadcastNetworkFailure` fires once per stage. The flow subsystem handles both; one travel, one modal. Harmless |
 
 ## 7. What is next
 

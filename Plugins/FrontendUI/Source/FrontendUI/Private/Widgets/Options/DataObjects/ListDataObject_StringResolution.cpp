@@ -6,13 +6,19 @@
 #include "Widgets/Options/OptionsDataInteractionHelper.h"
 #include "FrontendSettings/FrontendGameUserSettings.h"
 
-#include "FrontendDebugHelper.h"
-
 void UListDataObject_StringResolution::InitResolutionValues()
 {
 	TArray<FIntPoint> AvailableResolutions;
 
 	UKismetSystemLibrary::GetSupportedFullscreenResolutions(AvailableResolutions);
+
+	// Headless, -nullrhi and some Linux desktops report nothing; keep the row usable
+	// with whatever the settings currently hold.
+	if (AvailableResolutions.IsEmpty())
+	{
+		const UFrontendGameUserSettings* Settings = UFrontendGameUserSettings::TryGet();
+		AvailableResolutions.Add(Settings ? Settings->GetScreenResolution() : FIntPoint(1920, 1080));
+	}
 
 	AvailableResolutions.Sort(
 		[](const FIntPoint& A, const FIntPoint& B)->bool
@@ -23,7 +29,6 @@ void UListDataObject_StringResolution::InitResolutionValues()
 
 	for (const FIntPoint& Resolution : AvailableResolutions)
 	{
-		/*Debug::Print(TEXT("Available Resolution: ") + Resolution.ToString());*/
 		AddDynamicOption(ResToValueString(Resolution), ResToDisplayText(Resolution));
 	}
 
@@ -36,15 +41,12 @@ void UListDataObject_StringResolution::OnDataObjectInitialized()
 {
 	Super::OnDataObjectInitialized();
 
-	/*if (DataDynamicGetter)
-	{
-		Debug::Print(TEXT("Resolution Value from Dynamic Getter: ") + DataDynamicGetter->GetValueAsString());
-		DataDynamicGetter->GetValueAsString();
-	}*/
-
 	if (!TrySetDisplayTextFromStringValue(CurrentStringValue))
 	{
-		CurrentDisplayText = ResToDisplayText(UFrontendGameUserSettings::Get()->GetScreenResolution());
+		if (const UFrontendGameUserSettings* Settings = UFrontendGameUserSettings::TryGet())
+		{
+			CurrentDisplayText = ResToDisplayText(Settings->GetScreenResolution());
+		}
 	}
 }
 
