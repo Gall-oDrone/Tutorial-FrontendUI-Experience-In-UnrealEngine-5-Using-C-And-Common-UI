@@ -62,6 +62,11 @@ void UFrontendMultiplayerSubsystem::HandlePostLoadMap(UWorld* LoadedWorld)
 		return;
 	}
 
+	if (ActiveBackend)
+	{
+		ActiveBackend->OnWorldLoaded(LoadedWorld);
+	}
+
 	const UNetDriver* NetDriver = LoadedWorld->GetNetDriver();
 	if (!NetDriver)
 	{
@@ -212,6 +217,19 @@ bool UFrontendMultiplayerSubsystem::GetActiveSessionInfo(FString& OutDisplayName
 	return ActiveBackend ? ActiveBackend->GetActiveSessionInfo(OutDisplayName, OutMaxPlayers) : false;
 }
 
+bool UFrontendMultiplayerSubsystem::AcceptPlayerSession(const FString& PlayerSessionId, FString& OutErrorMessage)
+{
+	return ActiveBackend ? ActiveBackend->AcceptPlayerSession(PlayerSessionId, OutErrorMessage) : true;
+}
+
+void UFrontendMultiplayerSubsystem::RemovePlayerSession(const FString& PlayerSessionId)
+{
+	if (ActiveBackend)
+	{
+		ActiveBackend->RemovePlayerSession(PlayerSessionId);
+	}
+}
+
 //~ End UI requests
 
 //~ Begin backend result sink
@@ -302,6 +320,11 @@ void UFrontendMultiplayerSubsystem::NotifyLoginChanged(bool bLoggedIn, const FTe
 	}
 
 	OnLoginStateChanged.Broadcast(bLoggedIn);
+}
+
+void UFrontendMultiplayerSubsystem::NotifyServerSessionInfoUpdated()
+{
+	OnServerSessionInfoChanged.Broadcast();
 }
 
 //~ End backend result sink

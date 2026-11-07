@@ -40,7 +40,7 @@ Plugins/
     Content/UI/                      Press Any Key, Options, Confirm, Loading, styles, input data
     Content/Assets/                  ControllerIcons, Fonts/Din, Materials, Textures
   FrontendMultiplayer/               Session + leaderboard screens, UFrontendSessionBackend
-    Source/FrontendMultiplayer/      Widgets, subsystem, Backends/ (Stub)
+    Source/FrontendMultiplayer/      Widgets, subsystem, Backends/ (Stub, FixedAddress, GameLift)
     Source/FrontendMultiplayerOSS/   UFrontendSessionBackend_OSS (IOnlineSession)
     Content/UI/                      Multiplayer hub, Host, Server Browser, Leaderboard, API Debug
     Docs/WidgetDesignTemplate.md     Authoring spec for the multiplayer Blueprints
@@ -61,9 +61,11 @@ Plugins/
 Docs/Demo.md                         Recording the demo video
 Docs/EOSSetup.md                     Epic Online Services: portal, keys, sign-in, test plan
 Docs/DedicatedServer.md              Dedicated servers: FixedAddress backend, one-PC test, Server target, build box
+Docs/GameLift.md                     Amazon GameLift: Anywhere, Server WebSocket SDK, Docker & Container Fleets
 Docs/StartingANewGame.md             Using the repository as a template for a new game
-Scripts/LaunchInstances.bat          N game instances, LAN / EOS / DEDICATED, editor binary or packaged exe
-Scripts/LaunchDedicatedServer.bat    One local dedicated server (editor binary -server, or staged FrontendUIServer)
+Dockerfile / docker-compose.yml      Linux dedicated server container image and local/Anywhere compose runner
+Scripts/LaunchInstances.bat          N game instances, LAN / EOS / DEDICATED / GAMELIFT, editor binary or packaged exe
+Scripts/LaunchDedicatedServer.bat    One local dedicated server (FixedAddress or GameLift Anywhere)
 ```
 
 ## Architecture overview
@@ -175,7 +177,7 @@ Each tag is a working, tested state. Pick one to see how a feature was added.
 
 ## Roadmap
 
-- **Dedicated servers** (in progress): `FrontendUIServer` target, `UFrontendSessionBackend_FixedAddress` and the one-PC recipe are in (`Docs/DedicatedServer.md`); next the Linux container, GameLift Anywhere, then managed container fleets with `UFrontendSessionBackend_GameLift`. The EOS driver already passes IP addresses through.
+- **Dedicated servers & Amazon GameLift**: `FrontendUIServer` target, `UFrontendSessionBackend_FixedAddress` ([Docs/DedicatedServer.md](Docs/DedicatedServer.md)), `UFrontendSessionBackend_GameLift` (client SigV4/proxy JSON-RPC + Server SDK 5.x WebSocket protocol), Linux `Dockerfile` / `docker-compose.yml`, and the GameLift Anywhere / Managed Container Fleet workflow ([Docs/GameLift.md](Docs/GameLift.md)) are in place.
 - Studio logo as `FPreLoadScreenBase` so it precedes the loading screen.
 - Reconnect flow and match-specific HUD content against the real backend.
 

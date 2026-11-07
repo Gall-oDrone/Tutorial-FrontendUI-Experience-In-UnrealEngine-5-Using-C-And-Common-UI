@@ -90,6 +90,11 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer")
 	bool GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const;
 
+	//~ Begin dedicated-server hooks, forwarded to ActiveBackend.
+	bool AcceptPlayerSession(const FString& PlayerSessionId, FString& OutErrorMessage);
+	void RemovePlayerSession(const FString& PlayerSessionId);
+	//~ End dedicated-server hooks.
+
 	/** Every line logged so far, oldest first, capped by UFrontendMultiplayerSettings::APIDebugLogHistorySize. */
 	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer|Debug")
 	TArray<FString> GetAPIDebugLogHistory() const { return APIDebugLogHistory; }
@@ -109,7 +114,15 @@ public:
 	void NotifySessionJoined(bool bSucceeded, const FString& ConnectString, const FText& ErrorText);
 	void NotifySessionLeft();
 	void NotifyLoginChanged(bool bLoggedIn, const FText& ErrorText);
+	void NotifyServerSessionInfoUpdated();
 	//~ End backend result sink.
+
+	/**
+	 * Dedicated server only: fired when the backend receives session metadata after the map
+	 * has already loaded (e.g. GameLift's CreateGameSession callback on a warm server).
+	 */
+	DECLARE_MULTICAST_DELEGATE(FOnServerSessionInfoChanged);
+	FOnServerSessionInfoChanged OnServerSessionInfoChanged;
 
 	/** Fired per line as it is logged. Read GetAPIDebugLogHistory() for lines logged before subscribing. */
 	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAPIDebugLogUpdated, const FString&, LogLine);

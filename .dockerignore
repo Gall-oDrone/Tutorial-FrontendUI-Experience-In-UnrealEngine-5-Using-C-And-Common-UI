@@ -1,0 +1,6 @@
+# Ignore everything except the staged LinuxServer build so `docker build` has a minimal context.
+*
+!Saved/
+!Saved/StagedBuilds/
+!Saved/StagedBuilds/LinuxServer/
+!Saved/StagedBuilds/LinuxServer/**

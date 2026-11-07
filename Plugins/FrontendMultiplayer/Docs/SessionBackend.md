@@ -11,8 +11,10 @@ UFrontendMultiplayerSubsystem          (FrontendMultiplayer module)
         │  forwards                     ▲ Report* results
         ▼                               │
 UFrontendSessionBackend (abstract) ─────┘
-        ├── UFrontendSessionBackend_Stub   simulated, no networking      (FrontendMultiplayer)
-        └── UFrontendSessionBackend_OSS    IOnlineSession: Null/Steam/EOS (FrontendMultiplayerOSS)
+        ├── UFrontendSessionBackend_Stub          simulated, no networking             (FrontendMultiplayer)
+        ├── UFrontendSessionBackend_FixedAddress  single dedicated server IP:port      (FrontendMultiplayer)
+        ├── UFrontendSessionBackend_GameLift      Amazon GameLift Anywhere / Container (FrontendMultiplayer)
+        └── UFrontendSessionBackend_OSS           IOnlineSession: Null/Steam/EOS       (FrontendMultiplayerOSS)
 ```
 
 Screens never see the backend. The subsystem owns everything that happens *after* a
@@ -21,6 +23,7 @@ request succeeds:
 | Result | Subsystem action |
 |---|---|
 | `ReportSessionCreated(true)` | `World->ServerTravel(HostMap + "?listen")` — host becomes a listen server |
+| `ReportSessionCreatedRemote(ConnectString)` | `FirstLocalPC->ClientTravel(ConnectString, TRAVEL_Absolute)` — host joins a dedicated server |
 | `ReportSessionJoined(true, ConnectString)` | `FirstLocalPC->ClientTravel(ConnectString, TRAVEL_Absolute)` |
 | any `Report*(false, ErrorText)` | Ok confirm screen on the Modal stack + `OnSessionOperationFailed` |
 | `ReportOperationStarted(Op)` / completion | `OnSessionOperationChanged(Op, bInProgress)` — Host screen disables **Create**, Server Browser gets `BP_OnSearchStateChanged` |
@@ -117,7 +120,7 @@ Equivalent manual command, run twice:
 | **EOS** | Already wired: [Docs/EOSSetup.md](../../../Docs/EOSSetup.md). Product keys in the git-ignored `Config/UserEngine.ini`, `LaunchInstances.bat 2 EOS` or `-ini:Engine:[OnlineSubsystem]:DefaultPlatformService=EOS`. No code change. |
 | **Steam** | Enable `OnlineSubsystemSteam`; `DefaultPlatformService=Steam`; add the `[OnlineSubsystemSteam]` block (`bEnabled`, `SteamDevAppId=480`) and the Steam net driver definition. Steam signs in through the running client, so the credential chain is a no-op. No code change. |
 | **Dedicated server at a known address** | Already wired: `UFrontendSessionBackend_FixedAddress` (this module, no OSS needed). Host and Join both connect to **Project Settings → Game → Frontend Multiplayer Fixed Address → Server Address** (or `-ServerAddress=host:port`); Find returns that one row. `LaunchInstances.bat 2 DEDICATED` selects it per launch. [Docs/DedicatedServer.md](../../../Docs/DedicatedServer.md). |
-| **GameLift** | Next: a backend that asks the GameLift session API for a game session and answers with `ReportSessionCreatedRemote` / `ReportSessionJoined`; the UI and travel logic stay the same. |
+| **GameLift** | Already wired: `UFrontendSessionBackend_GameLift` (this module, zero external SDK binaries). Speaks GameLift JSON-RPC 1.1 (`CreateGameSession`, `DescribeGameSessions`, `CreatePlayerSession`) on the client and the GameLift Server SDK 5.x WebSocket protocol on `-server`. `LaunchDedicatedServer.bat 7777 GAMELIFT` and `LaunchInstances.bat 2 GAMELIFT` select it per launch. [Docs/GameLift.md](../../../Docs/GameLift.md). |
 
 ## Writing your own backend
 

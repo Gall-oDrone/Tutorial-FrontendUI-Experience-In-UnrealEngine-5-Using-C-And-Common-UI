@@ -11,6 +11,7 @@
 class UFrontendMultiplayerSubsystem;
 class UFrontendSessionListEntryData;
 class UFrontendLeaderboardEntryData;
+class UWorld;
 
 /**
  * The seam between the multiplayer screens and whatever actually hosts, finds and
@@ -38,6 +39,9 @@ public:
 
 	/** Called when the owning subsystem shuts down. */
 	virtual void Shutdown() {}
+
+	/** Called after a world finishes loading for this game instance (e.g. when a dedicated server opens its match map). */
+	virtual void OnWorldLoaded(UWorld* LoadedWorld) {}
 
 	/**
 	 * Host a session. SessionName is the user-facing name typed on the Host screen;
@@ -92,6 +96,17 @@ public:
 	 */
 	virtual FString GetHostTravelOptions() const { return FString(); }
 
+	//~ Begin dedicated-server hooks. Called by the match game mode on the server; no-ops for client/P2P backends.
+	/**
+	 * Validate a joining client's ?PlayerSessionId= option with the session service (GameLift).
+	 * Return false and fill OutErrorMessage to reject the login in PreLogin.
+	 */
+	virtual bool AcceptPlayerSession(const FString& PlayerSessionId, FString& OutErrorMessage) { return true; }
+
+	/** Notify the session service that a player with PlayerSessionId disconnected. */
+	virtual void RemovePlayerSession(const FString& PlayerSessionId) {}
+	//~ End dedicated-server hooks.
+
 protected:
 	UFrontendMultiplayerSubsystem* GetOwningSubsystem() const { return OwningSubsystem.Get(); }
 
@@ -123,6 +138,12 @@ protected:
 
 	/** Deliver ranked leaderboard rows to the screens. Rows must arrive already ranked. */
 	void ReportLeaderboard(ELeaderboardCategory Category, const TArray<UFrontendLeaderboardEntryData*>& Entries) const;
+
+	/**
+	 * Dedicated server only: tell the match game mode that the active session's title or
+	 * capacity just arrived (e.g. GameLift's CreateGameSession callback on a warm server).
+	 */
+	void ReportServerSessionInfoUpdated() const;
 
 	/** Append a line to the API debug screen and the Output Log. */
 	void LogDebug(const FString& LogLine) const;

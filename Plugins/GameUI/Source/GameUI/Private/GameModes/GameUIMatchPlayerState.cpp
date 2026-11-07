@@ -23,6 +23,7 @@ void AGameUIMatchPlayerState::CopyProperties(APlayerState* PlayerState)
 	{
 		MatchPlayerState->bIsReady = bIsReady;
 		MatchPlayerState->bIsHost = bIsHost;
+		MatchPlayerState->PlayerSessionId = PlayerSessionId;
 	}
 }
 

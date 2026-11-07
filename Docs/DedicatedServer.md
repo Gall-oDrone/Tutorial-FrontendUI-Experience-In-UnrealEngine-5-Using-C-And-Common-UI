@@ -1,8 +1,9 @@
 # Dedicated servers
 
 How the frontend talks to a server that is not one of the players, how to test that on
-one PC today, and how the Linux server binary gets built. The GameLift-specific parts
-(session API, fleets, containers) are in `Docs/GameLift.md` once Phase 8b lands.
+one PC today, and how the Linux server binary and Docker container get built. The
+Amazon GameLift workflow (Anywhere, Server SDK 5.x WebSocket protocol, and Managed
+Container Fleets) is documented in [Docs/GameLift.md](GameLift.md).
 
 ## 1. What changes versus a listen server
 

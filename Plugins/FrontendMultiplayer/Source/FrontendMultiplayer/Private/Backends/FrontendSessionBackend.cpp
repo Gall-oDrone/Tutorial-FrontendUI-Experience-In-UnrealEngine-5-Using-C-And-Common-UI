@@ -81,6 +81,14 @@ void UFrontendSessionBackend::ReportLeaderboard(ELeaderboardCategory Category, c
 	}
 }
 
+void UFrontendSessionBackend::ReportServerSessionInfoUpdated() const
+{
+	if (UFrontendMultiplayerSubsystem* Subsystem = OwningSubsystem.Get())
+	{
+		Subsystem->NotifyServerSessionInfoUpdated();
+	}
+}
+
 void UFrontendSessionBackend::LogDebug(const FString& LogLine) const
 {
 	if (UFrontendMultiplayerSubsystem* Subsystem = OwningSubsystem.Get())

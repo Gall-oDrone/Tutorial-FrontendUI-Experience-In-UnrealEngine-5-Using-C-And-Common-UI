@@ -28,6 +28,10 @@ public:
 	/** Server only. */
 	void SetIsHost(bool bInIsHost);
 
+	/** Server-only GameLift PlayerSessionId parsed from ?PlayerSessionId= during login. */
+	const FString& GetPlayerSessionId() const { return PlayerSessionId; }
+	void SetPlayerSessionId(const FString& InPlayerSessionId) { PlayerSessionId = InPlayerSessionId; }
+
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnLobbyFlagsChanged, AGameUIMatchPlayerState*);
 	/** Ready or host flag changed, on server and clients alike. */
 	FOnLobbyFlagsChanged OnLobbyFlagsChanged;
@@ -52,4 +56,7 @@ private:
 
 	UPROPERTY(ReplicatedUsing = OnRep_LobbyFlags)
 	bool bIsHost = false;
+
+	/** Server-only GameLift PlayerSessionId; not replicated to other clients. */
+	FString PlayerSessionId;
 };
