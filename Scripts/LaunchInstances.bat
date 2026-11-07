@@ -10,6 +10,7 @@ REM
 REM Usage:  LaunchInstances.bat                      (2 instances, LAN, editor binary)
 REM         LaunchInstances.bat 3                    (3 instances, LAN)
 REM         LaunchInstances.bat 2 EOS                (2 instances on Epic Online Services)
+REM         LaunchInstances.bat 2 DEDICATED          (2 clients of a running dedicated server)
 REM         LaunchInstances.bat 2 LAN PACKAGED       (2 instances of the packaged exe)
 REM         LaunchInstances.bat 2 EOS PACKAGED
 REM
@@ -17,6 +18,9 @@ REM LAN  = Null OnlineSubsystem, exactly what DefaultEngine.ini ships with.
 REM EOS  = overrides DefaultPlatformService on the command line and signs each window in
 REM        as a different Dev Auth Tool user (User1, User2, ...). Start the Dev Auth
 REM        Tool on port 6547 first and add credentials named User1 and User2.
+REM DEDICATED = swaps the session backend for FixedAddress: Host and Join both connect to
+REM        SERVER_ADDRESS (default 127.0.0.1:7777). Start the server first with
+REM        LaunchDedicatedServer.bat or docker compose. Docs/DedicatedServer.md.
 REM
 REM PACKAGED runs the staged Development build instead of UnrealEditor.exe -game. Package
 REM first (File > Package Project > Windows, or RunUAT BuildCookRun) and point PACKAGED_EXE
@@ -32,6 +36,7 @@ set "UE_ROOT=D:\EpicGames\UE_5.6"
 set "PROJECT=%~dp0..\FrontendUI.uproject"
 set "EDITOR=%UE_ROOT%\Engine\Binaries\Win64\UnrealEditor.exe"
 set "DEVAUTH_HOST=localhost:6547"
+if "%SERVER_ADDRESS%"=="" set "SERVER_ADDRESS=127.0.0.1:7777"
 if "%PACKAGED_EXE%"=="" set "PACKAGED_EXE=%~dp0..\Saved\StagedBuilds\Windows\FrontendUI.exe"
 
 set COUNT=%1
@@ -43,8 +48,8 @@ if "%MODE%"=="" set MODE=LAN
 set BUILD=%3
 if "%BUILD%"=="" set BUILD=EDITOR
 
-if /i not "%MODE%"=="LAN" if /i not "%MODE%"=="EOS" (
-	echo Unknown mode "%MODE%". Use LAN or EOS.
+if /i not "%MODE%"=="LAN" if /i not "%MODE%"=="EOS" if /i not "%MODE%"=="DEDICATED" (
+	echo Unknown mode "%MODE%". Use LAN, EOS or DEDICATED.
 	pause
 	exit /b 1
 )
@@ -80,6 +85,9 @@ for /l %%i in (1,1,%COUNT%) do (
 	set "EXTRA="
 	if /i "%MODE%"=="EOS" (
 		set "EXTRA=-ini:Engine:[OnlineSubsystem]:DefaultPlatformService=EOS -AUTH_TYPE=developer -AUTH_LOGIN=%DEVAUTH_HOST% -AUTH_PASSWORD=User%%i"
+	)
+	if /i "%MODE%"=="DEDICATED" (
+		set "EXTRA=-ini:Game:[/Script/FrontendMultiplayer.FrontendMultiplayerSettings]:SessionBackendClass=/Script/FrontendMultiplayer.FrontendSessionBackend_FixedAddress -ServerAddress=%SERVER_ADDRESS%"
 	)
 	start "FrontendUI instance %%i (%MODE%, %BUILD%)" !LAUNCH! -windowed -ResX=1280 -ResY=720 -WinX=!X! -WinY=60 -log -LOG=Instance%%i.log !EXTRA!
 	set /a X+=1300

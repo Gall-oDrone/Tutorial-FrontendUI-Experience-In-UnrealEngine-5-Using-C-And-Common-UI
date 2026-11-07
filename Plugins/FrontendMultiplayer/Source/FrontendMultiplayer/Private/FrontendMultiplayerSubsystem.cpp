@@ -234,6 +234,13 @@ void UFrontendMultiplayerSubsystem::NotifySessionCreated(bool bSucceeded, const 
 	TravelToHostMap();
 }
 
+void UFrontendMultiplayerSubsystem::NotifySessionCreatedRemote(const FString& ConnectString)
+{
+	// The session exists on a dedicated server; "hosting" it means being its first client.
+	FinishOperation(EFrontendSessionOperation::Creating);
+	TravelToConnectString(ConnectString, EFrontendSessionOperation::Creating);
+}
+
 void UFrontendMultiplayerSubsystem::NotifySessionsFound(const TArray<UFrontendSessionListEntryData*>& Sessions)
 {
 	FinishOperation(EFrontendSessionOperation::Finding);
@@ -256,7 +263,7 @@ void UFrontendMultiplayerSubsystem::NotifySessionJoined(bool bSucceeded, const F
 	}
 
 	FinishOperation(EFrontendSessionOperation::Joining);
-	TravelToConnectString(ConnectString);
+	TravelToConnectString(ConnectString, EFrontendSessionOperation::Joining);
 }
 
 void UFrontendMultiplayerSubsystem::NotifySessionLeft()
@@ -374,12 +381,15 @@ void UFrontendMultiplayerSubsystem::TravelToHostMap()
 	World->ServerTravel(TravelURL);
 }
 
-void UFrontendMultiplayerSubsystem::TravelToConnectString(const FString& ConnectString)
+void UFrontendMultiplayerSubsystem::TravelToConnectString(const FString& ConnectString, EFrontendSessionOperation FailingOperation)
 {
+	const FText FailTitle = FailingOperation == EFrontendSessionOperation::Creating
+		? LOCTEXT("CreateFailedTitle", "Could Not Host")
+		: LOCTEXT("JoinFailedTitle", "Could Not Join");
+
 	if (ConnectString.IsEmpty())
 	{
-		FailOperation(EFrontendSessionOperation::Joining,
-			LOCTEXT("JoinFailedTitle", "Could Not Join"),
+		FailOperation(FailingOperation, FailTitle,
 			LOCTEXT("EmptyConnectString", "The online service did not return an address for this session."));
 		return;
 	}
@@ -387,8 +397,7 @@ void UFrontendMultiplayerSubsystem::TravelToConnectString(const FString& Connect
 	APlayerController* PlayerController = GetGameInstance() ? GetGameInstance()->GetFirstLocalPlayerController() : nullptr;
 	if (!PlayerController)
 	{
-		FailOperation(EFrontendSessionOperation::Joining,
-			LOCTEXT("JoinFailedTitle", "Could Not Join"),
+		FailOperation(FailingOperation, FailTitle,
 			LOCTEXT("NoPlayerToTravel", "There is no local player to travel with."));
 		return;
 	}

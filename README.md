@@ -60,8 +60,10 @@ Plugins/
     Docs/History.md                  How content was moved in during the split
 Docs/Demo.md                         Recording the demo video
 Docs/EOSSetup.md                     Epic Online Services: portal, keys, sign-in, test plan
+Docs/DedicatedServer.md              Dedicated servers: FixedAddress backend, one-PC test, Server target, build box
 Docs/StartingANewGame.md             Using the repository as a template for a new game
-Scripts/LaunchInstances.bat          N game instances, LAN or EOS, editor binary or packaged exe
+Scripts/LaunchInstances.bat          N game instances, LAN / EOS / DEDICATED, editor binary or packaged exe
+Scripts/LaunchDedicatedServer.bat    One local dedicated server (editor binary -server, or staged FrontendUIServer)
 ```
 
 ## Architecture overview
@@ -173,7 +175,7 @@ Each tag is a working, tested state. Pick one to see how a feature was added.
 
 ## Roadmap
 
-- **Dedicated servers**: Server target + Linux container, `UFrontendSessionBackend_GameLift` (or Agones) reporting `IP:port`; the EOS driver already passes IP addresses through.
+- **Dedicated servers** (in progress): `FrontendUIServer` target, `UFrontendSessionBackend_FixedAddress` and the one-PC recipe are in (`Docs/DedicatedServer.md`); next the Linux container, GameLift Anywhere, then managed container fleets with `UFrontendSessionBackend_GameLift`. The EOS driver already passes IP addresses through.
 - Studio logo as `FPreLoadScreenBase` so it precedes the loading screen.
 - Reconnect flow and match-specific HUD content against the real backend.
 

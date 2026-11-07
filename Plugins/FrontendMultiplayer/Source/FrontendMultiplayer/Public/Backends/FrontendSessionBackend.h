@@ -42,7 +42,9 @@ public:
 	/**
 	 * Host a session. SessionName is the user-facing name typed on the Host screen;
 	 * backends are free to store it as a session setting rather than use it as the
-	 * engine-level session identifier. Answer with ReportSessionCreated.
+	 * engine-level session identifier. Answer with ReportSessionCreated (this machine
+	 * becomes the listen server) or ReportSessionCreatedRemote (the session runs on a
+	 * dedicated server and this machine joins it).
 	 */
 	virtual void CreateSession(FName SessionName, int32 MaxPlayers) PURE_VIRTUAL(UFrontendSessionBackend::CreateSession, );
 
@@ -98,6 +100,13 @@ protected:
 
 	/** On success the subsystem server-travels to UFrontendMultiplayerSettings::HostMap as a listen server. */
 	void ReportSessionCreated(bool bSucceeded, const FText& ErrorText = FText::GetEmpty()) const;
+
+	/**
+	 * The host request succeeded but the match runs elsewhere (a dedicated server, a
+	 * GameLift game session): the subsystem client-travels the local player to
+	 * ConnectString instead of becoming a listen server.
+	 */
+	void ReportSessionCreatedRemote(const FString& ConnectString) const;
 
 	/** Deliver a session list to the screens (server browser). An empty array is a valid, successful result. */
 	void ReportSessionsFound(const TArray<UFrontendSessionListEntryData*>& Sessions) const;

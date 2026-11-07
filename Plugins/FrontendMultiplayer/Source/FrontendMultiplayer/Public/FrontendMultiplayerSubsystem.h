@@ -103,6 +103,7 @@ public:
 	//~ Begin backend result sink. Called only through UFrontendSessionBackend::Report*.
 	void NotifyOperationStarted(EFrontendSessionOperation Operation);
 	void NotifySessionCreated(bool bSucceeded, const FText& ErrorText);
+	void NotifySessionCreatedRemote(const FString& ConnectString);
 	void NotifySessionsFound(const TArray<UFrontendSessionListEntryData*>& Sessions);
 	void NotifyFindSessionsFailed(const FText& ErrorText);
 	void NotifySessionJoined(bool bSucceeded, const FString& ConnectString, const FText& ErrorText);
@@ -156,7 +157,7 @@ private:
 	void FailOperation(EFrontendSessionOperation Operation, const FText& Title, const FText& Message);
 
 	void TravelToHostMap();
-	void TravelToConnectString(const FString& ConnectString);
+	void TravelToConnectString(const FString& ConnectString, EFrontendSessionOperation FailingOperation);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UFrontendSessionBackend> ActiveBackend;

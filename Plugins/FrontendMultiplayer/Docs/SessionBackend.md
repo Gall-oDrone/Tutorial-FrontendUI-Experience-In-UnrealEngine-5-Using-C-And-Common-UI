@@ -116,14 +116,17 @@ Equivalent manual command, run twice:
 |---|---|
 | **EOS** | Already wired: [Docs/EOSSetup.md](../../../Docs/EOSSetup.md). Product keys in the git-ignored `Config/UserEngine.ini`, `LaunchInstances.bat 2 EOS` or `-ini:Engine:[OnlineSubsystem]:DefaultPlatformService=EOS`. No code change. |
 | **Steam** | Enable `OnlineSubsystemSteam`; `DefaultPlatformService=Steam`; add the `[OnlineSubsystemSteam]` block (`bEnabled`, `SteamDevAppId=480`) and the Steam net driver definition. Steam signs in through the running client, so the credential chain is a no-op. No code change. |
-| **Dedicated / GameLift** | New `UFrontendSessionBackend` subclass that calls your matchmaking API and reports the connect string through `ReportSessionJoined`; the UI and travel logic stay the same. |
+| **Dedicated server at a known address** | Already wired: `UFrontendSessionBackend_FixedAddress` (this module, no OSS needed). Host and Join both connect to **Project Settings → Game → Frontend Multiplayer Fixed Address → Server Address** (or `-ServerAddress=host:port`); Find returns that one row. `LaunchInstances.bat 2 DEDICATED` selects it per launch. [Docs/DedicatedServer.md](../../../Docs/DedicatedServer.md). |
+| **GameLift** | Next: a backend that asks the GameLift session API for a game session and answers with `ReportSessionCreatedRemote` / `ReportSessionJoined`; the UI and travel logic stay the same. |
 
 ## Writing your own backend
 
 Subclass `UFrontendSessionBackend`, override the five requests, and answer **every**
 request with exactly one matching `Report*` call (success or failure). Call
-`ReportOperationStarted` first so the screens disable their buttons. If your service
-needs an account, override `IsLoggedIn` / `Login` / `GetLocalPlayerDisplayName` and
-answer `Login` with `ReportLoginChanged`. Use `LogDebug` generously; it is free and
+`ReportOperationStarted` first so the screens disable their buttons. A Host request has
+two success answers: `ReportSessionCreated(true)` makes this machine the listen server,
+`ReportSessionCreatedRemote(ConnectString)` sends it to a dedicated server instead. If
+your service needs an account, override `IsLoggedIn` / `Login` / `GetLocalPlayerDisplayName`
+and answer `Login` with `ReportLoginChanged`. Use `LogDebug` generously; it is free and
 shows up in the API debug panel. Select the class in Frontend Multiplayer Settings —
 nothing else needs to change.

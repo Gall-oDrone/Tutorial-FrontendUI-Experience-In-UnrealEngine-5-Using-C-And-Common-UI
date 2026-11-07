@@ -25,6 +25,14 @@ void UFrontendSessionBackend::ReportSessionCreated(bool bSucceeded, const FText&
 	}
 }
 
+void UFrontendSessionBackend::ReportSessionCreatedRemote(const FString& ConnectString) const
+{
+	if (UFrontendMultiplayerSubsystem* Subsystem = OwningSubsystem.Get())
+	{
+		Subsystem->NotifySessionCreatedRemote(ConnectString);
+	}
+}
+
 void UFrontendSessionBackend::ReportSessionsFound(const TArray<UFrontendSessionListEntryData*>& Sessions) const
 {
 	if (UFrontendMultiplayerSubsystem* Subsystem = OwningSubsystem.Get())
