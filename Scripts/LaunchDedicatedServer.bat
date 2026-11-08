@@ -17,6 +17,12 @@ REM from the environment and, when GAMELIFT_SDK_AUTH_TOKEN is not already set, a
 REM CLI for a compute auth token (aws gamelift get-compute-auth-token). AWS_REGION or
 REM GAMELIFT_REGION selects the region for that call (default us-east-1).
 REM
+REM GameLift runs one game session per process, and the server exits when its session
+REM empties (Frontend Multiplayer GameLift -> Exit Process When Session Empty). In GAMELIFT
+REM mode this script therefore opens one window that restarts the server every time it
+REM exits, fetching a fresh auth token each time, the way a fleet would. Close that window
+REM to stop. Set NO_RESTART=1 to run a single instance instead.
+REM
 REM The map comes from [/Script/EngineSettings.GameMapsSettings] ServerDefaultMap in
 REM DefaultEngine.ini (L_MatchTest). Set MAP=/Game/Maps/Other to override.
 REM Log: Saved\Logs\Server.log (editor binary) or the staged build's own Saved\Logs.
@@ -33,16 +39,18 @@ if "%PORT%"=="" set PORT=7777
 
 set MODE=DEDICATED
 set BUILD=EDITOR
+set LOOP=
 if /i "%2"=="GAMELIFT" set MODE=GAMELIFT
 if /i "%3"=="GAMELIFT" set MODE=GAMELIFT
 if /i "%2"=="PACKAGED" set BUILD=PACKAGED
 if /i "%3"=="PACKAGED" set BUILD=PACKAGED
+if /i "%4"=="LOOP" set LOOP=1
 
 REM Both processes read the same project settings; the override makes the server-side
 REM UFrontendMultiplayerSubsystem answer GetActiveSessionInfo with the FixedAddress or
 REM GameLift session title and player cap, which the lobby shows to every client.
 set "BACKEND=-ini:Game:[/Script/FrontendMultiplayer.FrontendMultiplayerSettings]:SessionBackendClass=/Script/FrontendMultiplayer.FrontendSessionBackend_FixedAddress"
-if /i not "%MODE%"=="GAMELIFT" goto :launch
+if /i not "%MODE%"=="GAMELIFT" goto :resolve_exe
 
 REM ---- GAMELIFT ---------------------------------------------------------------------
 set "BACKEND=-ini:Game:[/Script/FrontendMultiplayer.FrontendMultiplayerSettings]:SessionBackendClass=/Script/FrontendMultiplayer.FrontendSessionBackend_GameLift"
@@ -51,54 +59,76 @@ if "%GAMELIFT_SDK_WEBSOCKET_URL%"=="" echo WARNING: GAMELIFT_SDK_WEBSOCKET_URL i
 if "%GAMELIFT_SDK_FLEET_ID%"=="" echo WARNING: GAMELIFT_SDK_FLEET_ID is not set.
 if "%GAMELIFT_SDK_HOST_ID%"=="" echo WARNING: GAMELIFT_SDK_HOST_ID is not set.
 
-if not "%GAMELIFT_SDK_AUTH_TOKEN%"=="" goto :gamelift_token_ready
-if "%GAMELIFT_SDK_FLEET_ID%"=="" goto :gamelift_token_ready
-if "%GAMELIFT_SDK_HOST_ID%"=="" goto :gamelift_token_ready
+REM First invocation: hand off to a dedicated window that runs the restart loop.
+if defined LOOP goto :resolve_exe
+if "%NO_RESTART%"=="1" goto :resolve_exe
+start "FrontendUI dedicated server (GAMELIFT, %BUILD%, %PORT%)" cmd /c ""%~f0" %PORT% GAMELIFT %BUILD% LOOP"
+goto :eof
 
+:resolve_exe
+if /i "%BUILD%"=="PACKAGED" (
+	set "SERVER_EXE=%PACKAGED_SERVER_EXE%"
+	set "SERVER_ARGS=%MAP% -log -port=%PORT% %BACKEND%"
+) else (
+	set "SERVER_EXE=%EDITOR_CMD%"
+	set "SERVER_ARGS="%PROJECT%" %MAP% -server -log -LOG=Server.log -port=%PORT% %BACKEND%"
+)
+if not exist "%SERVER_EXE%" (
+	echo Server binary not found at "%SERVER_EXE%".
+	if /i "%BUILD%"=="PACKAGED" (echo Server targets need a source-built engine; see Docs/DedicatedServer.md.) else (echo Edit UE_ROOT in this script.)
+	pause
+	exit /b 1
+)
+
+REM ---- single run (DEDICATED, or GAMELIFT with NO_RESTART=1) ------------------------
+if not defined LOOP (
+	if /i "%MODE%"=="GAMELIFT" call :gamelift_token || exit /b 1
+	echo Starting dedicated server (%MODE%, %BUILD%) on port %PORT%.
+	start "FrontendUI dedicated server (%MODE%, %BUILD%, %PORT%)" "%SERVER_EXE%" %SERVER_ARGS%
+	goto :eof
+)
+
+REM ---- GAMELIFT restart loop (runs inside the window opened above) -------------------
+set RUN=0
+:loop
+set /a RUN+=1
+call :gamelift_token || goto :loop_wait
+echo.
+echo [%TIME%] Run %RUN%: starting dedicated server (GAMELIFT, %BUILD%) on port %PORT%.
+"%SERVER_EXE%" %SERVER_ARGS%
+echo [%TIME%] Server exited with code %ERRORLEVEL%.
+:loop_wait
+echo Restarting in 3 seconds (close this window to stop)...
+timeout /t 3 /nobreak >nul
+goto :loop
+
+REM ---- subroutine: GAMELIFT_SDK_AUTH_TOKEN from the AWS CLI unless the caller set one ----
+:gamelift_token
+if "%GAMELIFT_SDK_FLEET_ID%"=="" exit /b 0
+if "%GAMELIFT_SDK_HOST_ID%"=="" exit /b 0
+if defined GL_TOKEN_FROM_USER exit /b 0
+if not "%GAMELIFT_SDK_AUTH_TOKEN%"=="" if not defined GL_TOKEN_FROM_CLI (
+	set GL_TOKEN_FROM_USER=1
+	exit /b 0
+)
 set "GL_REGION=%GAMELIFT_REGION%"
 if "%GL_REGION%"=="" set "GL_REGION=%AWS_REGION%"
 if "%GL_REGION%"=="" set "GL_REGION=us-east-1"
 set "GL_TOKEN_FILE=%TEMP%\frontendui_gamelift_token.txt"
-
 echo Fetching GameLift compute auth token for %GAMELIFT_SDK_HOST_ID% (%GL_REGION%)...
 aws gamelift get-compute-auth-token --fleet-id "%GAMELIFT_SDK_FLEET_ID%" --compute-name "%GAMELIFT_SDK_HOST_ID%" --region "%GL_REGION%" --query AuthToken --output text > "%GL_TOKEN_FILE%"
 if errorlevel 1 (
 	echo ERROR: aws gamelift get-compute-auth-token failed. Is the AWS CLI installed and configured ^(aws configure^)?
 	del "%GL_TOKEN_FILE%" >nul 2>&1
-	pause
 	exit /b 1
 )
+set "GAMELIFT_SDK_AUTH_TOKEN="
 set /p GAMELIFT_SDK_AUTH_TOKEN=<"%GL_TOKEN_FILE%"
 del "%GL_TOKEN_FILE%" >nul 2>&1
 if "%GAMELIFT_SDK_AUTH_TOKEN%"=="" (
 	echo ERROR: the AWS CLI returned an empty auth token.
-	pause
 	exit /b 1
 )
-echo Auth token acquired.
-
-:gamelift_token_ready
-echo GameLift: fleet=%GAMELIFT_SDK_FLEET_ID% compute=%GAMELIFT_SDK_HOST_ID% websocket=%GAMELIFT_SDK_WEBSOCKET_URL%
-
-:launch
-if /i "%BUILD%"=="PACKAGED" goto :launch_packaged
-
-if not exist "%EDITOR_CMD%" (
-	echo UnrealEditor-Cmd.exe not found at "%EDITOR_CMD%". Edit UE_ROOT in this script.
-	pause
-	exit /b 1
-)
-echo Starting dedicated server from the editor binary (%MODE%) on port %PORT%.
-start "FrontendUI dedicated server (%MODE%, EDITOR, %PORT%)" "%EDITOR_CMD%" "%PROJECT%" %MAP% -server -log -LOG=Server.log -port=%PORT% %BACKEND%
-goto :eof
-
-:launch_packaged
-if not exist "%PACKAGED_SERVER_EXE%" (
-	echo Packaged server not found at "%PACKAGED_SERVER_EXE%".
-	echo Server targets need a source-built engine; see Docs/DedicatedServer.md.
-	pause
-	exit /b 1
-)
-echo Starting packaged dedicated server (%MODE%) on port %PORT%.
-start "FrontendUI dedicated server (%MODE%, PACKAGED, %PORT%)" "%PACKAGED_SERVER_EXE%" %MAP% -log -port=%PORT% %BACKEND%
-goto :eof
+set GL_TOKEN_FROM_CLI=1
+echo Auth token acquired. GameLift: fleet=%GAMELIFT_SDK_FLEET_ID% compute=%GAMELIFT_SDK_HOST_ID% websocket=%GAMELIFT_SDK_WEBSOCKET_URL%
+exit /b 0

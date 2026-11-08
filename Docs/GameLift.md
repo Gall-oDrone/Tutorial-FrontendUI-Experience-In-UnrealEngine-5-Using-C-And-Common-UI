@@ -122,16 +122,33 @@ Both scripts lean on the AWS CLI (`aws configure` once, with a user that may cal
 - `LaunchDedicatedServer.bat 7777 GAMELIFT` calls `aws gamelift get-compute-auth-token` when `GAMELIFT_SDK_FLEET_ID` and `GAMELIFT_SDK_HOST_ID` are set and `GAMELIFT_SDK_AUTH_TOKEN` is not, and passes the token to the server through the environment.
 - `LaunchInstances.bat 2 GAMELIFT` fills `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (and `AWS_REGION`) from `aws configure get …` when they are not already in the environment. The game does **not** read `~/.aws/credentials` itself; it reads those variables or the git-ignored `Config/UserGame.ini`. Keys travel to the game windows through the inherited environment, never on the command line, so they do not appear in `Saved/Logs/Instance*.log`.
 
-### Expected Walkthrough
+### Expected Walkthrough (verified 2026-11-08 on a Launcher UE 5.6 editor binary)
+
+Log lines are prefixed `[gamelift]` in `Saved\Logs\Server.log` / `Instance*.log` and in the in-game API debug panel.
+`findstr /c:"[gamelift]" ..\Saved\Logs\Server.log` shows just those.
 
 | # | Step | Expect |
 |---|---|---|
-| 1 | Server boots `L_MatchTest` | `Server.log`: `[gamelift] Connecting dedicated server to GameLift WebSocket...` → `[gamelift] Server WebSocket connected -> sent ActivateServerProcess (Port=7777)` |
-| 2 | Client A: Multiplayer → Host → "Alpha", 4 → Create | `[gamelift] Requesting GameLift.CreateGameSession Name='Alpha' MaxPlayers=4` → server receives `CreateGameSession`, sends `ActivateGameSession`, updates lobby title to `Alpha (4)` → Client A receives `PlayerSessionId` and travels to `127.0.0.1:7777?PlayerSessionId=psess-...` |
-| 3 | Server validates Client A | `AGameUIMatchGameMode::PreLogin` calls `AcceptPlayerSession` (`[gamelift] Sent AcceptPlayerSession for PlayerSessionId='psess-...'`) |
-| 4 | Client B: Server Browser → Refresh → Join | `DescribeGameSessions` returns row `Alpha` (`1/4`, map `L_MatchTest`); Join reserves a second `PlayerSessionId` and travels to the lobby (`2/4`) |
-| 5 | Both Ready | Countdown runs (3.0s) → match transitions to `InProgress` and both players spawn |
-| 6 | Client leaves | `AGameUIMatchGameMode::Logout` sends `RemovePlayerSession`; when the last player leaves an active match, the server resets back to `WaitingToStart` |
+| 1 | Server boots `L_MatchTest` | `Server.log`: `connecting server WebSocket wss://us-east-1.api.amazongamelift.com/ (fleet=… compute=DevPC process=ue-server-… port=7777)` → `server WebSocket connected -> ActivateServerProcess (port 7777)` → `ActivateServerProcess acknowledged; process is ACTIVE on the fleet` |
+| 2 | Client A: Multiplayer → Host → "Alpha", 4 → Create | `Instance1.log`: `CreateGameSession 'Alpha' (4 players)` → `CreateGameSession -> arn:aws:gamelift:…:gamesession/… (ACTIVATING)` → `CreatePlayerSession -> psess-…; travelling to 127.0.0.1:7777?PlayerSessionId=psess-…`. `Server.log`: `CreateGameSession received (… 'Alpha' 4 players) -> ActivateGameSession` → `AcceptPlayerSession psess-…`. Lobby title **Alpha**, 1 / 4. |
+| 3 | AWS: `aws gamelift describe-game-sessions --fleet-id <fleet> --location <location>` | `Alpha` / `ACTIVE` / `CurrentPlayerSessionCount: 1`; `describe-player-sessions --game-session-id <arn>` shows A as `ACTIVE` (GameLift only marks it `ACTIVE` once the server accepted it; a missing `AcceptPlayerSession` leaves it `RESERVED` → `TIMEDOUT` after 60 s) |
+| 4 | Client B: Server Browser → Refresh → Join | `DescribeGameSessions -> 1 active session(s)`; row `Alpha` 1/4, map `L_MatchTest`; Join reserves a second player session and lands in the lobby (2 / 4); server logs a second `AcceptPlayerSession` |
+| 5 | Both Ready | Countdown (3.0 s) → `InProgress`, both players spawn |
+| 6 | B: Return to Main Menu | `Server.log`: `RemovePlayerSession psess-…`; AWS: B's player session flips to `COMPLETED` |
+| 7 | A: Return to Main Menu (last player) | `Server.log`: `last player left game session …; ending it and exiting in 5s so the fleet can recycle this process` → `TerminateServerProcess (game session empty) -> exiting`. The server **process exits**; the `LaunchDedicatedServer.bat` window restarts it with a fresh auth token (`Run 2: starting dedicated server…`). AWS: game session `TERMINATED` |
+| 8 | A: Host again | Works as in step 2 against the fresh process |
+
+### Why the process exits when the session empties
+
+GameLift attaches **one game session per server process**. While that session exists the process cannot receive another one, even with zero players, so a new Host would fail with `GameLift error (400): Unable to reserve a process (No active and available server processes found on the fleet)`. The standard pattern is to end the session and exit, and let the fleet start a new process:
+
+| Where | Who restarts the process |
+|---|---|
+| Anywhere on your PC | the restart loop in `LaunchDedicatedServer.bat … GAMELIFT` (set `NO_RESTART=1` for a single run) |
+| Docker / Compose | `restart: unless-stopped` in `docker-compose.yml` |
+| Managed Container / EC2 fleets | GameLift itself, per the runtime configuration |
+
+`UFrontendSessionBackend_GameLift::HandleServerSessionEmpty` implements it: after **Session Empty Exit Delay Seconds** (default 5 s; a player arriving in that window cancels the exit) it sends `TerminateServerProcess` and requests engine exit. Turn **Exit Process When Session Empty** off in *Project Settings → Game → Frontend Multiplayer GameLift* to keep the old behaviour (the game mode resets the match to the lobby, and the game session stays attached until the process ends). The FixedAddress backend is unaffected: it has no session service, so the server simply returns to the lobby.
 
 ---
 
@@ -249,6 +266,6 @@ def handler(event, context):
 |---|---|
 | `GameLift Fleet ID or Alias ID is not configured` | Set `FleetId` in `Config/UserGame.ini`, pass `-GameLiftFleetId=fleet-...`, or export `GAMELIFT_SDK_FLEET_ID`. |
 | `No GameLift API Endpoint URL or AWS credentials found` | Export `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (or set them in `Config/UserGame.ini`) for non-Shipping builds, or configure `ApiEndpointUrl`. |
-| `GameLift error (400): Fleet ... has no active compute` / `FleetCapacityExceededException` | No server process is connected to the fleet WebSocket, or all server processes already host an active game session. Check `Server.log` for `sent ActivateServerProcess`. |
+| `GameLift error (400): Unable to reserve a process (No active and available server processes found on the fleet)` | Either no server process has completed `ActivateServerProcess` (check `Server.log` for `ActivateServerProcess acknowledged`), or the only process is still attached to an earlier game session. With **Exit Process When Session Empty** on, the server exits a few seconds after its last player leaves and the launch script / fleet restarts it; if you turned that off, restart the server by hand. |
 | `Server WebSocket connection error` / `403 Forbidden` | The Anywhere compute auth token expired (tokens from `GetComputeAuthToken` last about 3 hours). Re-run `LaunchDedicatedServer.bat 7777 GAMELIFT` with `GAMELIFT_SDK_AUTH_TOKEN` unset so it fetches a fresh token via `aws gamelift get-compute-auth-token`. |
 | `GameLift server requires a valid ?PlayerSessionId= option to join` | Client connected directly by IP without calling `CreatePlayerSession`. Use the Host or Server Browser Join flow in `GAMELIFT` mode, or disable `bRequirePlayerSessionIdOnServer` when testing raw `open 127.0.0.1:7777`. |

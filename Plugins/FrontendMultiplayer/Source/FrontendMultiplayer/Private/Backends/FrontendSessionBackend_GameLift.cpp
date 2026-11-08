@@ -976,6 +976,9 @@ bool UFrontendSessionBackend_GameLift::AcceptPlayerSession(const FString& Player
 	Message->SetStringField(TEXT("PlayerSessionId"), PlayerSessionId);
 	SendServerWebSocketMessage(Message);
 
+	// Someone came (back) in during the empty-session grace period: keep the process.
+	CancelPendingServerExit();
+
 	LogDebug(FString::Printf(TEXT("[gamelift] AcceptPlayerSession %s"), *PlayerSessionId));
 	return true;
 }
@@ -995,6 +998,71 @@ void UFrontendSessionBackend_GameLift::RemovePlayerSession(const FString& Player
 	SendServerWebSocketMessage(Message);
 
 	LogDebug(FString::Printf(TEXT("[gamelift] RemovePlayerSession %s"), *PlayerSessionId));
+}
+
+bool UFrontendSessionBackend_GameLift::HandleServerSessionEmpty()
+{
+	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
+	if (!Settings->bExitProcessWhenSessionEmpty
+		|| !ServerWebSocket.IsValid() || !ServerWebSocket->IsConnected() || !bServerProcessReady
+		|| ServerGameSessionId.IsEmpty())
+	{
+		// No GameLift game session attached: nothing to recycle, let the game mode reset the lobby.
+		return false;
+	}
+
+	if (ServerSessionEmptyExitTickerHandle.IsValid())
+	{
+		return true; // already counting down
+	}
+
+	const float Delay = FMath::Max(0.f, Settings->SessionEmptyExitDelaySeconds);
+	LogDebug(FString::Printf(TEXT("[gamelift] last player left game session %s; ending it and exiting in %.0fs so the fleet can recycle this process"),
+		*ServerGameSessionId, Delay));
+	ServerSessionEmptyExitTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateUObject(this, &ThisClass::HandleSessionEmptyExitTick), Delay);
+	return true;
+}
+
+bool UFrontendSessionBackend_GameLift::HandleSessionEmptyExitTick(float /*DeltaTime*/)
+{
+	ServerSessionEmptyExitTickerHandle.Reset();
+	TerminateServerProcessAndExit(TEXT("game session empty"));
+	return false; // one-shot
+}
+
+void UFrontendSessionBackend_GameLift::CancelPendingServerExit()
+{
+	if (ServerSessionEmptyExitTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(ServerSessionEmptyExitTickerHandle);
+		ServerSessionEmptyExitTickerHandle.Reset();
+		LogDebug(TEXT("[gamelift] player joined during the empty-session grace period; keeping the process"));
+	}
+}
+
+void UFrontendSessionBackend_GameLift::TerminateServerProcessAndExit(const TCHAR* Reason)
+{
+	LogDebug(FString::Printf(TEXT("[gamelift] TerminateServerProcess (%s) -> exiting"), Reason));
+
+	TSharedRef<FJsonObject> TerminateMsg = MakeShared<FJsonObject>();
+	TerminateMsg->SetStringField(TEXT("Action"), TEXT("TerminateServerProcess"));
+	TerminateMsg->SetStringField(TEXT("RequestId"), FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower));
+	SendServerWebSocketMessage(TerminateMsg);
+	ServerGameSessionId.Reset();
+
+	// Give the frame a moment to leave the socket before tearing it down; GameLift would
+	// also notice the disconnect on its own, this just keeps the fleet events clean.
+	TWeakObjectPtr<ThisClass> WeakThis(this);
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([WeakThis](float)
+	{
+		if (ThisClass* Self = WeakThis.Get())
+		{
+			Self->CloseServerWebSocket();
+		}
+		FPlatformMisc::RequestExit(false);
+		return false;
+	}), 0.5f);
 }
 
 //~ End UFrontendSessionBackend Interface
@@ -1270,6 +1338,11 @@ void UFrontendSessionBackend_GameLift::CloseServerWebSocket()
 		FTSTicker::GetCoreTicker().RemoveTicker(ServerReconnectTickerHandle);
 		ServerReconnectTickerHandle.Reset();
 	}
+	if (ServerSessionEmptyExitTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(ServerSessionEmptyExitTickerHandle);
+		ServerSessionEmptyExitTickerHandle.Reset();
+	}
 
 	bServerProcessReady = false;
 
@@ -1450,15 +1523,7 @@ void UFrontendSessionBackend_GameLift::HandleWebSocketMessage(const FString& Mes
 	}
 	else if (Action.Equals(TEXT("TerminateProcess"), ESearchCase::IgnoreCase))
 	{
-		LogDebug(TEXT("[gamelift] TerminateProcess received -> TerminateServerProcess and exit"));
-
-		TSharedRef<FJsonObject> TerminateMsg = MakeShared<FJsonObject>();
-		TerminateMsg->SetStringField(TEXT("Action"), TEXT("TerminateServerProcess"));
-		TerminateMsg->SetStringField(TEXT("RequestId"), FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower));
-		SendServerWebSocketMessage(TerminateMsg);
-
-		CloseServerWebSocket();
-		FPlatformMisc::RequestExit(false);
+		TerminateServerProcessAndExit(TEXT("TerminateProcess received from GameLift"));
 	}
 	else
 	{

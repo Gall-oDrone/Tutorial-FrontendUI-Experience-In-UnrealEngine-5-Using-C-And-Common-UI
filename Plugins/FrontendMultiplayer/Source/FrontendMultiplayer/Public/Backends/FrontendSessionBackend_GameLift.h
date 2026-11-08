@@ -113,6 +113,19 @@ public:
 	/** When true on a GameLift-connected server, reject PreLogin attempts that do not carry a ?PlayerSessionId= option. */
 	UPROPERTY(Config, EditAnywhere, Category = "Dedicated Server")
 	bool bRequirePlayerSessionIdOnServer = true;
+
+	/**
+	 * GameLift runs one game session per process: while a session is attached the process
+	 * cannot be given another one, even with zero players. When true, the server ends the
+	 * session (TerminateServerProcess) and exits once the last player leaves, so the fleet
+	 * (or LaunchDedicatedServer.bat / docker restart) brings up a fresh process.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Dedicated Server")
+	bool bExitProcessWhenSessionEmpty = true;
+
+	/** Grace period before the exit above, so a player who reconnects immediately keeps the session alive. */
+	UPROPERTY(Config, EditAnywhere, Category = "Dedicated Server", meta = (ClampMin = "0", UIMin = "0", UIMax = "120"))
+	float SessionEmptyExitDelaySeconds = 5.f;
 	//~ End Dedicated Server
 
 	FString ResolveAwsRegion() const;
@@ -180,6 +193,7 @@ public:
 	virtual bool GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const override;
 	virtual bool AcceptPlayerSession(const FString& PlayerSessionId, FString& OutErrorMessage) override;
 	virtual void RemovePlayerSession(const FString& PlayerSessionId) override;
+	virtual bool HandleServerSessionEmpty() override;
 	//~ End UFrontendSessionBackend Interface
 
 private:
@@ -204,6 +218,9 @@ private:
 	bool HandleServerReconnectTick(float DeltaTime);
 	void SendServerWebSocketMessage(const TSharedRef<FJsonObject>& MessageObject);
 	bool HandleServerHeartbeatTick(float DeltaTime);
+	bool HandleSessionEmptyExitTick(float DeltaTime);
+	void CancelPendingServerExit();
+	void TerminateServerProcessAndExit(const TCHAR* Reason);
 
 	void HandleWebSocketConnected();
 	void HandleWebSocketConnectionError(const FString& Error);
@@ -237,6 +254,7 @@ private:
 	TSharedPtr<IWebSocket> RetiredServerWebSocket;
 	FTSTicker::FDelegateHandle ServerHeartbeatTickerHandle;
 	FTSTicker::FDelegateHandle ServerReconnectTickerHandle;
+	FTSTicker::FDelegateHandle ServerSessionEmptyExitTickerHandle;
 	int32 ServerReconnectAttempts = 0;
 	FString ServerProcessId;
 	FString ServerHostId;

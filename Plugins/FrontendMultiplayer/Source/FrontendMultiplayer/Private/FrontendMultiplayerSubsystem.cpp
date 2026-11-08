@@ -230,6 +230,11 @@ void UFrontendMultiplayerSubsystem::RemovePlayerSession(const FString& PlayerSes
 	}
 }
 
+bool UFrontendMultiplayerSubsystem::NotifyServerSessionEmpty()
+{
+	return ActiveBackend ? ActiveBackend->HandleServerSessionEmpty() : false;
+}
+
 //~ End UI requests
 
 //~ Begin backend result sink

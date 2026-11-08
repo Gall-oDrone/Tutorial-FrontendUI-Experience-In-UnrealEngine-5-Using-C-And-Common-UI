@@ -105,6 +105,13 @@ public:
 
 	/** Notify the session service that a player with PlayerSessionId disconnected. */
 	virtual void RemovePlayerSession(const FString& PlayerSessionId) {}
+
+	/**
+	 * The last player left the dedicated server. A service that runs one game session per
+	 * process (GameLift) ends the session and recycles the process here and returns true;
+	 * the game mode then leaves the match alone. Default false: keep running, reset to lobby.
+	 */
+	virtual bool HandleServerSessionEmpty() { return false; }
 	//~ End dedicated-server hooks.
 
 protected:

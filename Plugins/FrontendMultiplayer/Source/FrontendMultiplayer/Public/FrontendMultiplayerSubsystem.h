@@ -93,6 +93,8 @@ public:
 	//~ Begin dedicated-server hooks, forwarded to ActiveBackend.
 	bool AcceptPlayerSession(const FString& PlayerSessionId, FString& OutErrorMessage);
 	void RemovePlayerSession(const FString& PlayerSessionId);
+	/** The last player left the dedicated server. True if the backend will recycle the process; false means keep running (reset to lobby). */
+	bool NotifyServerSessionEmpty();
 	//~ End dedicated-server hooks.
 
 	/** Every line logged so far, oldest first, capped by UFrontendMultiplayerSettings::APIDebugLogHistorySize. */

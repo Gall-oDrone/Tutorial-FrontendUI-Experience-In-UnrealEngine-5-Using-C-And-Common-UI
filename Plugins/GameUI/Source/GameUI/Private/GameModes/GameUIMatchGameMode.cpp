@@ -141,11 +141,17 @@ void AGameUIMatchGameMode::Logout(AController* Exiting)
 
 	Super::Logout(Exiting);
 
-	// On a long-lived dedicated server, if the last player leaves an active match, reset back to the lobby.
-	if (GetNetMode() == NM_DedicatedServer && GetMatchState() == MatchState::InProgress && GetNumPlayers() == 0)
+	// Dedicated server with nobody left. A one-session-per-process service (GameLift) ends
+	// the session and recycles the process; otherwise reset an active match back to the lobby.
+	if (GetNetMode() == NM_DedicatedServer && GetNumPlayers() == 0)
 	{
-		UE_LOG(LogGameUI, Log, TEXT("Last player left dedicated server during active match; restarting back to lobby."));
-		RestartGame();
+		UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UGameInstance::GetSubsystem<UFrontendMultiplayerSubsystem>(GetGameInstance());
+		const bool bBackendRecyclesProcess = MultiplayerSubsystem && MultiplayerSubsystem->NotifyServerSessionEmpty();
+		if (!bBackendRecyclesProcess && GetMatchState() == MatchState::InProgress)
+		{
+			UE_LOG(LogGameUI, Log, TEXT("Last player left dedicated server during active match; restarting back to lobby."));
+			RestartGame();
+		}
 	}
 }
 
