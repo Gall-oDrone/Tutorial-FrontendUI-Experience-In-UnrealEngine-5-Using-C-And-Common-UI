@@ -1,0 +1,18 @@
+@echo off
+REM Diego Gallo All Rights Reserved
+REM
+REM GameLift environment for LaunchDedicatedServer.bat / LaunchInstances.bat (GAMELIFT mode).
+REM
+REM   copy GameLiftEnv.example.bat GameLiftEnv.bat     (GameLiftEnv.bat is git-ignored)
+REM
+REM then fill in the values from your Anywhere fleet (aws gamelift create-fleet /
+REM register-compute; see Docs/GameLift.md section 3). Both scripts `call` GameLiftEnv.bat
+REM when it exists, so a fresh console window needs nothing else. Values already present in
+REM the environment win over this file. AWS credentials are NOT set here: the scripts take
+REM them from the AWS CLI profile (aws configure).
+
+if not defined AWS_REGION                 set "AWS_REGION=us-east-1"
+if not defined GAMELIFT_SDK_WEBSOCKET_URL set "GAMELIFT_SDK_WEBSOCKET_URL=wss://us-east-1.api.amazongamelift.com"
+if not defined GAMELIFT_SDK_FLEET_ID      set "GAMELIFT_SDK_FLEET_ID=fleet-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+if not defined GAMELIFT_SDK_HOST_ID       set "GAMELIFT_SDK_HOST_ID=DevPC"
+if not defined GAMELIFT_LOCATION          set "GAMELIFT_LOCATION=custom-location-1"

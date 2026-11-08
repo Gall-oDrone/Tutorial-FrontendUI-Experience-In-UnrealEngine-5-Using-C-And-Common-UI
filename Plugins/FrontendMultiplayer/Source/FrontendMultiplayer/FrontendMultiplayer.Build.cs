@@ -11,6 +11,8 @@ public class FrontendMultiplayer : ModuleRules
 			"GameplayTags", "DeveloperSettings", "FrontendUI"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
+		PrivateDependencyModuleNames.AddRange(new string[] {
+			"Slate", "SlateCore", "HTTP", "Json", "WebSockets"
+		});
 	}
 }

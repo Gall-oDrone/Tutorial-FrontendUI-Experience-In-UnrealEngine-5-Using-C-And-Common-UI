@@ -88,7 +88,7 @@ In order of visibility:
 | LAN play only | Nothing. `DefaultPlatformService=Null` is the default. |
 | Epic Online Services | `Docs/EOSSetup.md`. ~1 hour including the portal. |
 | Steam | `DefaultPlatformService=Steam`, enable `OnlineSubsystemSteam`, Steam App ID in `DefaultEngine.ini`. Same backend class; untested in this repo, expected to work for sessions (not P2P transport). |
-| Dedicated servers | Phase 8 of this repo (GameLift). Until then, the seam is `UFrontendSessionBackend`; see `Plugins/FrontendMultiplayer/Docs/SessionBackend.md` → "Writing your own backend". |
+| Dedicated servers | `UFrontendSessionBackend_FixedAddress` ([Docs/DedicatedServer.md](DedicatedServer.md)) for a known IP:port or Docker server, or `UFrontendSessionBackend_GameLift` ([Docs/GameLift.md](GameLift.md)) for Amazon GameLift Anywhere and Managed Container Fleets. |
 
 ## 5. Package once before building features
 
@@ -134,3 +134,5 @@ first on an 8 GB machine. Common causes when the packaged frontend differs from 
 | In-match UI, pause, failure recovery | `Plugins/GameUI/Docs/InGameUI.md` |
 | Lobby, ready-up, countdown | `Plugins/GameUI/Docs/Lobby.md` |
 | EOS portal, keys, sign-in, troubleshooting | `Docs/EOSSetup.md` |
+| Dedicated servers (FixedAddress, Server target, Docker) | `Docs/DedicatedServer.md` |
+| Amazon GameLift (Anywhere, WebSocket SDK, Container Fleets) | `Docs/GameLift.md` |

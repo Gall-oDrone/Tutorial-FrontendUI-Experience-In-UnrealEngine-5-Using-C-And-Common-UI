@@ -62,6 +62,11 @@ void UFrontendMultiplayerSubsystem::HandlePostLoadMap(UWorld* LoadedWorld)
 		return;
 	}
 
+	if (ActiveBackend)
+	{
+		ActiveBackend->OnWorldLoaded(LoadedWorld);
+	}
+
 	const UNetDriver* NetDriver = LoadedWorld->GetNetDriver();
 	if (!NetDriver)
 	{
@@ -212,6 +217,24 @@ bool UFrontendMultiplayerSubsystem::GetActiveSessionInfo(FString& OutDisplayName
 	return ActiveBackend ? ActiveBackend->GetActiveSessionInfo(OutDisplayName, OutMaxPlayers) : false;
 }
 
+bool UFrontendMultiplayerSubsystem::AcceptPlayerSession(const FString& PlayerSessionId, FString& OutErrorMessage)
+{
+	return ActiveBackend ? ActiveBackend->AcceptPlayerSession(PlayerSessionId, OutErrorMessage) : true;
+}
+
+void UFrontendMultiplayerSubsystem::RemovePlayerSession(const FString& PlayerSessionId)
+{
+	if (ActiveBackend)
+	{
+		ActiveBackend->RemovePlayerSession(PlayerSessionId);
+	}
+}
+
+bool UFrontendMultiplayerSubsystem::NotifyServerSessionEmpty()
+{
+	return ActiveBackend ? ActiveBackend->HandleServerSessionEmpty() : false;
+}
+
 //~ End UI requests
 
 //~ Begin backend result sink
@@ -232,6 +255,13 @@ void UFrontendMultiplayerSubsystem::NotifySessionCreated(bool bSucceeded, const 
 
 	FinishOperation(EFrontendSessionOperation::Creating);
 	TravelToHostMap();
+}
+
+void UFrontendMultiplayerSubsystem::NotifySessionCreatedRemote(const FString& ConnectString)
+{
+	// The session exists on a dedicated server; "hosting" it means being its first client.
+	FinishOperation(EFrontendSessionOperation::Creating);
+	TravelToConnectString(ConnectString, EFrontendSessionOperation::Creating);
 }
 
 void UFrontendMultiplayerSubsystem::NotifySessionsFound(const TArray<UFrontendSessionListEntryData*>& Sessions)
@@ -256,7 +286,7 @@ void UFrontendMultiplayerSubsystem::NotifySessionJoined(bool bSucceeded, const F
 	}
 
 	FinishOperation(EFrontendSessionOperation::Joining);
-	TravelToConnectString(ConnectString);
+	TravelToConnectString(ConnectString, EFrontendSessionOperation::Joining);
 }
 
 void UFrontendMultiplayerSubsystem::NotifySessionLeft()
@@ -295,6 +325,11 @@ void UFrontendMultiplayerSubsystem::NotifyLoginChanged(bool bLoggedIn, const FTe
 	}
 
 	OnLoginStateChanged.Broadcast(bLoggedIn);
+}
+
+void UFrontendMultiplayerSubsystem::NotifyServerSessionInfoUpdated()
+{
+	OnServerSessionInfoChanged.Broadcast();
 }
 
 //~ End backend result sink
@@ -374,12 +409,15 @@ void UFrontendMultiplayerSubsystem::TravelToHostMap()
 	World->ServerTravel(TravelURL);
 }
 
-void UFrontendMultiplayerSubsystem::TravelToConnectString(const FString& ConnectString)
+void UFrontendMultiplayerSubsystem::TravelToConnectString(const FString& ConnectString, EFrontendSessionOperation FailingOperation)
 {
+	const FText FailTitle = FailingOperation == EFrontendSessionOperation::Creating
+		? LOCTEXT("CreateFailedTitle", "Could Not Host")
+		: LOCTEXT("JoinFailedTitle", "Could Not Join");
+
 	if (ConnectString.IsEmpty())
 	{
-		FailOperation(EFrontendSessionOperation::Joining,
-			LOCTEXT("JoinFailedTitle", "Could Not Join"),
+		FailOperation(FailingOperation, FailTitle,
 			LOCTEXT("EmptyConnectString", "The online service did not return an address for this session."));
 		return;
 	}
@@ -387,8 +425,7 @@ void UFrontendMultiplayerSubsystem::TravelToConnectString(const FString& Connect
 	APlayerController* PlayerController = GetGameInstance() ? GetGameInstance()->GetFirstLocalPlayerController() : nullptr;
 	if (!PlayerController)
 	{
-		FailOperation(EFrontendSessionOperation::Joining,
-			LOCTEXT("JoinFailedTitle", "Could Not Join"),
+		FailOperation(FailingOperation, FailTitle,
 			LOCTEXT("NoPlayerToTravel", "There is no local player to travel with."));
 		return;
 	}

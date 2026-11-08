@@ -11,6 +11,7 @@
 class UFrontendMultiplayerSubsystem;
 class UFrontendSessionListEntryData;
 class UFrontendLeaderboardEntryData;
+class UWorld;
 
 /**
  * The seam between the multiplayer screens and whatever actually hosts, finds and
@@ -39,10 +40,15 @@ public:
 	/** Called when the owning subsystem shuts down. */
 	virtual void Shutdown() {}
 
+	/** Called after a world finishes loading for this game instance (e.g. when a dedicated server opens its match map). */
+	virtual void OnWorldLoaded(UWorld* LoadedWorld) {}
+
 	/**
 	 * Host a session. SessionName is the user-facing name typed on the Host screen;
 	 * backends are free to store it as a session setting rather than use it as the
-	 * engine-level session identifier. Answer with ReportSessionCreated.
+	 * engine-level session identifier. Answer with ReportSessionCreated (this machine
+	 * becomes the listen server) or ReportSessionCreatedRemote (the session runs on a
+	 * dedicated server and this machine joins it).
 	 */
 	virtual void CreateSession(FName SessionName, int32 MaxPlayers) PURE_VIRTUAL(UFrontendSessionBackend::CreateSession, );
 
@@ -90,6 +96,24 @@ public:
 	 */
 	virtual FString GetHostTravelOptions() const { return FString(); }
 
+	//~ Begin dedicated-server hooks. Called by the match game mode on the server; no-ops for client/P2P backends.
+	/**
+	 * Validate a joining client's ?PlayerSessionId= option with the session service (GameLift).
+	 * Return false and fill OutErrorMessage to reject the login in PreLogin.
+	 */
+	virtual bool AcceptPlayerSession(const FString& PlayerSessionId, FString& OutErrorMessage) { return true; }
+
+	/** Notify the session service that a player with PlayerSessionId disconnected. */
+	virtual void RemovePlayerSession(const FString& PlayerSessionId) {}
+
+	/**
+	 * The last player left the dedicated server. A service that runs one game session per
+	 * process (GameLift) ends the session and recycles the process here and returns true;
+	 * the game mode then leaves the match alone. Default false: keep running, reset to lobby.
+	 */
+	virtual bool HandleServerSessionEmpty() { return false; }
+	//~ End dedicated-server hooks.
+
 protected:
 	UFrontendMultiplayerSubsystem* GetOwningSubsystem() const { return OwningSubsystem.Get(); }
 
@@ -98,6 +122,13 @@ protected:
 
 	/** On success the subsystem server-travels to UFrontendMultiplayerSettings::HostMap as a listen server. */
 	void ReportSessionCreated(bool bSucceeded, const FText& ErrorText = FText::GetEmpty()) const;
+
+	/**
+	 * The host request succeeded but the match runs elsewhere (a dedicated server, a
+	 * GameLift game session): the subsystem client-travels the local player to
+	 * ConnectString instead of becoming a listen server.
+	 */
+	void ReportSessionCreatedRemote(const FString& ConnectString) const;
 
 	/** Deliver a session list to the screens (server browser). An empty array is a valid, successful result. */
 	void ReportSessionsFound(const TArray<UFrontendSessionListEntryData*>& Sessions) const;
@@ -114,6 +145,12 @@ protected:
 
 	/** Deliver ranked leaderboard rows to the screens. Rows must arrive already ranked. */
 	void ReportLeaderboard(ELeaderboardCategory Category, const TArray<UFrontendLeaderboardEntryData*>& Entries) const;
+
+	/**
+	 * Dedicated server only: tell the match game mode that the active session's title or
+	 * capacity just arrived (e.g. GameLift's CreateGameSession callback on a warm server).
+	 */
+	void ReportServerSessionInfoUpdated() const;
 
 	/** Append a line to the API debug screen and the Output Log. */
 	void LogDebug(const FString& LogLine) const;

@@ -90,6 +90,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer")
 	bool GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const;
 
+	//~ Begin dedicated-server hooks, forwarded to ActiveBackend.
+	bool AcceptPlayerSession(const FString& PlayerSessionId, FString& OutErrorMessage);
+	void RemovePlayerSession(const FString& PlayerSessionId);
+	/** The last player left the dedicated server. True if the backend will recycle the process; false means keep running (reset to lobby). */
+	bool NotifyServerSessionEmpty();
+	//~ End dedicated-server hooks.
+
 	/** Every line logged so far, oldest first, capped by UFrontendMultiplayerSettings::APIDebugLogHistorySize. */
 	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer|Debug")
 	TArray<FString> GetAPIDebugLogHistory() const { return APIDebugLogHistory; }
@@ -103,12 +110,21 @@ public:
 	//~ Begin backend result sink. Called only through UFrontendSessionBackend::Report*.
 	void NotifyOperationStarted(EFrontendSessionOperation Operation);
 	void NotifySessionCreated(bool bSucceeded, const FText& ErrorText);
+	void NotifySessionCreatedRemote(const FString& ConnectString);
 	void NotifySessionsFound(const TArray<UFrontendSessionListEntryData*>& Sessions);
 	void NotifyFindSessionsFailed(const FText& ErrorText);
 	void NotifySessionJoined(bool bSucceeded, const FString& ConnectString, const FText& ErrorText);
 	void NotifySessionLeft();
 	void NotifyLoginChanged(bool bLoggedIn, const FText& ErrorText);
+	void NotifyServerSessionInfoUpdated();
 	//~ End backend result sink.
+
+	/**
+	 * Dedicated server only: fired when the backend receives session metadata after the map
+	 * has already loaded (e.g. GameLift's CreateGameSession callback on a warm server).
+	 */
+	DECLARE_MULTICAST_DELEGATE(FOnServerSessionInfoChanged);
+	FOnServerSessionInfoChanged OnServerSessionInfoChanged;
 
 	/** Fired per line as it is logged. Read GetAPIDebugLogHistory() for lines logged before subscribing. */
 	DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAPIDebugLogUpdated, const FString&, LogLine);
@@ -156,7 +172,7 @@ private:
 	void FailOperation(EFrontendSessionOperation Operation, const FText& Title, const FText& Message);
 
 	void TravelToHostMap();
-	void TravelToConnectString(const FString& ConnectString);
+	void TravelToConnectString(const FString& ConnectString, EFrontendSessionOperation FailingOperation);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UFrontendSessionBackend> ActiveBackend;

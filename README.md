@@ -40,7 +40,7 @@ Plugins/
     Content/UI/                      Press Any Key, Options, Confirm, Loading, styles, input data
     Content/Assets/                  ControllerIcons, Fonts/Din, Materials, Textures
   FrontendMultiplayer/               Session + leaderboard screens, UFrontendSessionBackend
-    Source/FrontendMultiplayer/      Widgets, subsystem, Backends/ (Stub)
+    Source/FrontendMultiplayer/      Widgets, subsystem, Backends/ (Stub, FixedAddress, GameLift)
     Source/FrontendMultiplayerOSS/   UFrontendSessionBackend_OSS (IOnlineSession)
     Content/UI/                      Multiplayer hub, Host, Server Browser, Leaderboard, API Debug
     Docs/WidgetDesignTemplate.md     Authoring spec for the multiplayer Blueprints
@@ -60,8 +60,12 @@ Plugins/
     Docs/History.md                  How content was moved in during the split
 Docs/Demo.md                         Recording the demo video
 Docs/EOSSetup.md                     Epic Online Services: portal, keys, sign-in, test plan
+Docs/DedicatedServer.md              Dedicated servers: FixedAddress backend, one-PC test, Server target, build box
+Docs/GameLift.md                     Amazon GameLift: Anywhere, Server WebSocket SDK, Docker & Container Fleets
 Docs/StartingANewGame.md             Using the repository as a template for a new game
-Scripts/LaunchInstances.bat          N game instances, LAN or EOS, editor binary or packaged exe
+Dockerfile / docker-compose.yml      Linux dedicated server container image and local/Anywhere compose runner
+Scripts/LaunchInstances.bat          N game instances, LAN / EOS / DEDICATED / GAMELIFT, editor binary or packaged exe
+Scripts/LaunchDedicatedServer.bat    One local dedicated server (FixedAddress or GameLift Anywhere)
 ```
 
 ## Architecture overview
@@ -170,10 +174,11 @@ Each tag is a working, tested state. Pick one to see how a feature was added.
 | `v0.7-eos` | Epic Online Services by config: lazy sign-in with a credential chain (`Login` / `IsLoggedIn` / `OnLoginStateChanged` on the subsystem), EOS lobbies, `NetDriverEOSBase` P2P with IP fallback, `LaunchInstances.bat 2 EOS`; product keys stay out of git | `Docs/EOSSetup.md` |
 | `v1.0` | Template readiness: verified on a packaged Development build in LAN and EOS modes (`LaunchInstances.bat 2 LAN PACKAGED` / `2 EOS PACKAGED`), EOS ids for packaged games, `persistentauth` → `accountportal` sign-in without a Dev Auth Tool, Sign-in panel (`Widget_SignInPanel`, `RequiresLogin`), primary game module, hardening pass (LOCTEXT, delegate/async lifetimes, Shipping guards), new-game guide | `Docs/StartingANewGame.md` |
 | `v1.0.1` | Host advertises its name as `FRONTEND_SESSION_HOST_NAME` (EOS leaves `OwningUserName` empty for searchers); one disconnect = one return to the frontend (`bReturnToFrontendInFlight`); `DisableNativeTick` meta typo fixed in every widget header | `Plugins/FrontendMultiplayer/Docs/SessionBackend.md` |
+| `v1.1-gamelift-anywhere` | Dedicated servers: `FrontendUIServer` target, `ReportSessionCreatedRemote` on the backend contract, `UFrontendSessionBackend_FixedAddress` (known IP:port), `UFrontendSessionBackend_GameLift` (client SigV4 / proxy JSON-RPC, Server SDK 5.x WebSocket protocol, `PlayerSessionId` validation in `PreLogin`/`Logout`, one-session-per-process recycling, capacity retry) with no external SDK binaries, Linux `Dockerfile` / `docker-compose.yml`, `LaunchDedicatedServer.bat` and `GAMELIFT` launch mode; verified end-to-end on a GameLift Anywhere fleet with the Launcher engine | `Docs/DedicatedServer.md`, `Docs/GameLift.md` |
 
 ## Roadmap
 
-- **Dedicated servers**: Server target + Linux container, `UFrontendSessionBackend_GameLift` (or Agones) reporting `IP:port`; the EOS driver already passes IP addresses through.
+- **Dedicated servers & Amazon GameLift**: `FrontendUIServer` target, `UFrontendSessionBackend_FixedAddress` ([Docs/DedicatedServer.md](Docs/DedicatedServer.md)), `UFrontendSessionBackend_GameLift` (client SigV4/proxy JSON-RPC + Server SDK 5.x WebSocket protocol), Linux `Dockerfile` / `docker-compose.yml`, and the GameLift Anywhere / Managed Container Fleet workflow ([Docs/GameLift.md](Docs/GameLift.md)) are in place.
 - Studio logo as `FPreLoadScreenBase` so it precedes the loading screen.
 - Reconnect flow and match-specific HUD content against the real backend.
 

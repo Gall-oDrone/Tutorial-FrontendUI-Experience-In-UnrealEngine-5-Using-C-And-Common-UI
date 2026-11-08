@@ -1,0 +1,26 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: frontendui-server:latest
+    container_name: frontendui-server
+    restart: unless-stopped
+    ports:
+      - "${SERVER_PORT:-7777}:${SERVER_PORT:-7777}/udp"
+    environment:
+      - GAMELIFT_SDK_WEBSOCKET_URL=${GAMELIFT_SDK_WEBSOCKET_URL:-}
+      - GAMELIFT_SDK_FLEET_ID=${GAMELIFT_SDK_FLEET_ID:-}
+      - GAMELIFT_SDK_HOST_ID=${GAMELIFT_SDK_HOST_ID:-}
+      - GAMELIFT_SDK_PROCESS_ID=${GAMELIFT_SDK_PROCESS_ID:-}
+      - GAMELIFT_SDK_AUTH_TOKEN=${GAMELIFT_SDK_AUTH_TOKEN:-}
+      - GAMELIFT_REGION=${GAMELIFT_REGION:-us-east-1}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+    command:
+      - "${SERVER_MAP:-/Game/Maps/L_MatchTest}"
+      - "-log"
+      - "-unattended"
+      - "-NullRHI"
+      - "-port=${SERVER_PORT:-7777}"
+      - "-ini:Game:[/Script/FrontendMultiplayer.FrontendMultiplayerSettings]:SessionBackendClass=${SERVER_SESSION_BACKEND:-/Script/FrontendMultiplayer.FrontendSessionBackend_FixedAddress}"
+      - "-ini:Game:[/Script/GameUI.GameUIDeveloperSettings]:bAutoStartWhenAllReady=True"

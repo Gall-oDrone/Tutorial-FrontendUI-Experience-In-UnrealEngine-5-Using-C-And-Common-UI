@@ -10,6 +10,7 @@
 #include "FrontendMultiplayerSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
 
 #define LOCTEXT_NAMESPACE "GameUILobby"
@@ -43,6 +44,23 @@ void AGameUIMatchGameMode::InitGameState()
 		return;
 	}
 
+	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UGameInstance::GetSubsystem<UFrontendMultiplayerSubsystem>(GetGameInstance()))
+	{
+		MultiplayerSubsystem->OnServerSessionInfoChanged.RemoveAll(this);
+		MultiplayerSubsystem->OnServerSessionInfoChanged.AddUObject(this, &ThisClass::RefreshSessionInfoFromSubsystem);
+	}
+
+	RefreshSessionInfoFromSubsystem();
+}
+
+void AGameUIMatchGameMode::RefreshSessionInfoFromSubsystem()
+{
+	AGameUIMatchGameState* MatchGameState = GetMatchGameState();
+	if (!MatchGameState)
+	{
+		return;
+	}
+
 	FString SessionDisplayName;
 	int32 SessionMaxPlayers = 0;
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UGameInstance::GetSubsystem<UFrontendMultiplayerSubsystem>(GetGameInstance()))
@@ -58,6 +76,37 @@ void AGameUIMatchGameMode::InitGameState()
 	MatchGameState->SetSessionInfo(SessionDisplayName, SessionMaxPlayers);
 }
 
+void AGameUIMatchGameMode::PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage)
+{
+	Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
+	if (!ErrorMessage.IsEmpty())
+	{
+		return;
+	}
+
+	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UGameInstance::GetSubsystem<UFrontendMultiplayerSubsystem>(GetGameInstance()))
+	{
+		const FString PlayerSessionId = UGameplayStatics::ParseOption(Options, TEXT("PlayerSessionId"));
+		MultiplayerSubsystem->AcceptPlayerSession(PlayerSessionId, ErrorMessage);
+	}
+}
+
+FString AGameUIMatchGameMode::InitNewPlayer(APlayerController* NewPlayerController, const FUniqueNetIdRepl& UniqueId, const FString& Options, const FString& Portal)
+{
+	FString ErrorMessage = Super::InitNewPlayer(NewPlayerController, UniqueId, Options, Portal);
+
+	const FString PlayerSessionId = UGameplayStatics::ParseOption(Options, TEXT("PlayerSessionId"));
+	if (!PlayerSessionId.IsEmpty() && NewPlayerController)
+	{
+		if (AGameUIMatchPlayerState* MatchPlayerState = NewPlayerController->GetPlayerState<AGameUIMatchPlayerState>())
+		{
+			MatchPlayerState->SetPlayerSessionId(PlayerSessionId);
+		}
+	}
+
+	return ErrorMessage;
+}
+
 void AGameUIMatchGameMode::PostLogin(APlayerController* NewPlayer)
 {
 	Super::PostLogin(NewPlayer);
@@ -69,6 +118,39 @@ void AGameUIMatchGameMode::PostLogin(APlayerController* NewPlayer)
 		if (AGameUIMatchPlayerState* MatchPlayerState = NewPlayer->GetPlayerState<AGameUIMatchPlayerState>())
 		{
 			MatchPlayerState->SetIsHost(true);
+		}
+	}
+}
+
+void AGameUIMatchGameMode::Logout(AController* Exiting)
+{
+	if (Exiting)
+	{
+		if (const AGameUIMatchPlayerState* MatchPlayerState = Exiting->GetPlayerState<AGameUIMatchPlayerState>())
+		{
+			const FString& PlayerSessionId = MatchPlayerState->GetPlayerSessionId();
+			if (!PlayerSessionId.IsEmpty())
+			{
+				if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UGameInstance::GetSubsystem<UFrontendMultiplayerSubsystem>(GetGameInstance()))
+				{
+					MultiplayerSubsystem->RemovePlayerSession(PlayerSessionId);
+				}
+			}
+		}
+	}
+
+	Super::Logout(Exiting);
+
+	// Dedicated server with nobody left. A one-session-per-process service (GameLift) ends
+	// the session and recycles the process; otherwise reset an active match back to the lobby.
+	if (GetNetMode() == NM_DedicatedServer && GetNumPlayers() == 0)
+	{
+		UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UGameInstance::GetSubsystem<UFrontendMultiplayerSubsystem>(GetGameInstance());
+		const bool bBackendRecyclesProcess = MultiplayerSubsystem && MultiplayerSubsystem->NotifyServerSessionEmpty();
+		if (!bBackendRecyclesProcess && GetMatchState() == MatchState::InProgress)
+		{
+			UE_LOG(LogGameUI, Log, TEXT("Last player left dedicated server during active match; restarting back to lobby."));
+			RestartGame();
 		}
 	}
 }
