@@ -29,6 +29,9 @@ REM Log: Saved\Logs\Server.log (editor binary) or the staged build's own Saved\L
 
 setlocal
 
+REM Per-developer GameLift values (fleet, compute, websocket, location); see GameLiftEnv.example.bat.
+if exist "%~dp0GameLiftEnv.bat" call "%~dp0GameLiftEnv.bat"
+
 set "UE_ROOT=D:\EpicGames\UE_5.6"
 set "PROJECT=%~dp0..\FrontendUI.uproject"
 set "EDITOR_CMD=%UE_ROOT%\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"

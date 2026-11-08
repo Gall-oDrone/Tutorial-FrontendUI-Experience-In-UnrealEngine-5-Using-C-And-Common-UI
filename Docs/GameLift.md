@@ -105,17 +105,22 @@ aws gamelift register-compute ^
 
 ### Launch the dedicated server and two clients
 
-```bat
-set AWS_REGION=us-east-1
-set GAMELIFT_SDK_WEBSOCKET_URL=wss://us-east-1.api.amazongamelift.com
-set GAMELIFT_SDK_FLEET_ID=fleet-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-set GAMELIFT_SDK_HOST_ID=DevPC
-set GAMELIFT_LOCATION=custom-location-1
+Put the fleet values in `Scripts\GameLiftEnv.bat` once (git-ignored; both launch scripts `call` it, so every new console window picks them up):
 
+```bat
 cd /d D:\EpicGames\Projects\UE_5.6\FrontendUI\Scripts
+copy GameLiftEnv.example.bat GameLiftEnv.bat
+notepad GameLiftEnv.bat        REM fleet id, compute name, websocket URL, location
+```
+
+Then:
+
+```bat
 LaunchDedicatedServer.bat 7777 GAMELIFT
 LaunchInstances.bat 2 GAMELIFT
 ```
+
+(`set GAMELIFT_SDK_FLEET_ID=…` etc. typed in the console still work and take precedence; they just do not survive a new window, which is the usual cause of `GameLift Fleet ID or Alias ID is not configured` the next day.)
 
 Both scripts lean on the AWS CLI (`aws configure` once, with a user that may call `gamelift:*` on the fleet):
 

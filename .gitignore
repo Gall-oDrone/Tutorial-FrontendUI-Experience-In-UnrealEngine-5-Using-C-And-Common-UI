@@ -71,6 +71,9 @@ Saved/*
 # Holds the EOS product keys; see Docs/EOSSetup.md.
 Config/User*.ini
 
+# Per-developer GameLift fleet/compute values for the launch scripts; see Scripts/GameLiftEnv.example.bat.
+Scripts/GameLiftEnv.bat
+
 # Compiled source files for the engine to use
 Intermediate/*
 Plugins/**/Intermediate/*
