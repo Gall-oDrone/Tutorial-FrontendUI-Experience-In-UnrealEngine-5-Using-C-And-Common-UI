@@ -155,6 +155,11 @@ GameLift attaches **one game session per server process**. While that session ex
 
 `UFrontendSessionBackend_GameLift::HandleServerSessionEmpty` implements it: after **Session Empty Exit Delay Seconds** (default 5 s; a player arriving in that window cancels the exit) it sends `TerminateServerProcess` and requests engine exit. Turn **Exit Process When Session Empty** off in *Project Settings → Game → Frontend Multiplayer GameLift* to keep the old behaviour (the game mode resets the match to the lobby, and the game session stays attached until the process ends). The FixedAddress backend is unaffected: it has no session service, so the server simply returns to the lobby.
 
+The replacement process takes a while to come back (30–60 s for the editor binary, a few seconds for a packaged server). Two things cover that window:
+
+- **The client waits.** When `CreateGameSession` answers `FleetCapacityExceededException` (no free process), Host retries every 5 s for **Create Session Retry Timeout Seconds** (default 90 s) with the button in its busy state — `[gamelift] no free server process on the fleet yet; retrying CreateGameSession in 5s (attempt 1, 85s left)` — and only then fails with *No game server became available in time*.
+- **Run a warm spare.** A real fleet keeps several processes per instance; Anywhere allows the same. Open a second server on another port and GameLift places the next match on whichever is free while the other restarts: `LaunchDedicatedServer.bat 7778 GAMELIFT` (the Windows firewall will prompt once for the new port).
+
 ---
 
 ## 4. Stage 2 — Building the Linux Dedicated Server & Docker Image

@@ -474,11 +474,7 @@ void UFrontendSessionBackend_GameLift::CreateSession(FName SessionName, int32 Ma
 	CancelPendingClientRequests();
 
 	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
-	const FString FleetId = Settings->ResolveFleetId();
-	const FString AliasId = Settings->ResolveAliasId();
-	const FString Location = Settings->ResolveLocation();
-
-	if (FleetId.IsEmpty() && AliasId.IsEmpty())
+	if (Settings->ResolveFleetId().IsEmpty() && Settings->ResolveAliasId().IsEmpty())
 	{
 		LogDebug(TEXT("[gamelift] CreateSession: no FleetId or AliasId configured"));
 		ReportSessionCreated(false, LOCTEXT("MissingFleetOrAlias",
@@ -486,9 +482,24 @@ void UFrontendSessionBackend_GameLift::CreateSession(FName SessionName, int32 Ma
 		return;
 	}
 
-	const FString RequestedDisplayName = SessionName.IsNone() ? TEXT("GameLift Match") : SessionName.ToString();
-	const int32 ClampedMaxPlayers = FMath::Max(1, MaxPlayers);
+	PendingCreateDisplayName = SessionName.IsNone() ? TEXT("GameLift Match") : SessionName.ToString();
+	PendingCreateMaxPlayers = FMath::Max(1, MaxPlayers);
+	CreateRetryAttempts = 0;
+	CreateRetryDeadlineSeconds = FPlatformTime::Seconds() + static_cast<double>(FMath::Max(0.f, Settings->CreateSessionRetryTimeoutSeconds));
+
+	LogDebug(FString::Printf(TEXT("[gamelift] CreateGameSession '%s' (%d players)"), *PendingCreateDisplayName, PendingCreateMaxPlayers));
+	SendCreateGameSessionRequest();
+}
+
+void UFrontendSessionBackend_GameLift::SendCreateGameSessionRequest()
+{
+	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
+	const FString FleetId = Settings->ResolveFleetId();
+	const FString AliasId = Settings->ResolveAliasId();
+	const FString Location = Settings->ResolveLocation();
 	const FString CreatorId = BuildLocalPlayerId();
+	const FString RequestedDisplayName = PendingCreateDisplayName;
+	const int32 ClampedMaxPlayers = PendingCreateMaxPlayers;
 
 	const UFrontendMultiplayerSettings* MpSettings = UFrontendMultiplayerSettings::Get();
 	const FString MapLeaf = MpSettings->HostMap.IsNull() ? FString(TEXT("L_MatchTest")) : MpSettings->HostMap.GetAssetName();
@@ -524,8 +535,6 @@ void UFrontendSessionBackend_GameLift::CreateSession(FName SessionName, int32 Ma
 	}
 	Payload->SetArrayField(TEXT("GameProperties"), GameProperties);
 
-	LogDebug(FString::Printf(TEXT("[gamelift] CreateGameSession '%s' (%d players)"), *RequestedDisplayName, ClampedMaxPlayers));
-
 	TWeakObjectPtr<ThisClass> WeakThis(this);
 	SendGameLiftRequest(TEXT("GameLift.CreateGameSession"), Payload,
 		[WeakThis, RequestedDisplayName, ClampedMaxPlayers](bool bSuccess, TSharedPtr<FJsonObject> ResponseObject, const FText& ErrorText)
@@ -536,7 +545,39 @@ void UFrontendSessionBackend_GameLift::CreateSession(FName SessionName, int32 Ma
 				return;
 			}
 
-			if (!bSuccess || !ResponseObject.IsValid())
+			if (!bSuccess)
+			{
+				// "No active and available server processes": the fleet has no free process right
+				// now. On a dev Anywhere fleet that is the single process restarting after its
+				// last match; on a real fleet it is a scale-up in progress. Wait for one.
+				FString ErrorType;
+				if (ResponseObject.IsValid())
+				{
+					ResponseObject->TryGetStringField(TEXT("__type"), ErrorType);
+				}
+				const bool bNoFreeProcess = ErrorType.Contains(TEXT("FleetCapacityExceeded"));
+				const double Now = FPlatformTime::Seconds();
+				if (bNoFreeProcess && Now < Self->CreateRetryDeadlineSeconds)
+				{
+					constexpr float RetrySeconds = 5.f;
+					++Self->CreateRetryAttempts;
+					Self->LogDebug(FString::Printf(TEXT("[gamelift] no free server process on the fleet yet; retrying CreateGameSession in %.0fs (attempt %d, %.0fs left)"),
+						RetrySeconds, Self->CreateRetryAttempts, Self->CreateRetryDeadlineSeconds - Now));
+					Self->CreateRetryTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+						FTickerDelegate::CreateUObject(Self, &ThisClass::HandleCreateRetryTick), RetrySeconds);
+					return;
+				}
+				if (bNoFreeProcess && Self->CreateRetryAttempts > 0)
+				{
+					Self->ReportSessionCreated(false, LOCTEXT("NoServerProcessTimeout",
+						"No game server became available in time. The fleet has no free server process; on a dev PC make sure the dedicated server window shows 'ActivateServerProcess acknowledged', then try again."));
+					return;
+				}
+				Self->ReportSessionCreated(false, ErrorText);
+				return;
+			}
+
+			if (!ResponseObject.IsValid())
 			{
 				Self->ReportSessionCreated(false, ErrorText);
 				return;
@@ -578,6 +619,13 @@ void UFrontendSessionBackend_GameLift::CreateSession(FName SessionName, int32 Ma
 			Self->ActivationPollTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
 				FTickerDelegate::CreateUObject(Self, &ThisClass::HandleActivationPollTick), 1.0f);
 		});
+}
+
+bool UFrontendSessionBackend_GameLift::HandleCreateRetryTick(float /*DeltaTime*/)
+{
+	CreateRetryTickerHandle.Reset();
+	SendCreateGameSessionRequest();
+	return false; // one-shot; the response schedules the next retry if needed
 }
 
 bool UFrontendSessionBackend_GameLift::HandleActivationPollTick(float /*DeltaTime*/)
@@ -1173,6 +1221,14 @@ void UFrontendSessionBackend_GameLift::SendGameLiftRequest(const FString& Target
 
 void UFrontendSessionBackend_GameLift::CancelPendingClientRequests()
 {
+	if (CreateRetryTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(CreateRetryTickerHandle);
+		CreateRetryTickerHandle.Reset();
+	}
+	CreateRetryAttempts = 0;
+	CreateRetryDeadlineSeconds = 0.0;
+
 	if (ActivationPollTickerHandle.IsValid())
 	{
 		FTSTicker::GetCoreTicker().RemoveTicker(ActivationPollTickerHandle);

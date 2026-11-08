@@ -73,6 +73,14 @@ public:
 	/** Seconds to poll DescribeGameSessions while a newly created game session is in ACTIVATING state. */
 	UPROPERTY(Config, EditAnywhere, Category = "Client", meta = (ClampMin = "1", UIMin = "1", UIMax = "60"))
 	float SessionActivationTimeoutSeconds = 15.f;
+
+	/**
+	 * How long Host keeps retrying CreateGameSession (every 5 s) while GameLift answers
+	 * FleetCapacityExceededException (no free server process). Covers the window where a
+	 * recycled dev server is still booting, or a managed fleet is scaling up. 0 disables.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Client", meta = (ClampMin = "0", UIMin = "0", UIMax = "300"))
+	float CreateSessionRetryTimeoutSeconds = 90.f;
 	//~ End Client & Fleet configuration
 
 	//~ Begin Development-only direct AWS credentials (ignored in Shipping builds; keep in Config/UserGame.ini or env vars)
@@ -201,6 +209,8 @@ private:
 	using FGameLiftJsonCallback = TFunction<void(bool bSuccess, TSharedPtr<FJsonObject> ResponseObject, const FText& ErrorText)>;
 
 	void SendGameLiftRequest(const FString& TargetAction, const TSharedRef<FJsonObject>& PayloadObject, FGameLiftJsonCallback Callback);
+	void SendCreateGameSessionRequest();
+	bool HandleCreateRetryTick(float DeltaTime);
 	bool HandleActivationPollTick(float DeltaTime);
 	void PollActivatingGameSession();
 	/** bIsJoinRequest selects which Report* answers on failure: ReportSessionJoined (Join) or ReportSessionCreated (Host). */
@@ -241,6 +251,13 @@ private:
 	int32 PendingActivationMaxPlayers = 0;
 	double ActivationPollDeadlineSeconds = 0.0;
 	bool bActivationPollRequestInFlight = false;
+
+	/** Host request being (re)sent while the fleet has no free process. */
+	FTSTicker::FDelegateHandle CreateRetryTickerHandle;
+	FString PendingCreateDisplayName;
+	int32 PendingCreateMaxPlayers = 0;
+	double CreateRetryDeadlineSeconds = 0.0;
+	int32 CreateRetryAttempts = 0;
 
 	/** Session metadata for the match this client joined or this server is hosting. */
 	FString ActiveSessionDisplayName;
