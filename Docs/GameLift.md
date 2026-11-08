@@ -117,7 +117,10 @@ LaunchDedicatedServer.bat 7777 GAMELIFT
 LaunchInstances.bat 2 GAMELIFT
 ```
 
-`LaunchDedicatedServer.bat 7777 GAMELIFT` automatically calls `aws gamelift get-compute-auth-token` when `GAMELIFT_SDK_FLEET_ID` and `GAMELIFT_SDK_HOST_ID` are set.
+Both scripts lean on the AWS CLI (`aws configure` once, with a user that may call `gamelift:*` on the fleet):
+
+- `LaunchDedicatedServer.bat 7777 GAMELIFT` calls `aws gamelift get-compute-auth-token` when `GAMELIFT_SDK_FLEET_ID` and `GAMELIFT_SDK_HOST_ID` are set and `GAMELIFT_SDK_AUTH_TOKEN` is not, and passes the token to the server through the environment.
+- `LaunchInstances.bat 2 GAMELIFT` fills `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (and `AWS_REGION`) from `aws configure get …` when they are not already in the environment. The game does **not** read `~/.aws/credentials` itself; it reads those variables or the git-ignored `Config/UserGame.ini`. Keys travel to the game windows through the inherited environment, never on the command line, so they do not appear in `Saved/Logs/Instance*.log`.
 
 ### Expected Walkthrough
 

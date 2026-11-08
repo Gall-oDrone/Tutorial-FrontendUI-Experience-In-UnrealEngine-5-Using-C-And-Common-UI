@@ -83,6 +83,38 @@ if /i "%BUILD%"=="PACKAGED" (
 	set "LAUNCH="%EDITOR%" "%PROJECT%" -game"
 )
 
+if /i not "%MODE%"=="GAMELIFT" goto :launch
+
+REM ---- GAMELIFT ---------------------------------------------------------------------
+REM The client signs GameLift requests itself in non-Shipping builds and reads the keys
+REM from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (or Config/UserGame.ini), not from
+REM ~/.aws/credentials. Fill the environment from the AWS CLI profile when it is empty so
+REM the launched windows inherit it. Nothing secret goes on the command line or in the logs.
+set "GL_CRED_FILE=%TEMP%\frontendui_gamelift_cred.txt"
+if not "%AWS_ACCESS_KEY_ID%"=="" goto :gamelift_creds_ready
+aws configure get aws_access_key_id > "%GL_CRED_FILE%" 2>nul
+set /p AWS_ACCESS_KEY_ID=<"%GL_CRED_FILE%"
+aws configure get aws_secret_access_key > "%GL_CRED_FILE%" 2>nul
+set /p AWS_SECRET_ACCESS_KEY=<"%GL_CRED_FILE%"
+aws configure get aws_session_token > "%GL_CRED_FILE%" 2>nul
+set /p AWS_SESSION_TOKEN=<"%GL_CRED_FILE%"
+del "%GL_CRED_FILE%" >nul 2>&1
+:gamelift_creds_ready
+if "%AWS_REGION%"=="" if "%GAMELIFT_REGION%"=="" (
+	aws configure get region > "%GL_CRED_FILE%" 2>nul
+	set /p AWS_REGION=<"%GL_CRED_FILE%"
+	del "%GL_CRED_FILE%" >nul 2>&1
+)
+if "%AWS_ACCESS_KEY_ID%"=="" (
+	echo WARNING: no AWS credentials found in the environment or the AWS CLI profile.
+	echo          Host / Find / Join will fail unless Config\UserGame.ini provides them or ApiEndpointUrl is set.
+) else (
+	echo AWS credentials: present ^(key id ends in %AWS_ACCESS_KEY_ID:~-4%^)
+)
+if "%GAMELIFT_SDK_FLEET_ID%"=="" if "%GAMELIFT_FLEET_ID%"=="" echo WARNING: GAMELIFT_SDK_FLEET_ID is not set; the client cannot target a fleet.
+echo GameLift: region=%AWS_REGION%%GAMELIFT_REGION% fleet=%GAMELIFT_SDK_FLEET_ID% location=%GAMELIFT_LOCATION%
+
+:launch
 echo Launching %COUNT% instance(s) in %MODE% mode (%BUILD%).
 
 REM 1280x720 windows tiled left-to-right so both are visible on one screen.
