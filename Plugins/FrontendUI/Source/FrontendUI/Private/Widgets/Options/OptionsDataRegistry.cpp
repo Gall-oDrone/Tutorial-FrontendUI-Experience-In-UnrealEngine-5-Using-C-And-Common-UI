@@ -667,7 +667,7 @@ void UOptionsDataRegistry::InitControlCollectionTab(ULocalPlayer* InOwningLocalP
 			GamepadOnly.KeyToMatch = EKeys::Gamepad_FaceButton_Bottom;
 			GamepadOnly.bMatchBasicKeyTypes = true;*/
 
-			for (const TPair<FString, UEnhancedPlayerMappableKeyProfile*>& ProfilePair : EIUserSettings->GetAllAvailableKeyProfiles())
+			for (const TPair<FString, TObjectPtr<UEnhancedPlayerMappableKeyProfile>>& ProfilePair : EIUserSettings->GetAllAvailableKeyProfiles())
 			{
 				UEnhancedPlayerMappableKeyProfile* MappableKeyProfile = ProfilePair.Value;
 
@@ -709,7 +709,7 @@ void UOptionsDataRegistry::InitControlCollectionTab(ULocalPlayer* InOwningLocalP
 			GamepadOnly.KeyToMatch = EKeys::Gamepad_FaceButton_Bottom;
 			GamepadOnly.bMatchBasicKeyTypes = true;
 
-			for (const TPair<FString, UEnhancedPlayerMappableKeyProfile*>& ProfilePair : EIUserSettings->GetAllAvailableKeyProfiles())
+			for (const TPair<FString, TObjectPtr<UEnhancedPlayerMappableKeyProfile>>& ProfilePair : EIUserSettings->GetAllAvailableKeyProfiles())
 			{
 				UEnhancedPlayerMappableKeyProfile* MappableKeyProfile = ProfilePair.Value;
 
