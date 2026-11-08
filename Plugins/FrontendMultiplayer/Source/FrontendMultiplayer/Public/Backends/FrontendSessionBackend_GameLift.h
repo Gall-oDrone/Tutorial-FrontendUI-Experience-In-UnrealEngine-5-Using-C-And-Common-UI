@@ -6,11 +6,12 @@
 #include "Backends/FrontendSessionBackend.h"
 #include "Engine/DeveloperSettings.h"
 #include "Containers/Ticker.h"
-#include "Interfaces/IHttpRequest.h"
 #include "FrontendSessionBackend_GameLift.generated.h"
 
 class IWebSocket;
+class IHttpRequest;
 class FJsonObject;
+class UWorld;
 
 /**
  * Project settings for UFrontendSessionBackend_GameLift.
@@ -186,10 +187,13 @@ private:
 	using FGameLiftJsonCallback = TFunction<void(bool bSuccess, TSharedPtr<FJsonObject> ResponseObject, const FText& ErrorText)>;
 
 	void SendGameLiftRequest(const FString& TargetAction, const TSharedRef<FJsonObject>& PayloadObject, FGameLiftJsonCallback Callback);
+	bool HandleActivationPollTick(float DeltaTime);
 	void PollActivatingGameSession();
-	void RequestPlayerSessionForGameSession(const FString& GameSessionId, const FString& DisplayName, int32 MaxPlayers, EFrontendSessionOperation Operation);
+	/** bIsJoinRequest selects which Report* answers on failure: ReportSessionJoined (Join) or ReportSessionCreated (Host). */
+	void RequestPlayerSessionForGameSession(const FString& GameSessionId, const FString& DisplayName, int32 MaxPlayers, bool bIsJoinRequest);
 	void CancelPendingClientRequests();
 	FString BuildLocalPlayerId() const;
+	UWorld* GetGameWorld() const;
 	//~ End Client HTTP helpers
 
 	//~ Begin Server WebSocket helpers (GameLift Server SDK 5.x wire protocol)

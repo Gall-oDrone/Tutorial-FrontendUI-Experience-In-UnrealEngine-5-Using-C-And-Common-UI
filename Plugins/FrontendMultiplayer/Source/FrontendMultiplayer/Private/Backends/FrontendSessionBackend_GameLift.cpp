@@ -3,8 +3,10 @@
 #include "Backends/FrontendSessionBackend_GameLift.h"
 #include "FrontendMultiplayerSettings.h"
 #include "FrontendMultiplayerSubsystem.h"
-#include "FrontendDebugHelper.h"
+#include "FrontendSessionListEntryData.h"
+#include "FrontendSimulatedData.h"
 #include "HttpModule.h"
+#include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
 #include "WebSocketsModule.h"
 #include "IWebSocket.h"
@@ -17,11 +19,13 @@
 #include "Misc/CommandLine.h"
 #include "Misc/DateTime.h"
 #include "Misc/Guid.h"
+#include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "HAL/PlatformMisc.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/PlatformTime.h"
 #include "Engine/Engine.h"
+#include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
@@ -426,24 +430,24 @@ FString UFrontendGameLiftSettings::ResolveServerAuthToken() const
 		ServerAuthToken);
 }
 
+//~ Begin UFrontendSessionBackend Interface
+
 void UFrontendSessionBackend_GameLift::Initialize(UFrontendMultiplayerSubsystem* InOwningSubsystem)
 {
 	Super::Initialize(InOwningSubsystem);
 
 	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
-	Debug::Print(FString::Printf(
-		TEXT("[gamelift] Backend initialized (Region=%s, FleetId=%s, AliasId=%s, Location=%s, Proxy=%s)"),
+	const FString Proxy = Settings->ResolveApiEndpointUrl();
+	LogDebug(FString::Printf(TEXT("[gamelift] backend ready: region=%s fleet=%s alias=%s location=%s endpoint=%s"),
 		*Settings->ResolveAwsRegion(),
 		*Settings->ResolveFleetId(),
 		*Settings->ResolveAliasId(),
 		*Settings->ResolveLocation(),
-		Settings->ResolveApiEndpointUrl().IsEmpty() ? TEXT("<Direct SigV4>") : *Settings->ResolveApiEndpointUrl()),
-		FColor::Cyan);
+		Proxy.IsEmpty() ? TEXT("direct (SigV4)") : *Proxy));
 
-	if (UWorld* CurrentWorld = GetWorld())
-	{
-		StartServerWebSocketIfConfigured(CurrentWorld);
-	}
+	// A dedicated server may already have its map up when the subsystem creates the
+	// backend; OnWorldLoaded covers the normal case where the map arrives later.
+	StartServerWebSocketIfConfigured(GetGameWorld());
 }
 
 void UFrontendSessionBackend_GameLift::Shutdown()
@@ -465,6 +469,7 @@ void UFrontendSessionBackend_GameLift::OnWorldLoaded(UWorld* LoadedWorld)
 
 void UFrontendSessionBackend_GameLift::CreateSession(FName SessionName, int32 MaxPlayers)
 {
+	ReportOperationStarted(EFrontendSessionOperation::Creating);
 	CancelPendingClientRequests();
 
 	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
@@ -474,10 +479,9 @@ void UFrontendSessionBackend_GameLift::CreateSession(FName SessionName, int32 Ma
 
 	if (FleetId.IsEmpty() && AliasId.IsEmpty())
 	{
-		Debug::Print(TEXT("[gamelift] CreateSession failed: neither FleetId nor AliasId is configured."), FColor::Red);
-		ReportSessionFailure(
-			EFrontendSessionOperation::Create,
-			LOCTEXT("MissingFleetOrAlias", "GameLift Fleet ID or Alias ID is not configured. Set it in Project Settings > Frontend Multiplayer GameLift or pass -GameLiftFleetId=fleet-..."));
+		LogDebug(TEXT("[gamelift] CreateSession: no FleetId or AliasId configured"));
+		ReportSessionCreated(false, LOCTEXT("MissingFleetOrAlias",
+			"GameLift Fleet ID or Alias ID is not configured. Set it in Project Settings > Game > Frontend Multiplayer GameLift or pass -GameLiftFleetId=fleet-..."));
 		return;
 	}
 
@@ -485,15 +489,8 @@ void UFrontendSessionBackend_GameLift::CreateSession(FName SessionName, int32 Ma
 	const int32 ClampedMaxPlayers = FMath::Max(1, MaxPlayers);
 	const FString CreatorId = BuildLocalPlayerId();
 
-	FString MapLeaf = TEXT("L_MatchTest");
-	if (const UFrontendMultiplayerSettings* MpSettings = UFrontendMultiplayerSettings::Get())
-	{
-		const FString RawMap = MpSettings->HostMap.GetAssetName();
-		if (!RawMap.IsEmpty())
-		{
-			MapLeaf = RawMap;
-		}
-	}
+	const UFrontendMultiplayerSettings* MpSettings = UFrontendMultiplayerSettings::Get();
+	const FString MapLeaf = MpSettings->HostMap.IsNull() ? FString(TEXT("L_MatchTest")) : MpSettings->HostMap.GetAssetName();
 
 	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
 	if (!AliasId.IsEmpty())
@@ -526,16 +523,10 @@ void UFrontendSessionBackend_GameLift::CreateSession(FName SessionName, int32 Ma
 	}
 	Payload->SetArrayField(TEXT("GameProperties"), GameProperties);
 
-	Debug::Print(FString::Printf(
-		TEXT("[gamelift] Requesting GameLift.CreateGameSession Name='%s' MaxPlayers=%d"),
-		*RequestedDisplayName,
-		ClampedMaxPlayers),
-		FColor::Cyan);
+	LogDebug(FString::Printf(TEXT("[gamelift] CreateGameSession '%s' (%d players)"), *RequestedDisplayName, ClampedMaxPlayers));
 
 	TWeakObjectPtr<ThisClass> WeakThis(this);
-	SendGameLiftRequest(
-		TEXT("GameLift.CreateGameSession"),
-		Payload,
+	SendGameLiftRequest(TEXT("GameLift.CreateGameSession"), Payload,
 		[WeakThis, RequestedDisplayName, ClampedMaxPlayers](bool bSuccess, TSharedPtr<FJsonObject> ResponseObject, const FText& ErrorText)
 		{
 			ThisClass* Self = WeakThis.Get();
@@ -546,16 +537,14 @@ void UFrontendSessionBackend_GameLift::CreateSession(FName SessionName, int32 Ma
 
 			if (!bSuccess || !ResponseObject.IsValid())
 			{
-				Self->ReportSessionFailure(EFrontendSessionOperation::Create, ErrorText);
+				Self->ReportSessionCreated(false, ErrorText);
 				return;
 			}
 
 			const TSharedPtr<FJsonObject>* GameSessionObj = nullptr;
 			if (!ResponseObject->TryGetObjectField(TEXT("GameSession"), GameSessionObj) || !GameSessionObj || !GameSessionObj->IsValid())
 			{
-				Self->ReportSessionFailure(
-					EFrontendSessionOperation::Create,
-					LOCTEXT("MissingGameSessionField", "GameLift response did not contain a GameSession object."));
+				Self->ReportSessionCreated(false, LOCTEXT("MissingGameSessionField", "GameLift response did not contain a GameSession object."));
 				return;
 			}
 
@@ -566,48 +555,35 @@ void UFrontendSessionBackend_GameLift::CreateSession(FName SessionName, int32 Ma
 
 			if (GameSessionId.IsEmpty())
 			{
-				Self->ReportSessionFailure(
-					EFrontendSessionOperation::Create,
-					LOCTEXT("EmptyGameSessionId", "GameLift returned an empty GameSessionId."));
+				Self->ReportSessionCreated(false, LOCTEXT("EmptyGameSessionId", "GameLift returned an empty GameSessionId."));
 				return;
 			}
 
-			Debug::Print(FString::Printf(
-				TEXT("[gamelift] Created GameSessionId='%s' Status=%s"),
-				*GameSessionId,
-				*Status),
-				FColor::Green);
+			Self->LogDebug(FString::Printf(TEXT("[gamelift] CreateGameSession -> %s (%s)"), *GameSessionId, *Status));
 
 			if (Status.Equals(TEXT("ACTIVE"), ESearchCase::IgnoreCase))
 			{
-				Self->RequestPlayerSessionForGameSession(
-					GameSessionId,
-					RequestedDisplayName,
-					ClampedMaxPlayers,
-					EFrontendSessionOperation::Create);
+				Self->RequestPlayerSessionForGameSession(GameSessionId, RequestedDisplayName, ClampedMaxPlayers, /*bIsJoinRequest=*/false);
 				return;
 			}
 
-			// Session is ACTIVATING — poll DescribeGameSessions until the server sends ActivateGameSession.
+			// ACTIVATING: the server has not answered ActivateGameSession yet. Poll until it does.
 			const float TimeoutSeconds = FMath::Max(1.f, UFrontendGameLiftSettings::Get()->SessionActivationTimeoutSeconds);
 			Self->PendingActivationGameSessionId = GameSessionId;
 			Self->PendingActivationDisplayName = RequestedDisplayName;
 			Self->PendingActivationMaxPlayers = ClampedMaxPlayers;
 			Self->ActivationPollDeadlineSeconds = FPlatformTime::Seconds() + static_cast<double>(TimeoutSeconds);
 			Self->bActivationPollRequestInFlight = false;
-
 			Self->ActivationPollTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
-				FTickerDelegate::CreateWeakLambda(Self, [WeakThis](float /*DeltaTime*/)
-				{
-					if (ThisClass* StrongSelf = WeakThis.Get())
-					{
-						StrongSelf->PollActivatingGameSession();
-						return true;
-					}
-					return false;
-				}),
-				1.0f);
+				FTickerDelegate::CreateUObject(Self, &ThisClass::HandleActivationPollTick), 1.0f);
 		});
+}
+
+bool UFrontendSessionBackend_GameLift::HandleActivationPollTick(float /*DeltaTime*/)
+{
+	PollActivatingGameSession();
+	// Keep ticking while a poll is pending; CancelPendingClientRequests removes the ticker.
+	return !PendingActivationGameSessionId.IsEmpty();
 }
 
 void UFrontendSessionBackend_GameLift::PollActivatingGameSession()
@@ -619,15 +595,10 @@ void UFrontendSessionBackend_GameLift::PollActivatingGameSession()
 
 	if (FPlatformTime::Seconds() > ActivationPollDeadlineSeconds)
 	{
-		const FString TimedOutId = PendingActivationGameSessionId;
+		LogDebug(FString::Printf(TEXT("[gamelift] game session %s did not become ACTIVE in time"), *PendingActivationGameSessionId));
 		CancelPendingClientRequests();
-		Debug::Print(FString::Printf(
-			TEXT("[gamelift] Timed out waiting for GameSession '%s' to transition to ACTIVE."),
-			*TimedOutId),
-			FColor::Red);
-		ReportSessionFailure(
-			EFrontendSessionOperation::Create,
-			LOCTEXT("GameSessionActivationTimeout", "Timed out waiting for the GameLift server to activate the game session."));
+		ReportSessionCreated(false, LOCTEXT("GameSessionActivationTimeout",
+			"Timed out waiting for the GameLift server to activate the game session. Is a server process connected to the fleet?"));
 		return;
 	}
 
@@ -637,9 +608,7 @@ void UFrontendSessionBackend_GameLift::PollActivatingGameSession()
 	Payload->SetStringField(TEXT("GameSessionId"), PendingActivationGameSessionId);
 
 	TWeakObjectPtr<ThisClass> WeakThis(this);
-	SendGameLiftRequest(
-		TEXT("GameLift.DescribeGameSessions"),
-		Payload,
+	SendGameLiftRequest(TEXT("GameLift.DescribeGameSessions"), Payload,
 		[WeakThis](bool bSuccess, TSharedPtr<FJsonObject> ResponseObject, const FText& ErrorText)
 		{
 			ThisClass* Self = WeakThis.Get();
@@ -649,10 +618,15 @@ void UFrontendSessionBackend_GameLift::PollActivatingGameSession()
 			}
 			Self->bActivationPollRequestInFlight = false;
 
+			if (Self->PendingActivationGameSessionId.IsEmpty())
+			{
+				return; // cancelled while in flight
+			}
+
 			if (!bSuccess || !ResponseObject.IsValid())
 			{
 				Self->CancelPendingClientRequests();
-				Self->ReportSessionFailure(EFrontendSessionOperation::Create, ErrorText);
+				Self->ReportSessionCreated(false, ErrorText);
 				return;
 			}
 
@@ -670,44 +644,34 @@ void UFrontendSessionBackend_GameLift::PollActivatingGameSession()
 
 			FString Status;
 			SessionObj->TryGetStringField(TEXT("Status"), Status);
+
 			if (Status.Equals(TEXT("ACTIVE"), ESearchCase::IgnoreCase))
 			{
 				const FString ReadySessionId = Self->PendingActivationGameSessionId;
 				const FString ReadyDisplayName = Self->PendingActivationDisplayName;
 				const int32 ReadyMaxPlayers = Self->PendingActivationMaxPlayers;
 				Self->CancelPendingClientRequests();
-
-				Self->RequestPlayerSessionForGameSession(
-					ReadySessionId,
-					ReadyDisplayName,
-					ReadyMaxPlayers,
-					EFrontendSessionOperation::Create);
+				Self->RequestPlayerSessionForGameSession(ReadySessionId, ReadyDisplayName, ReadyMaxPlayers, /*bIsJoinRequest=*/false);
 			}
 			else if (Status.Equals(TEXT("TERMINATED"), ESearchCase::IgnoreCase) || Status.Equals(TEXT("ERROR"), ESearchCase::IgnoreCase))
 			{
 				Self->CancelPendingClientRequests();
-				Self->ReportSessionFailure(
-					EFrontendSessionOperation::Create,
-					FText::Format(LOCTEXT("GameSessionTerminatedDuringActivation", "GameLift game session entered {0} state during activation."), FText::FromString(Status)));
+				Self->ReportSessionCreated(false, FText::Format(
+					LOCTEXT("GameSessionTerminatedDuringActivation", "GameLift game session entered {0} state during activation."),
+					FText::FromString(Status)));
 			}
 		});
 }
 
-void UFrontendSessionBackend_GameLift::RequestPlayerSessionForGameSession(
-	const FString& GameSessionId,
-	const FString& DisplayName,
-	int32 MaxPlayers,
-	EFrontendSessionOperation Operation)
+void UFrontendSessionBackend_GameLift::RequestPlayerSessionForGameSession(const FString& GameSessionId, const FString& DisplayName, int32 MaxPlayers, bool bIsJoinRequest)
 {
 	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
 	Payload->SetStringField(TEXT("GameSessionId"), GameSessionId);
 	Payload->SetStringField(TEXT("PlayerId"), BuildLocalPlayerId());
 
 	TWeakObjectPtr<ThisClass> WeakThis(this);
-	SendGameLiftRequest(
-		TEXT("GameLift.CreatePlayerSession"),
-		Payload,
-		[WeakThis, GameSessionId, DisplayName, MaxPlayers, Operation](bool bSuccess, TSharedPtr<FJsonObject> ResponseObject, const FText& ErrorText)
+	SendGameLiftRequest(TEXT("GameLift.CreatePlayerSession"), Payload,
+		[WeakThis, GameSessionId, DisplayName, MaxPlayers, bIsJoinRequest](bool bSuccess, TSharedPtr<FJsonObject> ResponseObject, const FText& ErrorText)
 		{
 			ThisClass* Self = WeakThis.Get();
 			if (!Self)
@@ -715,26 +679,28 @@ void UFrontendSessionBackend_GameLift::RequestPlayerSessionForGameSession(
 				return;
 			}
 
+			auto Fail = [Self, bIsJoinRequest](const FText& Reason)
+			{
+				if (bIsJoinRequest)
+				{
+					Self->ReportSessionJoined(false, FString(), Reason);
+				}
+				else
+				{
+					Self->ReportSessionCreated(false, Reason);
+				}
+			};
+
 			if (!bSuccess || !ResponseObject.IsValid())
 			{
-				if (Operation == EFrontendSessionOperation::Join)
-				{
-					Self->ReportSessionJoined(false, FString());
-				}
-				Self->ReportSessionFailure(Operation, ErrorText);
+				Fail(ErrorText);
 				return;
 			}
 
 			const TSharedPtr<FJsonObject>* PlayerSessionObj = nullptr;
 			if (!ResponseObject->TryGetObjectField(TEXT("PlayerSession"), PlayerSessionObj) || !PlayerSessionObj || !PlayerSessionObj->IsValid())
 			{
-				if (Operation == EFrontendSessionOperation::Join)
-				{
-					Self->ReportSessionJoined(false, FString());
-				}
-				Self->ReportSessionFailure(
-					Operation,
-					LOCTEXT("MissingPlayerSessionField", "GameLift response did not contain a PlayerSession object."));
+				Fail(LOCTEXT("MissingPlayerSessionField", "GameLift response did not contain a PlayerSession object."));
 				return;
 			}
 
@@ -747,13 +713,7 @@ void UFrontendSessionBackend_GameLift::RequestPlayerSessionForGameSession(
 
 			if (IpAddress.IsEmpty() || Port <= 0)
 			{
-				if (Operation == EFrontendSessionOperation::Join)
-				{
-					Self->ReportSessionJoined(false, FString());
-				}
-				Self->ReportSessionFailure(
-					Operation,
-					LOCTEXT("InvalidServerEndpoint", "GameLift PlayerSession did not include a valid IP address and port."));
+				Fail(LOCTEXT("InvalidServerEndpoint", "GameLift PlayerSession did not include a valid IP address and port."));
 				return;
 			}
 
@@ -766,25 +726,22 @@ void UFrontendSessionBackend_GameLift::RequestPlayerSessionForGameSession(
 				? FString::Printf(TEXT("%s:%d"), *IpAddress, Port)
 				: FString::Printf(TEXT("%s:%d?PlayerSessionId=%s"), *IpAddress, Port, *FGenericPlatformHttp::UrlEncode(PlayerSessionId));
 
-			Debug::Print(FString::Printf(
-				TEXT("[gamelift] Reserved PlayerSessionId='%s' -> travelling to %s"),
-				*PlayerSessionId,
-				*ConnectAddress),
-				FColor::Green);
+			Self->LogDebug(FString::Printf(TEXT("[gamelift] CreatePlayerSession -> %s; travelling to %s"), *PlayerSessionId, *ConnectAddress));
 
-			if (Operation == EFrontendSessionOperation::Create)
+			if (bIsJoinRequest)
 			{
-				Self->ReportSessionCreatedRemote(ConnectAddress);
+				Self->ReportSessionJoined(true, ConnectAddress);
 			}
 			else
 			{
-				Self->ReportSessionJoined(true, ConnectAddress);
+				Self->ReportSessionCreatedRemote(ConnectAddress);
 			}
 		});
 }
 
 void UFrontendSessionBackend_GameLift::FindSessions()
 {
+	ReportOperationStarted(EFrontendSessionOperation::Finding);
 	CancelPendingClientRequests();
 	FoundSessions.Empty();
 
@@ -795,19 +752,12 @@ void UFrontendSessionBackend_GameLift::FindSessions()
 
 	if (FleetId.IsEmpty() && AliasId.IsEmpty())
 	{
-		Debug::Print(TEXT("[gamelift] FindSessions failed: neither FleetId nor AliasId is configured."), FColor::Red);
-		ReportSessionsFound(TArray<FFrontendSessionSearchResult>());
-		ReportSessionFailure(
-			EFrontendSessionOperation::Find,
-			LOCTEXT("FindMissingFleetOrAlias", "GameLift Fleet ID or Alias ID is not configured."));
+		LogDebug(TEXT("[gamelift] FindSessions: no FleetId or AliasId configured"));
+		ReportFindSessionsFailed(LOCTEXT("FindMissingFleetOrAlias", "GameLift Fleet ID or Alias ID is not configured."));
 		return;
 	}
 
-	int32 MaxResults = 25;
-	if (const UFrontendMultiplayerSettings* MpSettings = UFrontendMultiplayerSettings::Get())
-	{
-		MaxResults = FMath::Clamp(MpSettings->MaxSearchResults, 1, 100);
-	}
+	const int32 MaxResults = FMath::Clamp(UFrontendMultiplayerSettings::Get()->MaxSearchResults, 1, 100);
 
 	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
 	if (!AliasId.IsEmpty())
@@ -825,11 +775,11 @@ void UFrontendSessionBackend_GameLift::FindSessions()
 	Payload->SetStringField(TEXT("StatusFilter"), TEXT("ACTIVE"));
 	Payload->SetNumberField(TEXT("Limit"), MaxResults);
 
+	LogDebug(TEXT("[gamelift] DescribeGameSessions (ACTIVE)"));
+
 	const double RequestStartSeconds = FPlatformTime::Seconds();
 	TWeakObjectPtr<ThisClass> WeakThis(this);
-	SendGameLiftRequest(
-		TEXT("GameLift.DescribeGameSessions"),
-		Payload,
+	SendGameLiftRequest(TEXT("GameLift.DescribeGameSessions"), Payload,
 		[WeakThis, RequestStartSeconds](bool bSuccess, TSharedPtr<FJsonObject> ResponseObject, const FText& ErrorText)
 		{
 			ThisClass* Self = WeakThis.Get();
@@ -840,15 +790,14 @@ void UFrontendSessionBackend_GameLift::FindSessions()
 
 			if (!bSuccess || !ResponseObject.IsValid())
 			{
-				Self->ReportSessionsFound(TArray<FFrontendSessionSearchResult>());
-				Self->ReportSessionFailure(EFrontendSessionOperation::Find, ErrorText);
+				Self->ReportFindSessionsFailed(ErrorText);
 				return;
 			}
 
 			const int32 RoundTripPingMs = FMath::Max(1, FMath::RoundToInt(static_cast<float>((FPlatformTime::Seconds() - RequestStartSeconds) * 1000.0)));
-			const TArray<TSharedPtr<FJsonValue>>* SessionsArray = nullptr;
-			TArray<FFrontendSessionSearchResult> Results;
+			TArray<UFrontendSessionListEntryData*> Rows;
 
+			const TArray<TSharedPtr<FJsonValue>>* SessionsArray = nullptr;
 			if (ResponseObject->TryGetArrayField(TEXT("GameSessions"), SessionsArray) && SessionsArray)
 			{
 				for (const TSharedPtr<FJsonValue>& Value : *SessionsArray)
@@ -903,64 +852,54 @@ void UFrontendSessionBackend_GameLift::FindSessions()
 					}
 					if (Summary.MapName.IsEmpty())
 					{
-						Summary.MapName = TEXT("Lobby");
+						Summary.MapName = TEXT("L_MatchTest");
 					}
 
-					const int32 Index = Self->FoundSessions.Add(Summary);
+					Self->FoundSessions.Add(Summary);
 
-					FFrontendSessionSearchResult Row;
-					Row.SessionIndex = Index;
-					Row.DisplayName = Summary.DisplayName;
-					Row.HostName = Summary.HostName;
-					Row.MapName = Summary.MapName;
-					Row.CurrentPlayers = Summary.CurrentPlayers;
-					Row.MaxPlayers = Summary.MaxPlayers;
-					Row.PingInMs = RoundTripPingMs;
-					Row.SessionId = Summary.GameSessionId;
-					Results.Add(Row);
+					UFrontendSessionListEntryData* Row = NewObject<UFrontendSessionListEntryData>(Self);
+					Row->SessionDisplayName = Summary.DisplayName;
+					Row->HostName = Summary.HostName;
+					Row->MapName = Summary.MapName;
+					Row->CurrentPlayers = Summary.CurrentPlayers;
+					Row->MaxPlayers = Summary.MaxPlayers;
+					Row->PingInMs = RoundTripPingMs;
+					Rows.Add(Row);
 				}
 			}
 
-			Debug::Print(FString::Printf(
-				TEXT("[gamelift] FindSessions returned %d active session(s)."),
-				Results.Num()),
-				FColor::Cyan);
-
-			Self->ReportSessionsFound(Results);
+			Self->LogDebug(FString::Printf(TEXT("[gamelift] DescribeGameSessions -> %d active session(s)"), Rows.Num()));
+			Self->ReportSessionsFound(Rows);
 		});
 }
 
 void UFrontendSessionBackend_GameLift::JoinSession(int32 SessionIndex)
 {
+	ReportOperationStarted(EFrontendSessionOperation::Joining);
+
 	if (!FoundSessions.IsValidIndex(SessionIndex))
 	{
-		ReportSessionJoined(false, FString());
-		ReportSessionFailure(
-			EFrontendSessionOperation::Join,
-			LOCTEXT("InvalidJoinIndex", "Selected GameLift session is no longer valid. Please refresh the server browser."));
+		ReportSessionJoined(false, FString(), LOCTEXT("InvalidJoinIndex", "That server is no longer in the list. Refresh and try again."));
 		return;
 	}
 
 	const FFrontendGameLiftSessionSummary Selected = FoundSessions[SessionIndex];
+	LogDebug(FString::Printf(TEXT("[gamelift] JoinSession index %d -> %s"), SessionIndex, *Selected.GameSessionId));
+
 	if (Selected.MaxPlayers > 0 && Selected.CurrentPlayers >= Selected.MaxPlayers)
 	{
-		ReportSessionJoined(false, FString());
-		ReportSessionFailure(
-			EFrontendSessionOperation::Join,
-			LOCTEXT("SessionFull", "This GameLift game session is already full."));
+		ReportSessionJoined(false, FString(), LOCTEXT("SessionFull", "This GameLift game session is already full."));
 		return;
 	}
 
 	CancelPendingClientRequests();
-	RequestPlayerSessionForGameSession(
-		Selected.GameSessionId,
-		Selected.DisplayName,
-		Selected.MaxPlayers,
-		EFrontendSessionOperation::Join);
+	RequestPlayerSessionForGameSession(Selected.GameSessionId, Selected.DisplayName, Selected.MaxPlayers, /*bIsJoinRequest=*/true);
 }
 
 void UFrontendSessionBackend_GameLift::LeaveSession()
 {
+	// The server frees the slot via RemovePlayerSession when the connection drops.
+	LogDebug(TEXT("[gamelift] LeaveSession"));
 	CancelPendingClientRequests();
 	ActiveSessionDisplayName.Reset();
 	ActiveSessionMaxPlayers = 0;
@@ -969,10 +908,19 @@ void UFrontendSessionBackend_GameLift::LeaveSession()
 	ReportSessionLeft();
 }
 
-void UFrontendSessionBackend_GameLift::FetchLeaderboard(ELeaderboardCategory /*Category*/)
+void UFrontendSessionBackend_GameLift::FetchLeaderboard(ELeaderboardCategory Category)
 {
-	// GameLift handles session placement and server hosting; leaderboards live in EOS/backend services.
-	ReportLeaderboardFetched(TArray<FLeaderboardEntry>());
+	// GameLift places and hosts sessions; it has no leaderboard service. Same policy as FixedAddress.
+	if (UFrontendMultiplayerSettings::Get()->bSimulateLeaderboardWhenUnsupported)
+	{
+		LogDebug(FString::Printf(TEXT("[gamelift] FetchLeaderboard(%s): no leaderboard service, returning simulated rows"), *UEnum::GetDisplayValueAsText(Category).ToString()));
+		ReportLeaderboard(Category, FFrontendSimulatedData::MakeLeaderboard(this, Category));
+	}
+	else
+	{
+		LogDebug(FString::Printf(TEXT("[gamelift] FetchLeaderboard(%s): no leaderboard service"), *UEnum::GetDisplayValueAsText(Category).ToString()));
+		ReportLeaderboard(Category, TArray<UFrontendLeaderboardEntryData*>());
+	}
 }
 
 FString UFrontendSessionBackend_GameLift::GetBackendDisplayName() const
@@ -980,11 +928,9 @@ FString UFrontendSessionBackend_GameLift::GetBackendDisplayName() const
 	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
 	const FString Region = Settings->ResolveAwsRegion();
 	const FString Location = Settings->ResolveLocation();
-	if (!Location.IsEmpty())
-	{
-		return FString::Printf(TEXT("GameLift (%s / %s)"), *Region, *Location);
-	}
-	return FString::Printf(TEXT("GameLift (%s)"), *Region);
+	return Location.IsEmpty()
+		? FString::Printf(TEXT("GameLift (%s)"), *Region)
+		: FString::Printf(TEXT("GameLift (%s / %s)"), *Region, *Location);
 }
 
 bool UFrontendSessionBackend_GameLift::GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const
@@ -1002,7 +948,7 @@ bool UFrontendSessionBackend_GameLift::AcceptPlayerSession(const FString& Player
 {
 	if (!ServerWebSocket.IsValid() || !ServerWebSocket->IsConnected() || !bServerProcessReady)
 	{
-		// Server is running without an active GameLift WebSocket connection (e.g. local LAN test).
+		// Not under GameLift control (e.g. a plain LAN dedicated server): accept everyone.
 		return true;
 	}
 
@@ -1029,10 +975,7 @@ bool UFrontendSessionBackend_GameLift::AcceptPlayerSession(const FString& Player
 	Message->SetStringField(TEXT("PlayerSessionId"), PlayerSessionId);
 	SendServerWebSocketMessage(Message);
 
-	Debug::Print(FString::Printf(
-		TEXT("[gamelift] Sent AcceptPlayerSession for PlayerSessionId='%s'"),
-		*PlayerSessionId),
-		FColor::Green);
+	LogDebug(FString::Printf(TEXT("[gamelift] AcceptPlayerSession %s"), *PlayerSessionId));
 	return true;
 }
 
@@ -1050,16 +993,14 @@ void UFrontendSessionBackend_GameLift::RemovePlayerSession(const FString& Player
 	Message->SetStringField(TEXT("PlayerSessionId"), PlayerSessionId);
 	SendServerWebSocketMessage(Message);
 
-	Debug::Print(FString::Printf(
-		TEXT("[gamelift] Sent RemovePlayerSession for PlayerSessionId='%s'"),
-		*PlayerSessionId),
-		FColor::Cyan);
+	LogDebug(FString::Printf(TEXT("[gamelift] RemovePlayerSession %s"), *PlayerSessionId));
 }
 
-void UFrontendSessionBackend_GameLift::SendGameLiftRequest(
-	const FString& TargetAction,
-	const TSharedRef<FJsonObject>& PayloadObject,
-	FGameLiftJsonCallback Callback)
+//~ End UFrontendSessionBackend Interface
+
+//~ Begin Client HTTP helpers
+
+void UFrontendSessionBackend_GameLift::SendGameLiftRequest(const FString& TargetAction, const TSharedRef<FJsonObject>& PayloadObject, FGameLiftJsonCallback Callback)
 {
 	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
 	const FString Region = Settings->ResolveAwsRegion();
@@ -1089,50 +1030,34 @@ void UFrontendSessionBackend_GameLift::SendGameLiftRequest(
 		FString SessionToken;
 		if (!Settings->ResolveAwsCredentials(AccessKey, SecretKey, SessionToken))
 		{
-			Callback(
-				false,
-				nullptr,
-				LOCTEXT("MissingAwsCredentials", "No GameLift API Endpoint URL or AWS credentials found. Set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (or Config/UserGame.ini) for development, or configure ApiEndpointUrl."));
+			Callback(false, nullptr, LOCTEXT("MissingAwsCredentials",
+				"No GameLift API Endpoint URL or AWS credentials found. Set AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (or Config/UserGame.ini) for development, or configure ApiEndpointUrl."));
 			return;
 		}
 
 		const FString Host = FString::Printf(TEXT("gamelift.%s.amazonaws.com"), *Region);
-		const FString DirectUrl = FString::Printf(TEXT("https://%s/"), *Host);
-		HttpRequest->SetURL(DirectUrl);
-
-		FrontendGameLiftCrypto::SignGameLiftJsonRequest(
-			HttpRequest,
-			Host,
-			Region,
-			TargetAction,
-			SerializedPayload,
-			AccessKey,
-			SecretKey,
-			SessionToken);
+		HttpRequest->SetURL(FString::Printf(TEXT("https://%s/"), *Host));
+		FrontendGameLiftCrypto::SignGameLiftJsonRequest(HttpRequest, Host, Region, TargetAction, SerializedPayload, AccessKey, SecretKey, SessionToken);
 	}
 
 	ActiveHttpRequest = HttpRequest;
 	TWeakObjectPtr<ThisClass> WeakThis(this);
 	HttpRequest->OnProcessRequestComplete().BindLambda(
-		[WeakThis, TargetAction, Callback = MoveTemp(Callback)](
-			FHttpRequestPtr Request,
-			FHttpResponsePtr Response,
-			bool bConnectedSuccessfully)
+		[WeakThis, TargetAction, Callback](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully)
 		{
-			if (ThisClass* Self = WeakThis.Get())
+			ThisClass* Self = WeakThis.Get();
+			if (Self && Self->ActiveHttpRequest == Request)
 			{
-				if (Self->ActiveHttpRequest == Request)
-				{
-					Self->ActiveHttpRequest.Reset();
-				}
+				Self->ActiveHttpRequest.Reset();
 			}
 
 			if (!bConnectedSuccessfully || !Response.IsValid())
 			{
-				Callback(
-					false,
-					nullptr,
-					FText::Format(LOCTEXT("NetworkErrorFmt", "Could not reach GameLift endpoint for {0}."), FText::FromString(TargetAction)));
+				if (Self)
+				{
+					Self->LogDebug(FString::Printf(TEXT("[gamelift] %s: no response (network error)"), *TargetAction));
+				}
+				Callback(false, nullptr, FText::Format(LOCTEXT("NetworkErrorFmt", "Could not reach GameLift endpoint for {0}."), FText::FromString(TargetAction)));
 				return;
 			}
 
@@ -1163,21 +1088,11 @@ void UFrontendSessionBackend_GameLift::SendGameLiftRequest(
 					ErrorMessage = ResponseBody.Left(240);
 				}
 
-				Debug::Print(FString::Printf(
-					TEXT("[gamelift] %s failed (HTTP %d %s): %s"),
-					*TargetAction,
-					StatusCode,
-					*ErrorType,
-					*ErrorMessage),
-					FColor::Red);
-
-				Callback(
-					false,
-					ParsedJson,
-					FText::Format(
-						LOCTEXT("GameLiftApiErrorFmt", "GameLift error ({0}): {1}"),
-						FText::AsNumber(StatusCode),
-						FText::FromString(ErrorMessage)));
+				if (Self)
+				{
+					Self->LogDebug(FString::Printf(TEXT("[gamelift] %s failed: HTTP %d %s %s"), *TargetAction, StatusCode, *ErrorType, *ErrorMessage));
+				}
+				Callback(false, ParsedJson, FText::Format(LOCTEXT("GameLiftApiErrorFmt", "GameLift error ({0}): {1}"), FText::AsNumber(StatusCode), FText::FromString(ErrorMessage)));
 				return;
 			}
 
@@ -1209,7 +1124,7 @@ void UFrontendSessionBackend_GameLift::CancelPendingClientRequests()
 
 FString UFrontendSessionBackend_GameLift::BuildLocalPlayerId() const
 {
-	if (const UWorld* World = GetWorld())
+	if (const UWorld* World = GetGameWorld())
 	{
 		if (const APlayerController* PC = World->GetFirstPlayerController())
 		{
@@ -1224,8 +1139,19 @@ FString UFrontendSessionBackend_GameLift::BuildLocalPlayerId() const
 		}
 	}
 	const FString OsUser = FPlatformProcess::UserName(false);
-	return OsUser.IsEmpty() ? TEXT("Player") : OsUser;
+	return OsUser.IsEmpty() ? FString(TEXT("Player")) : OsUser;
 }
+
+UWorld* UFrontendSessionBackend_GameLift::GetGameWorld() const
+{
+	const UFrontendMultiplayerSubsystem* Subsystem = GetOwningSubsystem();
+	const UGameInstance* GameInstance = Subsystem ? Subsystem->GetGameInstance() : nullptr;
+	return GameInstance ? GameInstance->GetWorld() : nullptr;
+}
+
+//~ End Client HTTP helpers
+
+//~ Begin Server WebSocket helpers (GameLift Server SDK 5.x wire protocol)
 
 void UFrontendSessionBackend_GameLift::StartServerWebSocketIfConfigured(UWorld* LoadedWorld)
 {
@@ -1248,7 +1174,7 @@ void UFrontendSessionBackend_GameLift::StartServerWebSocketIfConfigured(UWorld* 
 	const FString WebSocketUrl = Settings->ResolveServerWebSocketUrl();
 	if (WebSocketUrl.IsEmpty())
 	{
-		Debug::Print(TEXT("[gamelift] Dedicated server started without GAMELIFT_SDK_WEBSOCKET_URL; running in standalone listen mode."), FColor::Yellow);
+		LogDebug(TEXT("[gamelift] dedicated server has no GAMELIFT_SDK_WEBSOCKET_URL; running without GameLift"));
 		return;
 	}
 
@@ -1259,7 +1185,7 @@ void UFrontendSessionBackend_GameLift::StartServerWebSocketIfConfigured(UWorld* 
 
 	if (ServerFleetId.IsEmpty() || ServerHostId.IsEmpty())
 	{
-		Debug::Print(TEXT("[gamelift] Server WebSocket URL is set, but FleetId or HostId is missing. Set GAMELIFT_SDK_FLEET_ID and GAMELIFT_SDK_HOST_ID."), FColor::Red);
+		LogDebug(TEXT("[gamelift] WebSocket URL is set but GAMELIFT_SDK_FLEET_ID or GAMELIFT_SDK_HOST_ID is missing"));
 		return;
 	}
 
@@ -1293,13 +1219,8 @@ void UFrontendSessionBackend_GameLift::ConnectServerWebSocket(const FString& Web
 		FullUrl += FString::Printf(TEXT("&Authorization=%s"), *FGenericPlatformHttp::UrlEncode(AuthToken));
 	}
 
-	Debug::Print(FString::Printf(
-		TEXT("[gamelift] Connecting dedicated server to GameLift WebSocket (FleetId=%s, ComputeId=%s, ProcessId=%s, Port=%d)..."),
-		*ServerFleetId,
-		*ServerHostId,
-		*ServerProcessId,
-		ServerListeningPort),
-		FColor::Cyan);
+	LogDebug(FString::Printf(TEXT("[gamelift] connecting server WebSocket (fleet=%s compute=%s process=%s port=%d)"),
+		*ServerFleetId, *ServerHostId, *ServerProcessId, ServerListeningPort));
 
 	ServerWebSocket = FWebSocketsModule::Get().CreateWebSocket(FullUrl);
 	ServerWebSocket->OnConnected().AddUObject(this, &ThisClass::HandleWebSocketConnected);
@@ -1379,38 +1300,27 @@ void UFrontendSessionBackend_GameLift::HandleWebSocketConnected()
 
 	SendServerWebSocketMessage(ActivateMsg);
 
-	Debug::Print(FString::Printf(
-		TEXT("[gamelift] Server WebSocket connected -> sent ActivateServerProcess (Port=%d)"),
-		ServerListeningPort),
-		FColor::Green);
+	LogDebug(FString::Printf(TEXT("[gamelift] server WebSocket connected -> ActivateServerProcess (port %d)"), ServerListeningPort));
 
 	if (ServerHeartbeatTickerHandle.IsValid())
 	{
 		FTSTicker::GetCoreTicker().RemoveTicker(ServerHeartbeatTickerHandle);
 	}
 	ServerHeartbeatTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
-		FTickerDelegate::CreateUObject(this, &ThisClass::HandleServerHeartbeatTick),
-		55.0f);
+		FTickerDelegate::CreateUObject(this, &ThisClass::HandleServerHeartbeatTick), 55.0f);
 }
 
 void UFrontendSessionBackend_GameLift::HandleWebSocketConnectionError(const FString& Error)
 {
 	bServerProcessReady = false;
-	Debug::Print(FString::Printf(
-		TEXT("[gamelift] Server WebSocket connection error: %s"),
-		*Error),
-		FColor::Red);
+	LogDebug(FString::Printf(TEXT("[gamelift] server WebSocket connection error: %s"), *Error));
 }
 
 void UFrontendSessionBackend_GameLift::HandleWebSocketClosed(int32 StatusCode, const FString& Reason, bool bWasClean)
 {
 	bServerProcessReady = false;
-	Debug::Print(FString::Printf(
-		TEXT("[gamelift] Server WebSocket closed (Code=%d, Clean=%s): %s"),
-		StatusCode,
-		bWasClean ? TEXT("true") : TEXT("false"),
-		*Reason),
-		FColor::Yellow);
+	LogDebug(FString::Printf(TEXT("[gamelift] server WebSocket closed (code %d, clean=%s): %s"),
+		StatusCode, bWasClean ? TEXT("true") : TEXT("false"), *Reason));
 }
 
 void UFrontendSessionBackend_GameLift::HandleWebSocketMessage(const FString& MessageString)
@@ -1442,15 +1352,11 @@ void UFrontendSessionBackend_GameLift::HandleWebSocketMessage(const FString& Mes
 
 		ServerGameSessionId = GameSessionId;
 		ActiveGameSessionId = GameSessionId;
-		ActiveSessionDisplayName = GameSessionName.IsEmpty() ? TEXT("GameLift Match") : GameSessionName;
+		ActiveSessionDisplayName = GameSessionName.IsEmpty() ? FString(TEXT("GameLift Match")) : GameSessionName;
 		ActiveSessionMaxPlayers = FMath::Max(1, MaximumPlayers);
 
-		Debug::Print(FString::Printf(
-			TEXT("[gamelift] Received CreateGameSession on server (GameSessionId='%s', Name='%s', MaxPlayers=%d) -> sending ActivateGameSession"),
-			*ServerGameSessionId,
-			*ActiveSessionDisplayName,
-			ActiveSessionMaxPlayers),
-			FColor::Green);
+		LogDebug(FString::Printf(TEXT("[gamelift] CreateGameSession received (%s '%s' %d players) -> ActivateGameSession"),
+			*ServerGameSessionId, *ActiveSessionDisplayName, ActiveSessionMaxPlayers));
 
 		TSharedRef<FJsonObject> ActivateSessionMsg = MakeShared<FJsonObject>();
 		ActivateSessionMsg->SetStringField(TEXT("Action"), TEXT("ActivateGameSession"));
@@ -1469,13 +1375,13 @@ void UFrontendSessionBackend_GameLift::HandleWebSocketMessage(const FString& Mes
 
 		if (!NewEndpoint.IsEmpty())
 		{
-			Debug::Print(TEXT("[gamelift] Received RefreshConnection from GameLift -> reconnecting server WebSocket."), FColor::Cyan);
+			LogDebug(TEXT("[gamelift] RefreshConnection received -> reconnecting"));
 			ConnectServerWebSocket(NewEndpoint, NewAuthToken);
 		}
 	}
 	else if (Action.Equals(TEXT("TerminateProcess"), ESearchCase::IgnoreCase))
 	{
-		Debug::Print(TEXT("[gamelift] Received TerminateProcess from GameLift -> sending TerminateServerProcess and exiting."), FColor::Yellow);
+		LogDebug(TEXT("[gamelift] TerminateProcess received -> TerminateServerProcess and exit"));
 
 		TSharedRef<FJsonObject> TerminateMsg = MakeShared<FJsonObject>();
 		TerminateMsg->SetStringField(TEXT("Action"), TEXT("TerminateServerProcess"));
@@ -1486,5 +1392,7 @@ void UFrontendSessionBackend_GameLift::HandleWebSocketMessage(const FString& Mes
 		FPlatformMisc::RequestExit(false);
 	}
 }
+
+//~ End Server WebSocket helpers
 
 #undef LOCTEXT_NAMESPACE
