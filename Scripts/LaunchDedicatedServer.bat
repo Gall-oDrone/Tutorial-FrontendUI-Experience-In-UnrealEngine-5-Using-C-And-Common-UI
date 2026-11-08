@@ -65,7 +65,7 @@ if "%GAMELIFT_SDK_HOST_ID%"=="" echo WARNING: GAMELIFT_SDK_HOST_ID is not set.
 REM First invocation: hand off to a dedicated window that runs the restart loop.
 if defined LOOP goto :resolve_exe
 if "%NO_RESTART%"=="1" goto :resolve_exe
-start "FrontendUI dedicated server (GAMELIFT, %BUILD%, %PORT%)" cmd /c ""%~f0" %PORT% GAMELIFT %BUILD% LOOP"
+start "FrontendUI dedicated server (GAMELIFT, %BUILD%, %PORT%)" cmd /k ""%~f0" %PORT% GAMELIFT %BUILD% LOOP"
 goto :eof
 
 :resolve_exe
@@ -84,9 +84,10 @@ if not exist "%SERVER_EXE%" (
 )
 
 REM ---- single run (DEDICATED, or GAMELIFT with NO_RESTART=1) ------------------------
+REM Note: inside ( ) blocks, parentheses in echo text must be escaped as ^( ^) or they end the block.
 if not defined LOOP (
 	if /i "%MODE%"=="GAMELIFT" call :gamelift_token || exit /b 1
-	echo Starting dedicated server (%MODE%, %BUILD%) on port %PORT%.
+	echo Starting dedicated server ^(%MODE%, %BUILD%^) on port %PORT%.
 	start "FrontendUI dedicated server (%MODE%, %BUILD%, %PORT%)" "%SERVER_EXE%" %SERVER_ARGS%
 	goto :eof
 )
