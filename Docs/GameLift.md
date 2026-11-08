@@ -162,52 +162,120 @@ The replacement process takes a while to come back (30–60 s for the editor bin
 
 ---
 
-## 4. Stage 2 — Building the Linux Dedicated Server & Docker Image
+## 4. Stage 2 — Building the Linux Dedicated Server & Docker Image (verified 2026-11-08)
 
-Building `FrontendUIServer` for Linux requires the Unreal Engine 5.6 source build stored on the 500 GB AWS EBS snapshot (`snap-0777feef308067690` in `us-east-1`, managed by the companion repository `UnrealEngine5DedicatedServersWithAWSAndGameLift`).
+Launcher engines cannot build Server targets, so the Linux server is built on a headless
+EC2 box whose data volume is restored from the 500 GB snapshot of the **UE 5.6.1 source
+build** (`snap-0777feef308067690`, `us-east-1`). Everything is driven from your machine over
+SSM; no RDP, no DCV, no GPU. The companion repository
+`UnrealEngine5DedicatedServersWithAWSAndGameLift` holds the Terraform and the scripts.
 
-### Checking the EBS Snapshot Restore Status
-
-```bash
-cd ../UnrealEngine5DedicatedServersWithAWSAndGameLift/infrastructure/scripts/snapshot
-./manage_snapshot.sh status
-```
-
-Ensure `Storage tier` is `standard` or `Last tier op` shows `temporary-restore-completed 100%` before running `terraform apply` on the build workstation.
-
-### Cooking and Staging `LinuxServer` on the EC2 Build Box
-
-```bat
-cd /d D:\UE_5.6
-GenerateProjectFiles.bat -project="D:\Projects\FrontendUI\FrontendUI.uproject" -game -engine
-Engine\Build\BatchFiles\RunUAT.bat BuildCookRun ^
-  -project="D:\Projects\FrontendUI\FrontendUI.uproject" ^
-  -platform=Linux -server -serverconfig=Development -noclient ^
-  -build -cook -allmaps -stage -pak -archive ^
-  -archivedirectory="D:\Projects\FrontendUI\Saved\StagedBuilds" ^
-  -nop4 -utf8output
-```
-
-This produces `Saved/StagedBuilds/LinuxServer/FrontendUIServer.sh` and `FrontendUI/Binaries/Linux/FrontendUIServer`.
-
-### Building and Running the Docker Container
-
-The root `Dockerfile`, `docker-compose.yml`, and `.dockerignore` package `Saved/StagedBuilds/LinuxServer` into an `ubuntu:22.04` image running as non-root user `ue`:
+### One build session
 
 ```bash
-# Run locally as a FixedAddress dedicated server on UDP 7777:
-docker compose up --build
+# 0. The snapshot must be in the standard tier (restore takes 24-72 h from archive):
+infrastructure/scripts/snapshot/manage_snapshot.sh status
 
-# Or run the container connected to a GameLift Anywhere fleet:
-SERVER_SESSION_BACKEND=/Script/FrontendMultiplayer.FrontendSessionBackend_GameLift \
-GAMELIFT_SDK_WEBSOCKET_URL=wss://us-east-1.api.amazongamelift.com \
-GAMELIFT_SDK_FLEET_ID=fleet-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx \
-GAMELIFT_SDK_HOST_ID=DevPC \
-GAMELIFT_SDK_AUTH_TOKEN=$(aws gamelift get-compute-auth-token \
-  --fleet-id fleet-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx \
-  --compute-name DevPC --query AuthToken --output text) \
-docker compose up
+# 1. Build box: c6i.4xlarge (16 vCPU / 32 GiB, ~$0.68/h) + 500 GB gp3 from the snapshot.
+cd infrastructure/terraform/environments/dev && terraform apply        # ~1 min
+
+# 2. Build + cook + stage, zip, upload. Everything runs on the box under SSM Run Command.
+cd ../../../scripts/build
+./run-build.sh --ref master --also-windows                             # see timings below
+
+# 3. Stop paying. The snapshot keeps the engine; the box and volume are disposable.
+cd ../../terraform/environments/dev && terraform destroy
 ```
+
+`build-linux-server.ps1` (what runs on the box): brings the volume online, finds
+`D:\UE_5_6` (checks `Engine\Build\Build.version` is 5.6), verifies the Linux cross toolchain
+(`v25_clang-18.1.0-rockylinux8`, installs it from Epic's CDN if missing), clones/checks out the
+ref into `D:\UE_5_6_Projects\FrontendUI`, then per platform:
+
+```
+RunUAT BuildCookRun -project=<uproject> -platform=Linux -server -noclient -serverconfig=Development
+       -build -cook -stage -pak -nop4 -utf8output -unattended -nullrhi
+```
+
+and zips `Saved\StagedBuilds\LinuxServer` (and `WindowsServer`) to
+`s3://ue5-artifacts-<account>-us-east-1/builds/FrontendUI-<Platform>Server-<sha>-<stamp>.zip`,
+logs to `builds/logs/`.
+
+| Phase (first run on the volume) | Time |
+|---|---|
+| Editor + engine modules for the project (912 actions, needed to cook) | ~30 min |
+| Linux server target, cook (716 packages), stage, pak | ~5 min after the above is cached |
+| Win64 server target (1000 actions, Server config not previously built) + cook/stage | ~26 min |
+| Whole session incl. apply/destroy | 2 h 25 min, ≈ $1.90 |
+
+Subsequent sessions reuse the compiled engine modules if the volume is kept; from a fresh
+snapshot restore they recompile.
+
+Three things the first run taught (all handled in the scripts now):
+
+- **clang is stricter than MSVC.** `-Wrange-loop-construct` is an error in the Linux build; a
+  range-for over `GetAllAvailableKeyProfiles()` with the wrong pair type compiled on Windows
+  and failed here. Fixed in `OptionsDataRegistry.cpp` (`ad5a6a5`). Expect this class of error
+  the first time any project is built for Linux.
+- **Do not `-archive` into `Saved\StagedBuilds`.** The archive step cleans its target first;
+  pointed at the stage directory it deletes the build it is about to copy. `-stage` alone
+  leaves the result in `Saved\StagedBuilds\<Platform>Server`.
+- **UAT leaves MSBuild node-reuse workers behind.** `Start-Process -Wait` waits for them too
+  (15 min idle timeout). Wait on the UAT process object and set `MSBUILDDISABLENODEREUSE=1`.
+
+### The Docker image
+
+`Dockerfile` copies `Saved/StagedBuilds/LinuxServer` into `ubuntu:22.04` (+ `ca-certificates`,
+`libatomic1`) as non-root user `ue`, exposes `7777/udp`, and runs `FrontendUIServer.sh` with
+`-log -stdout -FullStdOutLogOutput -unattended -NullRHI -port=7777`. `.dockerignore` keeps
+`*.debug`, `*.sym` and the Vulkan validation layers out of the image (≈2 GB of the 2.6 GB
+stage; symbols stay in the S3 zip for crash symbolication).
+
+```bash
+aws s3 cp s3://ue5-artifacts-<account>-us-east-1/builds/FrontendUI-LinuxServer-<sha>-<stamp>.zip .
+unzip -q FrontendUI-LinuxServer-*.zip -d Saved/StagedBuilds/        # creates LinuxServer/
+docker build -t frontendui-server:<sha> .
+```
+
+### Running it on the Anywhere fleet (no client needed to verify)
+
+Register the Docker host as a second compute so the PC's `DevPC` registration is untouched,
+then run the container with the GameLift backend:
+
+```bash
+FLEET=fleet-a2a921a0-3c0f-4442-b469-5dc9c43d3792
+aws gamelift register-compute --fleet-id $FLEET --compute-name LinuxDockerBox \
+  --location custom-frontendui-dev --ip-address 127.0.0.1 --region us-east-1
+
+docker run -d --name frontendui-server -p 7777:7777/udp \
+  -e GAMELIFT_SDK_WEBSOCKET_URL=wss://us-east-1.api.amazongamelift.com \
+  -e GAMELIFT_SDK_FLEET_ID=$FLEET -e GAMELIFT_SDK_HOST_ID=LinuxDockerBox \
+  -e GAMELIFT_SDK_AUTH_TOKEN=$(aws gamelift get-compute-auth-token --fleet-id $FLEET \
+       --compute-name LinuxDockerBox --region us-east-1 --query AuthToken --output text) \
+  frontendui-server:<sha> /Game/Maps/L_MatchTest -log -stdout -FullStdOutLogOutput -unattended -NullRHI -port=7777 \
+  "-ini:Game:[/Script/FrontendMultiplayer.FrontendMultiplayerSettings]:SessionBackendClass=/Script/FrontendMultiplayer.FrontendSessionBackend_GameLift"
+
+docker logs frontendui-server | grep "\[gamelift\]"
+#   connecting server WebSocket wss://us-east-1.api.amazongamelift.com/ (... compute=LinuxDockerBox ...)
+#   server WebSocket connected -> ActivateServerProcess (port 7777)
+#   ActivateServerProcess acknowledged; process is ACTIVE on the fleet      <- 1.2 s after launch
+
+# Place a session on it straight from the CLI and watch GameLift flip it to ACTIVE
+# (that only happens when the server answers ActivateGameSession):
+aws gamelift create-game-session --fleet-id $FLEET --location custom-frontendui-dev \
+  --maximum-player-session-count 4 --name Probe --region us-east-1 --query GameSession.GameSessionId --output text
+aws gamelift describe-game-sessions --game-session-id <arn> --region us-east-1 --query 'GameSessions[0].Status'
+#   "ACTIVE"   (within ~3 s; container log shows "CreateGameSession received ... -> ActivateGameSession")
+```
+
+`docker compose up` does the same with the variables from the environment
+(`SERVER_SESSION_BACKEND=/Script/FrontendMultiplayer.FrontendSessionBackend_GameLift`); without
+`GAMELIFT_SDK_*` it runs as a plain FixedAddress server for `LaunchInstances.bat N DEDICATED`.
+
+The packaged Linux server initialises the engine in **0.7 s** (the editor binary used in
+Stage 1 needs ~60 s), which is also why the Windows server zip is worth having on the PC:
+`LaunchDedicatedServer.bat 7777 GAMELIFT PACKAGED` with `Saved\StagedBuilds\WindowsServer`
+unzipped makes the recycle-and-rehost loop near instant.
 
 ---
 

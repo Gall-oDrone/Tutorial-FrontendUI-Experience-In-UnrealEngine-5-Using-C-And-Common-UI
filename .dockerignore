@@ -4,3 +4,9 @@
 !Saved/StagedBuilds/
 !Saved/StagedBuilds/LinuxServer/
 !Saved/StagedBuilds/LinuxServer/**
+
+# Not needed at runtime (a -NullRHI server never loads Vulkan, and symbols only matter for
+# crash symbolication, which uses the zip in S3). Together they are ~2 GB of the 2.6 GB build.
+Saved/StagedBuilds/LinuxServer/**/*.debug
+Saved/StagedBuilds/LinuxServer/**/*.sym
+Saved/StagedBuilds/LinuxServer/Engine/Binaries/ThirdParty/Vulkan/**

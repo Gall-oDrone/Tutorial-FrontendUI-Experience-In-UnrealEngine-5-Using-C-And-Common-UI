@@ -19,6 +19,8 @@ services:
     command:
       - "${SERVER_MAP:-/Game/Maps/L_MatchTest}"
       - "-log"
+      - "-stdout"
+      - "-FullStdOutLogOutput"
       - "-unattended"
       - "-NullRHI"
       - "-port=${SERVER_PORT:-7777}"

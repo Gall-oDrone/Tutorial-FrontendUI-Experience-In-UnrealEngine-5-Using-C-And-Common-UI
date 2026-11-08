@@ -453,6 +453,20 @@ void UFrontendSessionBackend_GameLift::Initialize(UFrontendMultiplayerSubsystem*
 void UFrontendSessionBackend_GameLift::Shutdown()
 {
 	CancelPendingClientRequests();
+
+	// Engine is exiting (docker stop / SIGTERM, fleet scale-in, window closed). Tell GameLift
+	// now so the game session ends immediately instead of after heartbeat loss. Best effort:
+	// the socket is torn down right after and the message may not always get out.
+	if (ServerWebSocket.IsValid() && ServerWebSocket->IsConnected() && bServerProcessReady)
+	{
+		TSharedRef<FJsonObject> TerminateMsg = MakeShared<FJsonObject>();
+		TerminateMsg->SetStringField(TEXT("Action"), TEXT("TerminateServerProcess"));
+		TerminateMsg->SetStringField(TEXT("RequestId"), FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower));
+		SendServerWebSocketMessage(TerminateMsg);
+		LogDebug(TEXT("[gamelift] shutting down -> TerminateServerProcess"));
+		FPlatformProcess::Sleep(0.25f);
+	}
+
 	CloseServerWebSocket();
 	RetiredServerWebSocket.Reset();
 	FoundSessions.Empty();
