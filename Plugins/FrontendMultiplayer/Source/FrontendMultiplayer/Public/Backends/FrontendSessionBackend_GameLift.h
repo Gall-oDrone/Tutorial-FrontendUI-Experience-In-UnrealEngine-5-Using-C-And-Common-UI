@@ -200,6 +200,8 @@ private:
 	void StartServerWebSocketIfConfigured(UWorld* LoadedWorld);
 	void ConnectServerWebSocket(const FString& WebSocketUrl, const FString& AuthToken);
 	void CloseServerWebSocket();
+	void ScheduleServerReconnect();
+	bool HandleServerReconnectTick(float DeltaTime);
 	void SendServerWebSocketMessage(const TSharedRef<FJsonObject>& MessageObject);
 	bool HandleServerHeartbeatTick(float DeltaTime);
 
@@ -231,7 +233,11 @@ private:
 
 	/** Server-side WebSocket state. */
 	TSharedPtr<IWebSocket> ServerWebSocket;
+	/** A failed/closed socket parked here until the next connect, so it is not destroyed inside its own delegate. */
+	TSharedPtr<IWebSocket> RetiredServerWebSocket;
 	FTSTicker::FDelegateHandle ServerHeartbeatTickerHandle;
+	FTSTicker::FDelegateHandle ServerReconnectTickerHandle;
+	int32 ServerReconnectAttempts = 0;
 	FString ServerProcessId;
 	FString ServerHostId;
 	FString ServerFleetId;

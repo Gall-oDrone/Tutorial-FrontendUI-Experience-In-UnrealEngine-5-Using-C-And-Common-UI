@@ -445,15 +445,16 @@ void UFrontendSessionBackend_GameLift::Initialize(UFrontendMultiplayerSubsystem*
 		*Settings->ResolveLocation(),
 		Proxy.IsEmpty() ? TEXT("direct (SigV4)") : *Proxy));
 
-	// A dedicated server may already have its map up when the subsystem creates the
-	// backend; OnWorldLoaded covers the normal case where the map arrives later.
-	StartServerWebSocketIfConfigured(GetGameWorld());
+	// On a dedicated server the WebSocket is opened from OnWorldLoaded, once the match map
+	// (and its listening port) is up. Connecting here as well would open a second socket
+	// under a different process id and tear the first one down.
 }
 
 void UFrontendSessionBackend_GameLift::Shutdown()
 {
 	CancelPendingClientRequests();
 	CloseServerWebSocket();
+	RetiredServerWebSocket.Reset();
 	FoundSessions.Empty();
 	ActiveSessionDisplayName.Reset();
 	ActiveSessionMaxPlayers = 0;
@@ -1165,7 +1166,9 @@ void UFrontendSessionBackend_GameLift::StartServerWebSocketIfConfigured(UWorld* 
 		ServerListeningPort = LoadedWorld->URL.Port;
 	}
 
-	if (ServerWebSocket.IsValid() && ServerWebSocket->IsConnected())
+	// One socket per process: valid means connecting or connected. A reconnect after a
+	// failure is scheduled by the error/close handlers, not by another world load.
+	if (ServerWebSocket.IsValid() || ServerReconnectTickerHandle.IsValid())
 	{
 		return;
 	}
@@ -1180,7 +1183,11 @@ void UFrontendSessionBackend_GameLift::StartServerWebSocketIfConfigured(UWorld* 
 
 	ServerFleetId = Settings->ResolveFleetId();
 	ServerHostId = Settings->ResolveServerHostId();
-	ServerProcessId = Settings->ResolveServerProcessId();
+	if (ServerProcessId.IsEmpty())
+	{
+		// GameLift identifies this process by pID for its whole life; never regenerate it.
+		ServerProcessId = Settings->ResolveServerProcessId();
+	}
 	const FString AuthToken = Settings->ResolveServerAuthToken();
 
 	if (ServerFleetId.IsEmpty() || ServerHostId.IsEmpty())
@@ -1189,26 +1196,46 @@ void UFrontendSessionBackend_GameLift::StartServerWebSocketIfConfigured(UWorld* 
 		return;
 	}
 
+	ServerReconnectAttempts = 0;
 	ConnectServerWebSocket(WebSocketUrl, AuthToken);
 }
 
 void UFrontendSessionBackend_GameLift::ConnectServerWebSocket(const FString& WebSocketUrl, const FString& AuthToken)
 {
+	// Release the socket parked by the previous close (we are never inside *that* one's
+	// delegate here), then park the current one if any.
+	RetiredServerWebSocket.Reset();
 	CloseServerWebSocket();
 
 	FModuleManager::Get().LoadModuleChecked<FWebSocketsModule>(TEXT("WebSockets"));
 
-	FString BaseUrl = WebSocketUrl;
-	while (BaseUrl.EndsWith(TEXT("/")))
+	// Normalise to scheme://host[:port]/path. The engine's WebSocket client takes everything
+	// up to the first '/' after the scheme as the host name, so a bare
+	// "wss://host?query" would try to resolve "host?query" and fail at once.
+	FString BaseUrl = WebSocketUrl.TrimStartAndEnd();
+	FString Query;
 	{
-		BaseUrl.LeftChopInline(1);
+		int32 QueryIdx = INDEX_NONE;
+		if (BaseUrl.FindChar(TEXT('?'), QueryIdx))
+		{
+			Query = BaseUrl.Mid(QueryIdx + 1);
+			BaseUrl.LeftInline(QueryIdx);
+		}
+	}
+	{
+		const int32 SchemeEnd = BaseUrl.Find(TEXT("://"));
+		const int32 HostStart = SchemeEnd == INDEX_NONE ? 0 : SchemeEnd + 3;
+		if (BaseUrl.Find(TEXT("/"), ESearchCase::CaseSensitive, ESearchDir::FromStart, HostStart) == INDEX_NONE)
+		{
+			BaseUrl += TEXT("/");
+		}
 	}
 
-	const FString Separator = BaseUrl.Contains(TEXT("?")) ? TEXT("&") : TEXT("?");
 	FString FullUrl = FString::Printf(
-		TEXT("%s%spID=%s&sdkVersion=5.1.2&sdkLanguage=Cpp&ComputeId=%s&FleetId=%s&IdempotencyToken=%s"),
+		TEXT("%s?%s%spID=%s&sdkVersion=5.1.2&sdkLanguage=Cpp&ComputeId=%s&FleetId=%s&IdempotencyToken=%s"),
 		*BaseUrl,
-		*Separator,
+		*Query,
+		Query.IsEmpty() ? TEXT("") : TEXT("&"),
 		*FGenericPlatformHttp::UrlEncode(ServerProcessId),
 		*FGenericPlatformHttp::UrlEncode(ServerHostId),
 		*FGenericPlatformHttp::UrlEncode(ServerFleetId),
@@ -1219,8 +1246,9 @@ void UFrontendSessionBackend_GameLift::ConnectServerWebSocket(const FString& Web
 		FullUrl += FString::Printf(TEXT("&Authorization=%s"), *FGenericPlatformHttp::UrlEncode(AuthToken));
 	}
 
-	LogDebug(FString::Printf(TEXT("[gamelift] connecting server WebSocket (fleet=%s compute=%s process=%s port=%d)"),
-		*ServerFleetId, *ServerHostId, *ServerProcessId, ServerListeningPort));
+	LogDebug(FString::Printf(TEXT("[gamelift] connecting server WebSocket %s (fleet=%s compute=%s process=%s port=%d%s)"),
+		*BaseUrl, *ServerFleetId, *ServerHostId, *ServerProcessId, ServerListeningPort,
+		AuthToken.IsEmpty() ? TEXT(", NO auth token") : TEXT("")));
 
 	ServerWebSocket = FWebSocketsModule::Get().CreateWebSocket(FullUrl);
 	ServerWebSocket->OnConnected().AddUObject(this, &ThisClass::HandleWebSocketConnected);
@@ -1237,6 +1265,11 @@ void UFrontendSessionBackend_GameLift::CloseServerWebSocket()
 		FTSTicker::GetCoreTicker().RemoveTicker(ServerHeartbeatTickerHandle);
 		ServerHeartbeatTickerHandle.Reset();
 	}
+	if (ServerReconnectTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(ServerReconnectTickerHandle);
+		ServerReconnectTickerHandle.Reset();
+	}
 
 	bServerProcessReady = false;
 
@@ -1250,8 +1283,39 @@ void UFrontendSessionBackend_GameLift::CloseServerWebSocket()
 		{
 			ServerWebSocket->Close();
 		}
+		// This may run from inside the socket's own delegate (RefreshConnection,
+		// TerminateProcess, error/close handlers): park it instead of destroying it here.
+		RetiredServerWebSocket = MoveTemp(ServerWebSocket);
 		ServerWebSocket.Reset();
 	}
+}
+
+void UFrontendSessionBackend_GameLift::ScheduleServerReconnect()
+{
+	constexpr int32 MaxAttempts = 30;
+	if (ServerReconnectTickerHandle.IsValid())
+	{
+		return;
+	}
+	if (ServerReconnectAttempts >= MaxAttempts)
+	{
+		LogDebug(FString::Printf(TEXT("[gamelift] giving up on the server WebSocket after %d attempts; restart the server with a fresh GAMELIFT_SDK_AUTH_TOKEN"), ServerReconnectAttempts));
+		return;
+	}
+
+	++ServerReconnectAttempts;
+	const float DelaySeconds = FMath::Min(5.f * ServerReconnectAttempts, 60.f);
+	LogDebug(FString::Printf(TEXT("[gamelift] retrying server WebSocket in %.0fs (attempt %d)"), DelaySeconds, ServerReconnectAttempts));
+	ServerReconnectTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateUObject(this, &ThisClass::HandleServerReconnectTick), DelaySeconds);
+}
+
+bool UFrontendSessionBackend_GameLift::HandleServerReconnectTick(float /*DeltaTime*/)
+{
+	ServerReconnectTickerHandle.Reset();
+	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
+	ConnectServerWebSocket(Settings->ResolveServerWebSocketUrl(), Settings->ResolveServerAuthToken());
+	return false; // one-shot
 }
 
 void UFrontendSessionBackend_GameLift::SendServerWebSocketMessage(const TSharedRef<FJsonObject>& MessageObject)
@@ -1286,6 +1350,7 @@ bool UFrontendSessionBackend_GameLift::HandleServerHeartbeatTick(float /*DeltaTi
 void UFrontendSessionBackend_GameLift::HandleWebSocketConnected()
 {
 	bServerProcessReady = true;
+	ServerReconnectAttempts = 0;
 
 	TSharedRef<FJsonObject> ActivateMsg = MakeShared<FJsonObject>();
 	ActivateMsg->SetStringField(TEXT("Action"), TEXT("ActivateServerProcess"));
@@ -1312,15 +1377,19 @@ void UFrontendSessionBackend_GameLift::HandleWebSocketConnected()
 
 void UFrontendSessionBackend_GameLift::HandleWebSocketConnectionError(const FString& Error)
 {
-	bServerProcessReady = false;
 	LogDebug(FString::Printf(TEXT("[gamelift] server WebSocket connection error: %s"), *Error));
+	CloseServerWebSocket();
+	ScheduleServerReconnect();
 }
 
 void UFrontendSessionBackend_GameLift::HandleWebSocketClosed(int32 StatusCode, const FString& Reason, bool bWasClean)
 {
-	bServerProcessReady = false;
 	LogDebug(FString::Printf(TEXT("[gamelift] server WebSocket closed (code %d, clean=%s): %s"),
 		StatusCode, bWasClean ? TEXT("true") : TEXT("false"), *Reason));
+	// GameLift closes the socket itself only around RefreshConnection / TerminateProcess,
+	// which are handled in HandleWebSocketMessage; anything else is worth retrying.
+	CloseServerWebSocket();
+	ScheduleServerReconnect();
 }
 
 void UFrontendSessionBackend_GameLift::HandleWebSocketMessage(const FString& MessageString)
@@ -1390,6 +1459,23 @@ void UFrontendSessionBackend_GameLift::HandleWebSocketMessage(const FString& Mes
 
 		CloseServerWebSocket();
 		FPlatformMisc::RequestExit(false);
+	}
+	else
+	{
+		// Replies to our own requests (ActivateServerProcess, Heartbeat, ActivateGameSession...)
+		// come back with the same Action plus StatusCode / ErrorMessage. Surface failures.
+		int32 StatusCode = 200;
+		FString ErrorMessage;
+		JsonObj->TryGetNumberField(TEXT("StatusCode"), StatusCode);
+		JsonObj->TryGetStringField(TEXT("ErrorMessage"), ErrorMessage);
+		if (StatusCode != 200 || !ErrorMessage.IsEmpty())
+		{
+			LogDebug(FString::Printf(TEXT("[gamelift] %s rejected by GameLift (status %d): %s"), *Action, StatusCode, *ErrorMessage));
+		}
+		else if (Action.Equals(TEXT("ActivateServerProcess"), ESearchCase::IgnoreCase))
+		{
+			LogDebug(TEXT("[gamelift] ActivateServerProcess acknowledged; process is ACTIVE on the fleet"));
+		}
 	}
 }
 
