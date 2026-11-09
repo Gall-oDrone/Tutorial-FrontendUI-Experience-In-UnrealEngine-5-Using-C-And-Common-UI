@@ -17,6 +17,10 @@ if not defined GAMELIFT_SDK_FLEET_ID      set "GAMELIFT_SDK_FLEET_ID=fleet-xxxxx
 if not defined GAMELIFT_SDK_HOST_ID       set "GAMELIFT_SDK_HOST_ID=DevPC"
 if not defined GAMELIFT_LOCATION          set "GAMELIFT_LOCATION=custom-location-1"
 
+REM Optional: clients target an alias instead of the fleet id (the server still needs the fleet
+REM id above for GetComputeAuthToken). Swap fleets with `aws gamelift update-alias`; no client change.
+REM if not defined GAMELIFT_ALIAS_ID      set "GAMELIFT_ALIAS_ID=alias-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
 REM Optional: route the client's GameLift calls through the API Gateway + Lambda proxy
 REM (Docs/GameLift.md section 6) instead of signing them with your own AWS keys. This is
 REM what Shipping builds use; setting it here lets you exercise the same path in Development.

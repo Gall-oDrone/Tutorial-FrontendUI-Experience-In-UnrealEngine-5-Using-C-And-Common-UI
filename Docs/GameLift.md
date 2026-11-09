@@ -451,7 +451,42 @@ must work exactly as in Development, and a build without `ApiEndpointUrl` fails 
 
 ---
 
-## 7. Troubleshooting
+## 7. Operations — Alias, Cost Guardrails
+
+**Alias.** Clients and the proxy target an alias, not a fleet id, so a fleet swap
+(Anywhere ↔ container fleet, or a new container fleet after an image update) is one call with
+no client/proxy change:
+
+```bash
+aws gamelift create-alias --name FrontendUI-Dev --routing-strategy Type=SIMPLE,FleetId=<fleet-id>
+aws gamelift update-alias --alias-id alias-... --routing-strategy Type=SIMPLE,FleetId=<new-fleet-id>
+```
+
+Client: `GAMELIFT_ALIAS_ID=alias-...` (or `AliasId` in settings / `-GameLiftAliasId=`); the alias
+wins over `FleetId` for `CreateGameSession` / `DescribeGameSessions`. The dedicated server keeps
+using the fleet id (`GetComputeAuthToken` is per fleet/compute). Proxy:
+`terraform apply -var alias_id=alias-...` — it resolves the alias to the current fleet for the
+session-ownership check.
+
+**What actually costs money** (us-east-1, from Cost Explorer after the first full cycle):
+
+| Resource | Cost | When |
+|---|---|---|
+| UE 5.6 source snapshot, 500 GB | $25/mo standard tier, **$6.25/mo archive** | always; restore to standard costs ~$12.60 one-off and lasts the days you ask for |
+| Build-box AMI snapshot, 100 GB | $5/mo | always |
+| Build box `c6i.4xlarge` + 500 GB gp3 + **NAT Gateway** | ≈ $0.68/h + $0.05/h + **$0.045/h** | only while `environments/dev` exists — the NAT gateway is the one people forget |
+| Container fleet `c6i.large` | ≈ $0.09/h | only while the fleet exists |
+| Anywhere fleet, ECR (≤ 5 images), CGD, IAM, alias | $0 | — |
+| Proxy (HTTP API + Lambda) | ≈ $0 at tutorial volume | always |
+
+So the floor is **≈ $11/month** with the snapshot archived, **≈ $30/month** while it is restored.
+A verified build + container-fleet day adds ≈ $1.5. An AWS Budget (`FrontendUI-Monthly`,
+$40, e-mail at 50/80/100 % actual and 100 % forecast) is the safety net; the companion repo's
+`cleanup --verify` exits non-zero if anything billable is left after a session.
+
+---
+
+## 8. Troubleshooting
 
 | Symptom | Cause / Fix |
 |---|---|
