@@ -1,5 +1,8 @@
-# Ignore everything except the staged LinuxServer build so `docker build` has a minimal context.
+# Ignore everything except the staged LinuxServer build and the entrypoint, so `docker build`
+# has a minimal context.
 *
+!docker/
+!docker/entrypoint.sh
 !Saved/
 !Saved/StagedBuilds/
 !Saved/StagedBuilds/LinuxServer/

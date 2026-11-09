@@ -31,19 +31,20 @@ RUN useradd --create-home --shell /bin/bash --uid 1000 ue
 WORKDIR /home/ue/server
 
 COPY --chown=ue:ue ${SERVER_STAGE_DIR}/ /home/ue/server/
+COPY --chown=ue:ue docker/entrypoint.sh /home/ue/server/entrypoint.sh
 
-RUN chmod +x /home/ue/server/FrontendUIServer.sh \
+RUN chmod +x /home/ue/server/FrontendUIServer.sh /home/ue/server/entrypoint.sh \
     && find /home/ue/server/FrontendUI/Binaries/Linux -maxdepth 1 -type f -name "FrontendUIServer*" -exec chmod +x {} +
 
 USER ue
 
 EXPOSE 7777/udp
 
-# Run the engine binary directly (what FrontendUIServer.sh would exec) so it is PID 1 and
-# receives SIGTERM from `docker stop` / fleet scale-in: the engine then shuts down cleanly and
-# the GameLift backend sends TerminateServerProcess. Through the .sh wrapper, /bin/sh is PID 1,
-# does not forward the signal, and the server is SIGKILLed after the grace period instead.
-ENTRYPOINT ["/home/ue/server/FrontendUI/Binaries/Linux/FrontendUIServer", "FrontendUI"]
-# -stdout -FullStdOutLogOutput: mirror the engine log to stdout so `docker logs` and the
-# fleet's log collection see it (otherwise it only lands in FrontendUI/Saved/Logs inside the container).
-CMD ["/Game/Maps/L_MatchTest", "-log", "-stdout", "-FullStdOutLogOutput", "-unattended", "-NullRHI", "-port=7777"]
+# entrypoint.sh picks the session backend from the environment (GameLift when
+# GAMELIFT_SDK_WEBSOCKET_URL is set, FixedAddress otherwise; SERVER_SESSION_BACKEND overrides)
+# and execs the engine binary so it is PID 1 and receives SIGTERM from `docker stop` / fleet
+# scale-in -> clean engine shutdown -> TerminateServerProcess. Container fleets cannot
+# override the command, only the environment, which is why the choice lives in the image.
+# Any arguments given to the container are appended to the engine command line.
+ENTRYPOINT ["/home/ue/server/entrypoint.sh"]
+CMD []
