@@ -211,6 +211,14 @@ public:
 	virtual bool HandleServerSessionEmpty() override;
 	//~ End UFrontendSessionBackend Interface
 
+protected:
+	/**
+	 * Bearer token sent as `Authorization` with every request to ApiEndpointUrl, so the proxy
+	 * can authenticate the player (the proxy ignores it when it runs without auth). Empty by
+	 * default; UFrontendSessionBackend_GameLiftEOS returns the signed-in user's EOS token.
+	 */
+	virtual FString GetClientAuthToken() const { return FString(); }
+
 private:
 	//~ Begin Client HTTP helpers
 	using FGameLiftJsonCallback = TFunction<void(bool bSuccess, TSharedPtr<FJsonObject> ResponseObject, const FText& ErrorText)>;

@@ -444,6 +444,36 @@ exactly one of `GameSessionId` / `FleetId` / `AliasId` - a proxy that blindly pi
 enforces the fleet lock on session-addressed calls by checking the ARN segment
 `:gamesession/<fleet-id>/` instead (note the `:` - GameLift session ARNs are `...:us-east-1::gamesession/...`).
 
+### Player authentication (`auth_mode = eos`)
+
+Without auth, anyone who learns the URL can create sessions (throttled, fleet-pinned, but still).
+The proxy can require an Epic Online Services identity instead — no new accounts, the game
+already signs players in with EOS:
+
+- Client: `UFrontendSessionBackend_GameLiftEOS` (module `FrontendMultiplayerOSS`) = the GameLift
+  backend + EOS sign-in. Host / Find / Join first log local user 0 in (same credential chain as
+  the OSS backend: `-AUTH_*` from LaunchInstances.bat / Dev Auth Tool, `persistentauth`,
+  Project Settings), then every proxy call carries `Authorization: Bearer <EOS access token>`
+  (`IOnlineIdentity::GetAuthToken(0)`).
+- Proxy: `terraform apply -var auth_mode=eos -var eos_client_id=<your EOS Client ID>`. The
+  Lambda introspects the token with Epic (`POST https://api.epicgames.dev/epic/oauth/v2/tokenInfo`,
+  no client secret needed), requires `active` and `client_id == eos_client_id`, caches the
+  verdict until the token expires (≤ 10 min), and **replaces `PlayerId` / `CreatorId` with the
+  verified `account_id`** — the client cannot pick its own identity. Missing or bad tokens get
+  `401 UnauthorizedException`, which the game shows as "Sign in to Epic Online Services first".
+
+```bat
+REM Dev Auth Tool running with users User1 / User2 (Docs/EOSSetup.md), then:
+set GAMELIFT_ENDPOINT_URL=https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/
+set GAMELIFT_AUTH=EOS
+LaunchInstances.bat 2 GAMELIFT
+```
+
+`GAMELIFT_AUTH=EOS` switches the backend class to `FrontendSessionBackend_GameLiftEOS`, adds
+`DefaultPlatformService=EOS` and the per-window `-AUTH_LOGIN=... -AUTH_PASSWORD=UserN`. The
+client log shows `[gamelift-eos] Login(developer) ... Signed in as 'User1'` before the first
+`CreateGameSession`; the API Gateway access log shows 401s for unauthenticated probes.
+
 To ship: package a `Shipping` client (`BuildCookRun ... -clientconfig=Shipping`) with
 `ApiEndpointUrl` in `DefaultGame.ini` and no `AWS_*` variables on the machine — Host/Find/Join
 must work exactly as in Development, and a build without `ApiEndpointUrl` fails fast with
