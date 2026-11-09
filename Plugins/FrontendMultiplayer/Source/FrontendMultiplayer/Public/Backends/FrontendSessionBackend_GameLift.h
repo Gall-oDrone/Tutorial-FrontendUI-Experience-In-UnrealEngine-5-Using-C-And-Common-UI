@@ -114,7 +114,11 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Dedicated Server")
 	FString ServerProcessId;
 
-	/** Short-lived compute auth token from GetComputeAuthToken (GAMELIFT_SDK_AUTH_TOKEN or -authtoken=). */
+	/**
+	 * Short-lived compute auth token from GetComputeAuthToken (GAMELIFT_SDK_AUTH_TOKEN or -authtoken=).
+	 * Managed Container Fleets provide none: the server then signs the WebSocket URL with SigV4 using
+	 * the ECS task-role credentials and uses the ECS task id as its host id (Server SDK >= 5.2 behaviour).
+	 */
 	UPROPERTY(Config, EditAnywhere, Category = "Dedicated Server")
 	FString ServerAuthToken;
 
@@ -147,6 +151,9 @@ public:
 	FString ResolveServerHostId() const;
 	FString ResolveServerProcessId() const;
 	FString ResolveServerAuthToken() const;
+
+	/** True on a Managed Container Fleet (GAMELIFT_COMPUTE_TYPE=CONTAINER with ECS task credentials available). */
+	static bool IsContainerCompute();
 };
 
 /**
@@ -222,7 +229,10 @@ private:
 
 	//~ Begin Server WebSocket helpers (GameLift Server SDK 5.x wire protocol)
 	void StartServerWebSocketIfConfigured(UWorld* LoadedWorld);
-	void ConnectServerWebSocket(const FString& WebSocketUrl, const FString& AuthToken);
+	/** Container fleets: fetch ECS task credentials + task id, then connect with a SigV4-signed URL. */
+	void BeginServerConnectWithContainerSigV4(const FString& WebSocketUrl);
+	/** AuthToken wins; otherwise SigV4Query (already URL-encoded, without leading '&') is appended. */
+	void ConnectServerWebSocket(const FString& WebSocketUrl, const FString& AuthToken, const FString& SigV4Query = FString());
 	void CloseServerWebSocket();
 	void ScheduleServerReconnect();
 	bool HandleServerReconnectTick(float DeltaTime);
@@ -279,4 +289,8 @@ private:
 	FString ServerGameSessionId;
 	int32 ServerListeningPort = 7777;
 	bool bServerProcessReady = false;
+	/** Container fleet mode: no auth token, (re)connects go through BeginServerConnectWithContainerSigV4. */
+	bool bServerUsesSigV4 = false;
+	/** In-flight ECS credentials / metadata request during the container bootstrap. */
+	TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> ServerBootstrapHttpRequest;
 };

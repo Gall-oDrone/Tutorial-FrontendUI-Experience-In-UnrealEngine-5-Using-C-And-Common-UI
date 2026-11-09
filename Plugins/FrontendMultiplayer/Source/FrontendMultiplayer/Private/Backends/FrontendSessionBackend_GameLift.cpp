@@ -196,6 +196,20 @@ namespace FrontendGameLiftCrypto
 		return ComputeSha256(OuterInput.GetData(), OuterInput.Num());
 	}
 
+	/** AWS SigV4 signing key: HMAC chain over date / region / service / "aws4_request". */
+	static TArray<uint8> DeriveSigningKey(const FString& SecretKey, const FString& DateStamp, const FString& Region, const FString& Service)
+	{
+		const FString SecretSeed = TEXT("AWS4") + SecretKey;
+		FTCHARToUTF8 SecretSeedUtf8(*SecretSeed);
+		TArray<uint8> InitialKey;
+		InitialKey.Append(reinterpret_cast<const uint8*>(SecretSeedUtf8.Get()), SecretSeedUtf8.Length());
+
+		const TArray<uint8> KDate = ComputeHmacSha256(InitialKey, DateStamp);
+		const TArray<uint8> KRegion = ComputeHmacSha256(KDate, Region);
+		const TArray<uint8> KService = ComputeHmacSha256(KRegion, Service);
+		return ComputeHmacSha256(KService, TEXT("aws4_request"));
+	}
+
 	/** Signs a GameLift JSON-RPC 1.1 POST request with AWS Signature Version 4. */
 	static void SignGameLiftJsonRequest(
 		const TSharedRef<IHttpRequest, ESPMode::ThreadSafe>& HttpRequest,
@@ -242,15 +256,7 @@ namespace FrontendGameLiftCrypto
 			*CredentialScope,
 			*Sha256HexUtf8(CanonicalRequest));
 
-		const FString SecretSeed = TEXT("AWS4") + SecretKey;
-		FTCHARToUTF8 SecretSeedUtf8(*SecretSeed);
-		TArray<uint8> InitialKey;
-		InitialKey.Append(reinterpret_cast<const uint8*>(SecretSeedUtf8.Get()), SecretSeedUtf8.Length());
-
-		const TArray<uint8> KDate = ComputeHmacSha256(InitialKey, DateStamp);
-		const TArray<uint8> KRegion = ComputeHmacSha256(KDate, Region);
-		const TArray<uint8> KService = ComputeHmacSha256(KRegion, Service);
-		const TArray<uint8> KSigning = ComputeHmacSha256(KService, TEXT("aws4_request"));
+		const TArray<uint8> KSigning = DeriveSigningKey(SecretKey, DateStamp, Region, Service);
 		const FString Signature = BytesToLowerHex(ComputeHmacSha256(KSigning, StringToSign));
 
 		const FString AuthorizationHeader = FString::Printf(
@@ -268,6 +274,56 @@ namespace FrontendGameLiftCrypto
 			HttpRequest->SetHeader(TEXT("X-Amz-Security-Token"), SessionToken);
 		}
 		HttpRequest->SetHeader(TEXT("Authorization"), AuthorizationHeader);
+	}
+
+	/**
+	 * Query-string SigV4 for the Server SDK WebSocket, as used by Server SDK >= 5.2 on Managed
+	 * Container Fleets (and Managed EC2 with GAMELIFT_ACCESS_KEY). GameLift's variant hashes only
+	 * the sorted, URL-encoded identity parameters (ComputeId, FleetId, pID) - not the full URL.
+	 * Returns "Authorization=SigV4&X-Amz-Algorithm=...&X-Amz-Credential=...&X-Amz-Date=...
+	 * [&X-Amz-Security-Token=...]&X-Amz-Signature=...", ready to append to the connect URL.
+	 */
+	static FString BuildWebSocketSigV4Query(
+		const FString& Region,
+		const FString& ComputeId,
+		const FString& FleetId,
+		const FString& ProcessId,
+		const FString& AccessKey,
+		const FString& SecretKey,
+		const FString& SessionToken)
+	{
+		const FDateTime UtcNow = FDateTime::UtcNow();
+		const FString DateStamp = UtcNow.ToString(TEXT("%Y%m%d"));
+		const FString AmzDate = UtcNow.ToString(TEXT("%Y%m%dT%H%M%SZ"));
+		const FString Service = TEXT("gamelift");
+
+		// Keys sorted bytewise: "ComputeId" < "FleetId" < "pID".
+		const FString CanonicalRequest = FString::Printf(
+			TEXT("ComputeId=%s&FleetId=%s&pID=%s"),
+			*FGenericPlatformHttp::UrlEncode(ComputeId),
+			*FGenericPlatformHttp::UrlEncode(FleetId),
+			*FGenericPlatformHttp::UrlEncode(ProcessId));
+
+		const FString CredentialScope = FString::Printf(TEXT("%s/%s/%s/aws4_request"), *DateStamp, *Region, *Service);
+		const FString StringToSign = FString::Printf(
+			TEXT("AWS4-HMAC-SHA256\n%s\n%s\n%s"),
+			*AmzDate,
+			*CredentialScope,
+			*Sha256HexUtf8(CanonicalRequest));
+
+		const TArray<uint8> KSigning = DeriveSigningKey(SecretKey, DateStamp, Region, Service);
+		const FString Signature = BytesToLowerHex(ComputeHmacSha256(KSigning, StringToSign));
+
+		FString Query = FString::Printf(
+			TEXT("Authorization=SigV4&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=%s&X-Amz-Date=%s"),
+			*FGenericPlatformHttp::UrlEncode(AccessKey + TEXT("/") + CredentialScope),
+			*AmzDate);
+		if (!SessionToken.IsEmpty())
+		{
+			Query += FString::Printf(TEXT("&X-Amz-Security-Token=%s"), *FGenericPlatformHttp::UrlEncode(SessionToken));
+		}
+		Query += FString::Printf(TEXT("&X-Amz-Signature=%s"), *Signature);
+		return Query;
 	}
 }
 
@@ -430,6 +486,14 @@ FString UFrontendGameLiftSettings::ResolveServerAuthToken() const
 		ServerAuthToken);
 }
 
+bool UFrontendGameLiftSettings::IsContainerCompute()
+{
+	// Managed Container Fleets set GAMELIFT_COMPUTE_TYPE=CONTAINER and hand out ECS task
+	// credentials instead of a compute auth token.
+	return FPlatformMisc::GetEnvironmentVariable(TEXT("GAMELIFT_COMPUTE_TYPE")).TrimStartAndEnd().Equals(TEXT("CONTAINER"), ESearchCase::IgnoreCase)
+		&& !FPlatformMisc::GetEnvironmentVariable(TEXT("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI")).IsEmpty();
+}
+
 //~ Begin UFrontendSessionBackend Interface
 
 void UFrontendSessionBackend_GameLift::Initialize(UFrontendMultiplayerSubsystem* InOwningSubsystem)
@@ -469,6 +533,11 @@ void UFrontendSessionBackend_GameLift::Shutdown()
 
 	CloseServerWebSocket();
 	RetiredServerWebSocket.Reset();
+	if (ServerBootstrapHttpRequest.IsValid())
+	{
+		ServerBootstrapHttpRequest->CancelRequest();
+		ServerBootstrapHttpRequest.Reset();
+	}
 	FoundSessions.Empty();
 	ActiveSessionDisplayName.Reset();
 	ActiveSessionMaxPlayers = 0;
@@ -1328,17 +1397,151 @@ void UFrontendSessionBackend_GameLift::StartServerWebSocketIfConfigured(UWorld* 
 	}
 	const FString AuthToken = Settings->ResolveServerAuthToken();
 
-	if (ServerFleetId.IsEmpty() || ServerHostId.IsEmpty())
+	// Auth token (Anywhere, GetComputeAuthToken) takes priority. Without one, a container
+	// compute authenticates with SigV4 using the ECS task role and identifies itself by task id.
+	bServerUsesSigV4 = AuthToken.IsEmpty() && UFrontendGameLiftSettings::IsContainerCompute();
+
+	if (ServerFleetId.IsEmpty() || (ServerHostId.IsEmpty() && !bServerUsesSigV4))
 	{
-		LogDebug(TEXT("[gamelift] WebSocket URL is set but GAMELIFT_SDK_FLEET_ID or GAMELIFT_SDK_HOST_ID is missing"));
+		LogDebug(TEXT("[gamelift] WebSocket URL is set but GAMELIFT_SDK_FLEET_ID or GAMELIFT_SDK_HOST_ID is missing (and this is not a CONTAINER compute)"));
 		return;
 	}
 
 	ServerReconnectAttempts = 0;
-	ConnectServerWebSocket(WebSocketUrl, AuthToken);
+	if (bServerUsesSigV4)
+	{
+		BeginServerConnectWithContainerSigV4(WebSocketUrl);
+	}
+	else
+	{
+		ConnectServerWebSocket(WebSocketUrl, AuthToken);
+	}
 }
 
-void UFrontendSessionBackend_GameLift::ConnectServerWebSocket(const FString& WebSocketUrl, const FString& AuthToken)
+void UFrontendSessionBackend_GameLift::BeginServerConnectWithContainerSigV4(const FString& WebSocketUrl)
+{
+	// Same bootstrap as Server SDK 5.2+ on a container fleet:
+	//   1. GET http://169.254.170.2$AWS_CONTAINER_CREDENTIALS_RELATIVE_URI -> task-role credentials
+	//   2. GET $ECS_CONTAINER_METADATA_URI_V4/task                        -> TaskARN, host id = task id
+	//   3. connect with SigV4 query parameters instead of Authorization=<auth token>
+	// Credentials rotate and signatures are time-boxed, so every (re)connect runs all three.
+	const FString CredentialsRelativeUri = FPlatformMisc::GetEnvironmentVariable(TEXT("AWS_CONTAINER_CREDENTIALS_RELATIVE_URI")).TrimStartAndEnd();
+	const FString MetadataUri = FPlatformMisc::GetEnvironmentVariable(TEXT("ECS_CONTAINER_METADATA_URI_V4")).TrimStartAndEnd();
+	if (CredentialsRelativeUri.IsEmpty() || MetadataUri.IsEmpty())
+	{
+		LogDebug(TEXT("[gamelift] container compute without AWS_CONTAINER_CREDENTIALS_RELATIVE_URI / ECS_CONTAINER_METADATA_URI_V4; cannot sign the server WebSocket"));
+		return;
+	}
+
+	if (ServerBootstrapHttpRequest.IsValid())
+	{
+		ServerBootstrapHttpRequest->CancelRequest();
+		ServerBootstrapHttpRequest.Reset();
+	}
+
+	TWeakObjectPtr<ThisClass> WeakThis(this);
+	auto FailAndRetry = [WeakThis](const FString& Why)
+	{
+		if (ThisClass* Self = WeakThis.Get())
+		{
+			Self->ServerBootstrapHttpRequest.Reset();
+			Self->LogDebug(FString::Printf(TEXT("[gamelift] container bootstrap failed: %s"), *Why));
+			Self->ScheduleServerReconnect();
+		}
+	};
+
+	auto ParseJsonBody = [](const FHttpResponsePtr& Response, TSharedPtr<FJsonObject>& OutObject) -> bool
+	{
+		if (!Response.IsValid() || Response->GetResponseCode() < 200 || Response->GetResponseCode() >= 300)
+		{
+			return false;
+		}
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Response->GetContentAsString());
+		return FJsonSerializer::Deserialize(Reader, OutObject) && OutObject.IsValid();
+	};
+
+	const FString CredentialsUrl = TEXT("http://169.254.170.2") + CredentialsRelativeUri;
+	const FString TaskMetadataUrl = MetadataUri / TEXT("task");
+
+	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> CredentialsRequest = FHttpModule::Get().CreateRequest();
+	CredentialsRequest->SetVerb(TEXT("GET"));
+	CredentialsRequest->SetURL(CredentialsUrl);
+	CredentialsRequest->SetTimeout(10.f);
+	CredentialsRequest->OnProcessRequestComplete().BindLambda(
+		[WeakThis, FailAndRetry, ParseJsonBody, WebSocketUrl, TaskMetadataUrl](FHttpRequestPtr, FHttpResponsePtr Response, bool bConnected)
+		{
+			ThisClass* Self = WeakThis.Get();
+			if (!Self)
+			{
+				return;
+			}
+
+			TSharedPtr<FJsonObject> Creds;
+			if (!bConnected || !ParseJsonBody(Response, Creds))
+			{
+				FailAndRetry(FString::Printf(TEXT("credentials endpoint returned %d"), Response.IsValid() ? Response->GetResponseCode() : 0));
+				return;
+			}
+
+			FString AccessKey, SecretKey, SessionToken;
+			Creds->TryGetStringField(TEXT("AccessKeyId"), AccessKey);
+			Creds->TryGetStringField(TEXT("SecretAccessKey"), SecretKey);
+			Creds->TryGetStringField(TEXT("Token"), SessionToken);
+			if (AccessKey.IsEmpty() || SecretKey.IsEmpty())
+			{
+				FailAndRetry(TEXT("credentials response has no AccessKeyId/SecretAccessKey"));
+				return;
+			}
+
+			TSharedRef<IHttpRequest, ESPMode::ThreadSafe> MetadataRequest = FHttpModule::Get().CreateRequest();
+			MetadataRequest->SetVerb(TEXT("GET"));
+			MetadataRequest->SetURL(TaskMetadataUrl);
+			MetadataRequest->SetTimeout(10.f);
+			MetadataRequest->OnProcessRequestComplete().BindLambda(
+				[WeakThis, FailAndRetry, ParseJsonBody, WebSocketUrl, AccessKey, SecretKey, SessionToken](FHttpRequestPtr, FHttpResponsePtr MetaResponse, bool bMetaConnected)
+				{
+					ThisClass* Self = WeakThis.Get();
+					if (!Self)
+					{
+						return;
+					}
+
+					TSharedPtr<FJsonObject> Meta;
+					FString TaskArn;
+					if (!bMetaConnected || !ParseJsonBody(MetaResponse, Meta) || !Meta->TryGetStringField(TEXT("TaskARN"), TaskArn) || TaskArn.IsEmpty())
+					{
+						FailAndRetry(FString::Printf(TEXT("task metadata endpoint returned %d or no TaskARN"), MetaResponse.IsValid() ? MetaResponse->GetResponseCode() : 0));
+						return;
+					}
+
+					// arn:aws:ecs:<region>:<account>:task/<cluster>/<task-id> -> <task-id>
+					FString TaskId = TaskArn;
+					{
+						int32 Idx = INDEX_NONE;
+						if (TaskId.FindLastChar(TEXT('/'), Idx) || TaskId.FindLastChar(TEXT(':'), Idx))
+						{
+							TaskId.MidInline(Idx + 1);
+						}
+					}
+
+					Self->ServerBootstrapHttpRequest.Reset();
+					Self->ServerHostId = TaskId;
+					const FString SigV4Query = FrontendGameLiftCrypto::BuildWebSocketSigV4Query(
+						UFrontendGameLiftSettings::Get()->ResolveAwsRegion(),
+						Self->ServerHostId, Self->ServerFleetId, Self->ServerProcessId,
+						AccessKey, SecretKey, SessionToken);
+					Self->ConnectServerWebSocket(WebSocketUrl, FString(), SigV4Query);
+				});
+			Self->ServerBootstrapHttpRequest = MetadataRequest;
+			MetadataRequest->ProcessRequest();
+		});
+
+	LogDebug(TEXT("[gamelift] container compute: fetching task credentials and metadata for a SigV4 server WebSocket"));
+	ServerBootstrapHttpRequest = CredentialsRequest;
+	CredentialsRequest->ProcessRequest();
+}
+
+void UFrontendSessionBackend_GameLift::ConnectServerWebSocket(const FString& WebSocketUrl, const FString& AuthToken, const FString& SigV4Query)
 {
 	// Release the socket parked by the previous close (we are never inside *that* one's
 	// delegate here), then park the current one if any.
@@ -1370,7 +1573,7 @@ void UFrontendSessionBackend_GameLift::ConnectServerWebSocket(const FString& Web
 	}
 
 	FString FullUrl = FString::Printf(
-		TEXT("%s?%s%spID=%s&sdkVersion=5.1.2&sdkLanguage=Cpp&ComputeId=%s&FleetId=%s&IdempotencyToken=%s"),
+		TEXT("%s?%s%spID=%s&sdkVersion=5.2.0&sdkLanguage=Cpp&ComputeId=%s&FleetId=%s&IdempotencyToken=%s"),
 		*BaseUrl,
 		*Query,
 		Query.IsEmpty() ? TEXT("") : TEXT("&"),
@@ -1383,10 +1586,14 @@ void UFrontendSessionBackend_GameLift::ConnectServerWebSocket(const FString& Web
 	{
 		FullUrl += FString::Printf(TEXT("&Authorization=%s"), *FGenericPlatformHttp::UrlEncode(AuthToken));
 	}
+	else if (!SigV4Query.IsEmpty())
+	{
+		FullUrl += TEXT("&") + SigV4Query;
+	}
 
 	LogDebug(FString::Printf(TEXT("[gamelift] connecting server WebSocket %s (fleet=%s compute=%s process=%s port=%d%s)"),
 		*BaseUrl, *ServerFleetId, *ServerHostId, *ServerProcessId, ServerListeningPort,
-		AuthToken.IsEmpty() ? TEXT(", NO auth token") : TEXT("")));
+		!AuthToken.IsEmpty() ? TEXT(", auth token") : (!SigV4Query.IsEmpty() ? TEXT(", SigV4") : TEXT(", NO auth token"))));
 
 	ServerWebSocket = FWebSocketsModule::Get().CreateWebSocket(FullUrl);
 	ServerWebSocket->OnConnected().AddUObject(this, &ThisClass::HandleWebSocketConnected);
@@ -1442,7 +1649,8 @@ void UFrontendSessionBackend_GameLift::ScheduleServerReconnect()
 	}
 	if (ServerReconnectAttempts >= MaxAttempts)
 	{
-		LogDebug(FString::Printf(TEXT("[gamelift] giving up on the server WebSocket after %d attempts; restart the server with a fresh GAMELIFT_SDK_AUTH_TOKEN"), ServerReconnectAttempts));
+		LogDebug(FString::Printf(TEXT("[gamelift] giving up on the server WebSocket after %d attempts; restart the server%s"),
+			ServerReconnectAttempts, bServerUsesSigV4 ? TEXT("") : TEXT(" with a fresh GAMELIFT_SDK_AUTH_TOKEN")));
 		return;
 	}
 
@@ -1457,7 +1665,14 @@ bool UFrontendSessionBackend_GameLift::HandleServerReconnectTick(float /*DeltaTi
 {
 	ServerReconnectTickerHandle.Reset();
 	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
-	ConnectServerWebSocket(Settings->ResolveServerWebSocketUrl(), Settings->ResolveServerAuthToken());
+	if (bServerUsesSigV4)
+	{
+		BeginServerConnectWithContainerSigV4(Settings->ResolveServerWebSocketUrl());
+	}
+	else
+	{
+		ConnectServerWebSocket(Settings->ResolveServerWebSocketUrl(), Settings->ResolveServerAuthToken());
+	}
 	return false; // one-shot
 }
 
@@ -1498,7 +1713,7 @@ void UFrontendSessionBackend_GameLift::HandleWebSocketConnected()
 	TSharedRef<FJsonObject> ActivateMsg = MakeShared<FJsonObject>();
 	ActivateMsg->SetStringField(TEXT("Action"), TEXT("ActivateServerProcess"));
 	ActivateMsg->SetStringField(TEXT("RequestId"), FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower));
-	ActivateMsg->SetStringField(TEXT("SdkVersion"), TEXT("5.1.2"));
+	ActivateMsg->SetStringField(TEXT("SdkVersion"), TEXT("5.2.0"));
 	ActivateMsg->SetStringField(TEXT("SdkLanguage"), TEXT("Cpp"));
 	ActivateMsg->SetNumberField(TEXT("Port"), ServerListeningPort);
 
