@@ -434,6 +434,16 @@ With the proxy set, `FleetId`/`Location` on the client are still sent (the Anywh
 `Location=custom-...`; the proxy overrides the fleet id only). The client log shows the switch:
 `[gamelift] backend ready: ... endpoint=https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/`.
 
+Verified run (2026-11-09, Launcher clients with `GAMELIFT_ENDPOINT_URL`, packaged Windows server
+on the Anywhere fleet): Host -> Join -> Return -> Host -> Join; the API Gateway access log shows
+10/10 requests from the client IP with HTTP 200 and the Lambda log shows no direct-to-GameLift
+calls from the client. One proxy bug surfaced only with the real client: while a new session is
+`ACTIVATING` the client polls `DescribeGameSessions` **by `GameSessionId`**, and GameLift accepts
+exactly one of `GameSessionId` / `FleetId` / `AliasId` - a proxy that blindly pins `FleetId` gets
+`InvalidRequestException: Request must contain one and only one of ...`. The proxy therefore
+enforces the fleet lock on session-addressed calls by checking the ARN segment
+`:gamesession/<fleet-id>/` instead (note the `:` - GameLift session ARNs are `...:us-east-1::gamesession/...`).
+
 To ship: package a `Shipping` client (`BuildCookRun ... -clientconfig=Shipping`) with
 `ApiEndpointUrl` in `DefaultGame.ini` and no `AWS_*` variables on the machine — Host/Find/Join
 must work exactly as in Development, and a build without `ApiEndpointUrl` fails fast with
