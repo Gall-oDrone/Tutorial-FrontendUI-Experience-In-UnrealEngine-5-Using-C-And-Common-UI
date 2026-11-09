@@ -226,10 +226,22 @@ Three things the first run taught (all handled in the scripts now):
 ### The Docker image
 
 `Dockerfile` copies `Saved/StagedBuilds/LinuxServer` into `ubuntu:22.04` (+ `ca-certificates`,
-`libatomic1`) as non-root user `ue`, exposes `7777/udp`, and runs `FrontendUIServer.sh` with
-`-log -stdout -FullStdOutLogOutput -unattended -NullRHI -port=7777`. `.dockerignore` keeps
-`*.debug`, `*.sym` and the Vulkan validation layers out of the image (≈2 GB of the 2.6 GB
-stage; symbols stay in the S3 zip for crash symbolication).
+`libatomic1`) as non-root user `ue`, exposes `7777/udp`, and uses `docker/entrypoint.sh` as
+`ENTRYPOINT`. `.dockerignore` keeps `*.debug`, `*.sym` and the Vulkan validation layers out of
+the image (≈2 GB of the 2.6 GB stage; symbols stay in the S3 zip for crash symbolication).
+
+The entrypoint is **environment-driven** because Managed Container Fleets can set environment
+variables but cannot override the container command:
+
+| Variable | Effect |
+|---|---|
+| `GAMELIFT_SDK_WEBSOCKET_URL` (injected by GameLift) | present → GameLift backend; absent → FixedAddress backend |
+| `SERVER_SESSION_BACKEND` | explicit backend class path, overrides the auto-pick |
+| `SERVER_MAP` / `SERVER_PORT` / `SERVER_EXTRA_ARGS` | defaults `/Game/Maps/L_MatchTest`, `7777`, empty |
+
+It `exec`s the engine binary as PID 1 with
+`-log -stdout -FullStdOutLogOutput -unattended -NullRHI -port=$SERVER_PORT`, so SIGTERM from
+Docker/GameLift reaches the engine and `Shutdown()` sends `TerminateServerProcess`.
 
 ```bash
 aws s3 cp s3://ue5-artifacts-<account>-us-east-1/builds/FrontendUI-LinuxServer-<sha>-<stamp>.zip .
@@ -252,8 +264,7 @@ docker run -d --name frontendui-server -p 7777:7777/udp \
   -e GAMELIFT_SDK_FLEET_ID=$FLEET -e GAMELIFT_SDK_HOST_ID=LinuxDockerBox \
   -e GAMELIFT_SDK_AUTH_TOKEN=$(aws gamelift get-compute-auth-token --fleet-id $FLEET \
        --compute-name LinuxDockerBox --region us-east-1 --query AuthToken --output text) \
-  frontendui-server:<sha> /Game/Maps/L_MatchTest -log -stdout -FullStdOutLogOutput -unattended -NullRHI -port=7777 \
-  "-ini:Game:[/Script/FrontendMultiplayer.FrontendMultiplayerSettings]:SessionBackendClass=/Script/FrontendMultiplayer.FrontendSessionBackend_GameLift"
+  frontendui-server:<sha>          # no command: entrypoint.sh picks the GameLift backend from the env
 
 docker logs frontendui-server | grep "\[gamelift\]"
 #   connecting server WebSocket wss://us-east-1.api.amazongamelift.com/ (... compute=LinuxDockerBox ...)
@@ -268,8 +279,7 @@ aws gamelift describe-game-sessions --game-session-id <arn> --region us-east-1 -
 #   "ACTIVE"   (within ~3 s; container log shows "CreateGameSession received ... -> ActivateGameSession")
 ```
 
-`docker compose up` does the same with the variables from the environment
-(`SERVER_SESSION_BACKEND=/Script/FrontendMultiplayer.FrontendSessionBackend_GameLift`); without
+`docker compose up` does the same with the variables from the environment; without
 `GAMELIFT_SDK_*` it runs as a plain FixedAddress server for `LaunchInstances.bat N DEDICATED`.
 
 The packaged Linux server initialises the engine in **0.7 s** (the editor binary used in
@@ -279,29 +289,100 @@ unzipped makes the recycle-and-rehost loop near instant.
 
 ---
 
-## 5. Stage 3 — Amazon GameLift Managed Container Fleets
+## 5. Stage 3 — Amazon GameLift Managed Container Fleets (verified 2026-11-09)
 
-Once the image runs cleanly in Docker, push it to Amazon ECR and deploy a Managed Container Fleet:
+The same image runs unmodified on a Managed Container Fleet. GameLift injects
+`GAMELIFT_SDK_WEBSOCKET_URL`, `GAMELIFT_SDK_FLEET_ID`, `GAMELIFT_SDK_PROCESS_ID=ManagedResource`,
+`GAMELIFT_COMPUTE_TYPE=CONTAINER`, `GAMELIFT_REGION` and the ECS task environment
+(`AWS_CONTAINER_CREDENTIALS_RELATIVE_URI`, `ECS_CONTAINER_METADATA_URI_V4`) - but **no**
+`GAMELIFT_SDK_AUTH_TOKEN` and **no** `GAMELIFT_SDK_HOST_ID`. That is why container fleets require
+Server SDK >= 5.2: the server fetches the task-role credentials from `169.254.170.2`, takes the
+ECS task id as its host id, and signs the WebSocket URL with SigV4 query parameters instead of an
+auth token. `UFrontendSessionBackend_GameLift::BeginServerConnectWithContainerSigV4` does exactly
+that; `entrypoint.sh` only has to select the GameLift backend. A fleet bills for >=1 instance
+from creation until deletion, so the loop below is *create -> test -> delete*; the ECR image and
+the Container Group Definition (free) stay.
 
 ```bash
-# 1. Authenticate and push to ECR
-aws ecr create-repository --repository-name frontendui-server --region us-east-1
-aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
+ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+ECR=$ACCOUNT.dkr.ecr.us-east-1.amazonaws.com
 
-docker tag frontendui-server:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/frontendui-server:latest
-docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/frontendui-server:latest
+# 1. Push the image (once per build). Lifecycle policy keeps the last 5 tags.
+aws ecr create-repository --repository-name frontendui-server --region us-east-1
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR
+docker tag frontendui-server:<sha> $ECR/frontendui-server:<sha>
+docker push $ECR/frontendui-server:<sha>
+
+# 2. Fleet role (once): trust gamelift.amazonaws.com, managed policy GameLiftContainerFleetPolicy.
+aws iam create-role --role-name FrontendUI-GameLiftContainerFleetRole --assume-role-policy-document \
+  '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"gamelift.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
+aws iam attach-role-policy --role-name FrontendUI-GameLiftContainerFleetRole \
+  --policy-arn arn:aws:iam::aws:policy/GameLiftContainerFleetPolicy
+
+# 3. Container Group Definition (free; COPYING -> READY in ~2 min, it snapshots the image).
+aws gamelift create-container-group-definition --region us-east-1 --name frontendui-server \
+  --container-group-type GAME_SERVER --operating-system AMAZON_LINUX_2023 \
+  --total-vcpu-limit 1 --total-memory-limit-mebibytes 2048 \
+  --game-server-container-definition '{"ContainerName":"frontendui",
+     "ImageUri":"'$ECR'/frontendui-server:<sha>","ServerSdkVersion":"5.2.0",
+     "PortConfiguration":{"ContainerPortRanges":[{"FromPort":7777,"ToPort":7777,"Protocol":"UDP"}]}}'
+
+# 4. Fleet (billable). c6i.large ≈ $0.09/h; PENDING -> ACTIVE takes 10-20 min.
+#    Pass the port range as JSON: the FromPort=..,ToPort=.. shorthand was silently ignored
+#    once and the fleet fell back to GameLift's default 32768+ range (outside the inbound rule).
+aws gamelift create-container-fleet --region us-east-1 \
+  --fleet-role-arn arn:aws:iam::$ACCOUNT:role/FrontendUI-GameLiftContainerFleetRole \
+  --game-server-container-group-definition-name frontendui-server \
+  --instance-type c6i.large --billing-type ON_DEMAND --locations '[{"Location":"us-east-1"}]' \
+  --instance-connection-port-range '{"FromPort":7777,"ToPort":7877}' \
+  --instance-inbound-permissions '[{"FromPort":7777,"ToPort":7877,"IpRange":"0.0.0.0/0","Protocol":"UDP"}]' \
+  --log-configuration '{"LogDestination":"CLOUDWATCH"}' --new-game-session-protection-policy NoProtection
+aws gamelift describe-container-fleet --fleet-id <containerfleet-id> \
+  --query 'ContainerFleet.[Status,InstanceConnectionPortRange,LogConfiguration]'   # check both took effect
+aws gamelift describe-fleet-events --fleet-id <containerfleet-id>      # FLEET_STATE_ACTIVE etc.
+
+# 5. Smoke test without a client; ACTIVE proves the container answered ActivateGameSession.
+#    Then terminate it: a session with no players never empties, and with one process per
+#    instance it blocks real clients with FleetCapacityExceededException.
+aws gamelift create-game-session --fleet-id <containerfleet-id> --maximum-player-session-count 4 \
+  --name Probe --query 'GameSession.[GameSessionId,IpAddress,Port]' --output text
+aws gamelift describe-game-sessions --game-session-id <arn> --query 'GameSessions[0].Status'
+aws gamelift terminate-game-session --game-session-id <arn> --termination-mode TRIGGER_ON_PROCESS_TERMINATE
+
+# 6. Tear down the same day. The CGD and ECR image survive for next time.
+aws gamelift delete-container-fleet --fleet-id <containerfleet-id> --region us-east-1
 ```
 
-When creating the GameLift Container Group Definition:
-- **Image URI**: `<account-id>.dkr.ecr.us-east-1.amazonaws.com/frontendui-server:latest`
-- **Container port**: `7777` (`UDP`)
-- **Command override**:
-  ```json
-  ["/Game/Maps/L_MatchTest", "-log", "-unattended", "-NullRHI", "-port=7777", "-ini:Game:[/Script/FrontendMultiplayer.FrontendMultiplayerSettings]:SessionBackendClass=/Script/FrontendMultiplayer.FrontendSessionBackend_GameLift"]
+Client side (PC): `GAMELIFT_SDK_FLEET_ID=<containerfleet-id>` and `GAMELIFT_LOCATION=us-east-1`
+(the fleet's home region; the Anywhere custom location is rejected) - either in
+`Scripts/GameLiftEnv.bat` or as plain `set` lines in the console, since the env file uses
+`if not defined` - then `LaunchInstances.bat 2 GAMELIFT` with no local server. Verified run
+(2026-11-09, c6i.large, image `2f5ac3a`): Host -> `CreateGameSession` placed on the fleet,
+container log `CreateGameSession received -> ActivateGameSession`, client travelled to
+`<public ip>:7777`; second client joined (`AcceptPlayerSession` x2); both returned to the
+menu -> `last player left -> TerminateServerProcess (game session empty) -> exiting`; GameLift
+restarted the container and the new process was `ACTIVE on the fleet` **3 s** later; Host
+again succeeded. The first SigV4 connect right after a container start can fail once with
+`ws upgrade forbidden` (task credentials not yet valid); the 5 s retry succeeds.
+
+Notes learned the hard way:
+- `ServerSdkVersion` must be >= `5.2.0` for container fleets; the server advertises `sdkVersion=5.2.0`.
+- A fleet that goes `ACTIVATING` -> back to `CREATED` (deployment `IMPAIRED`) means the test
+  container never reached `ActivateServerProcess`. Read its stdout in CloudWatch log group
+  `gamelift-<containerfleet-id>-us-east-1`, or shell into the instance:
+  ```bash
+  aws gamelift get-compute-access --fleet-id <containerfleet-id> --compute-name <compute>   # temp creds + instance id
+  AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_SESSION_TOKEN=... \
+    aws ssm start-session --target <instance-id>          # then: sudo docker ps; sudo docker inspect <id>
   ```
-- GameLift Managed Container Fleets automatically inject `GAMELIFT_SDK_WEBSOCKET_URL`, `GAMELIFT_SDK_FLEET_ID`, `GAMELIFT_SDK_HOST_ID`, `GAMELIFT_SDK_PROCESS_ID`, and `GAMELIFT_SDK_AUTH_TOKEN` into the container environment at launch.
-- On the client, set `FleetId` (or `AliasId`) to the container fleet and clear `Location` (managed fleets in a single region do not need a custom location filter).
+  Only the default interactive SSM document is allowed by the returned session policy.
+- `GameServerContainerGroupsPerInstance` is computed by GameLift from the CGD limits; a
+  1 vCPU / 2 GiB group on c6i.large yields **1** concurrent session per instance.
+- Fleet-level `--instance-inbound-permissions` must cover the whole
+  `--instance-connection-port-range`, otherwise clients get the IP/port but UDP is dropped.
+- A new image needs a new CGD *version* (`update-container-group-definition`) and then
+  `update-container-fleet --game-server-container-group-definition-name frontendui-server`
+  (rolling deployment, ~10 min) - no need to recreate the fleet.
 
 ---
 
