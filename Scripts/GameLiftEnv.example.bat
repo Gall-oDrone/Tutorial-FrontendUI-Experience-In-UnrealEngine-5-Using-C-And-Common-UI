@@ -16,3 +16,8 @@ if not defined GAMELIFT_SDK_WEBSOCKET_URL set "GAMELIFT_SDK_WEBSOCKET_URL=wss://
 if not defined GAMELIFT_SDK_FLEET_ID      set "GAMELIFT_SDK_FLEET_ID=fleet-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 if not defined GAMELIFT_SDK_HOST_ID       set "GAMELIFT_SDK_HOST_ID=DevPC"
 if not defined GAMELIFT_LOCATION          set "GAMELIFT_LOCATION=custom-location-1"
+
+REM Optional: route the client's GameLift calls through the API Gateway + Lambda proxy
+REM (Docs/GameLift.md section 6) instead of signing them with your own AWS keys. This is
+REM what Shipping builds use; setting it here lets you exercise the same path in Development.
+REM if not defined GAMELIFT_ENDPOINT_URL  set "GAMELIFT_ENDPOINT_URL=https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/"

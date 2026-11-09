@@ -386,36 +386,58 @@ Notes learned the hard way:
 
 ---
 
-## 6. Shipping Builds — Backend Proxy (`ApiEndpointUrl`)
+## 6. Shipping Builds — Backend Proxy (`ApiEndpointUrl`) (verified 2026-11-09)
 
-In `UE_BUILD_SHIPPING` builds, `UFrontendGameLiftSettings::ResolveAwsCredentials` intentionally refuses raw IAM credentials so AWS keys never ship in player builds. Point `ApiEndpointUrl` (`-GameLiftEndpoint=`) at an Amazon API Gateway + AWS Lambda endpoint whose execution role grants `gamelift:CreateGameSession`, `gamelift:DescribeGameSessions`, and `gamelift:CreatePlayerSession` on your fleet/alias.
+In `UE_BUILD_SHIPPING` builds, `UFrontendGameLiftSettings::ResolveAwsCredentials` intentionally
+refuses raw IAM credentials so AWS keys never ship in player builds. Instead the client POSTs the
+same JSON it would send to GameLift, with the same `X-Amz-Target` header, to `ApiEndpointUrl`,
+and a small proxy signs it server-side. Whenever `ApiEndpointUrl` is non-empty it is used in
+**every** configuration (Development too), so the proxy can be exercised from the editor.
 
-Because the client sends the standard `X-Amz-Target` header (`GameLift.CreateGameSession`, `GameLift.DescribeGameSessions`, `GameLift.CreatePlayerSession`) and JSON payload to `ApiEndpointUrl`, a minimal Python 3.12 Lambda proxy is only ~25 lines:
+The proxy lives in the companion repo as Terraform
+(`infrastructure/terraform/environments/gamelift-proxy`, module `modules/gamelift-proxy`):
+an API Gateway **HTTP API** with a single `POST /` route in front of an arm64 Python 3.12 Lambda
+(`lambda/proxy.py`, no dependencies). It
 
-```python
-import json, os, boto3
+- allows exactly `GameLift.CreateGameSession`, `GameLift.DescribeGameSessions`,
+  `GameLift.CreatePlayerSession`;
+- **pins the fleet** (`-var fleet_id=` or `alias_id=`) onto every request and clamps
+  `MaximumPlayerSessionCount` to 1-16, so a shipped client cannot be retargeted by editing an ini;
+- signs with its own role (SigV4) and returns GameLift's status **and body verbatim** — the
+  client's capacity-retry loop keys on `__type == FleetCapacityExceededException`, which a
+  boto3-style re-marshal would lose;
+- is throttled (20 rps / 50 burst) and logs to CloudWatch; idle cost is ~$0.
 
-gamelift = boto3.client("gamelift", region_name=os.environ.get("AWS_REGION", "us-east-1"))
-ALLOWED = {
-    "GameLift.CreateGameSession": gamelift.create_game_session,
-    "GameLift.DescribeGameSessions": gamelift.describe_game_sessions,
-    "GameLift.CreatePlayerSession": gamelift.create_player_session,
-}
+```bash
+cd infrastructure/terraform/environments/gamelift-proxy        # companion repo
+terraform init -backend-config=backend.hcl
+terraform apply -var fleet_id=fleet-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+terraform output -raw api_endpoint_url
+#   https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/
 
-def handler(event, context):
-    headers = {k.lower(): v for k, v in (event.get("headers") or {}).items()}
-    target = headers.get("x-amz-target", "")
-    fn = ALLOWED.get(target)
-    if not fn:
-        return {"statusCode": 400, "body": json.dumps({"message": f"Unsupported target: {target}"})}
-    body = json.loads(event.get("body") or "{}")
-    try:
-        resp = fn(**body)
-        resp.pop("ResponseMetadata", None)
-        return {"statusCode": 200, "body": json.dumps(resp, default=str)}
-    except Exception as exc:
-        return {"statusCode": 400, "body": json.dumps({"message": str(exc)})}
+# No AWS credentials needed by the caller - that is the point:
+curl -s -X POST $URL -H 'X-Amz-Target: GameLift.DescribeGameSessions' -d '{"StatusFilter":"ACTIVE"}'
+#   {"GameSessions":[]}
+curl -s -X POST $URL -H 'X-Amz-Target: GameLift.CreateGameSession' -d '{"Name":"Probe","MaximumPlayerSessionCount":4}'
+#   {"__type":"FleetCapacityExceededException","Message":"Unable to reserve a process(...)"}   (no server running)
 ```
+
+Point the game at it (any one of):
+
+| Where | Value |
+|---|---|
+| `Config/DefaultGame.ini` (ships) | `[/Script/FrontendMultiplayer.FrontendGameLiftSettings]` `ApiEndpointUrl=https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/` |
+| Command line | `-GameLiftEndpoint=https://.../` |
+| Environment (`GameLiftEnv.bat`) | `GAMELIFT_ENDPOINT_URL=https://.../` |
+
+With the proxy set, `FleetId`/`Location` on the client are still sent (the Anywhere fleet needs
+`Location=custom-...`; the proxy overrides the fleet id only). The client log shows the switch:
+`[gamelift] backend ready: ... endpoint=https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/`.
+
+To ship: package a `Shipping` client (`BuildCookRun ... -clientconfig=Shipping`) with
+`ApiEndpointUrl` in `DefaultGame.ini` and no `AWS_*` variables on the machine — Host/Find/Join
+must work exactly as in Development, and a build without `ApiEndpointUrl` fails fast with
+`No GameLift API Endpoint URL or AWS credentials found`.
 
 ---
 
