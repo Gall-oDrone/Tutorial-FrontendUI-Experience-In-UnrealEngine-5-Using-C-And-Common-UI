@@ -473,6 +473,9 @@ LaunchInstances.bat 2 GAMELIFT
 `DefaultPlatformService=EOS` and the per-window `-AUTH_LOGIN=... -AUTH_PASSWORD=UserN`. The
 client log shows `[gamelift-eos] Login(developer) ... Signed in as 'User1'` before the first
 `CreateGameSession`; the API Gateway access log shows 401s for unauthenticated probes.
+Verified 2026-11-10 with two Dev Auth Tool users on the Anywhere fleet: the game session's
+`CreatorId` is the host's Epic account id (set by the proxy from the verified token), both
+player sessions were accepted, token-less / bogus-token calls got `401 UnauthorizedException`.
 
 To ship: package a `Shipping` client (`BuildCookRun ... -clientconfig=Shipping`) with
 `ApiEndpointUrl` in `DefaultGame.ini` and no `AWS_*` variables on the machine — Host/Find/Join
