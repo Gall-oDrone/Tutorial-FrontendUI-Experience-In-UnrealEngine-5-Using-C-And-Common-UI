@@ -482,6 +482,28 @@ To ship: package a `Shipping` client (`BuildCookRun ... -clientconfig=Shipping`)
 must work exactly as in Development, and a build without `ApiEndpointUrl` fails fast with
 `No GameLift API Endpoint URL or AWS credentials found`.
 
+### Hosting through a game session queue (`GameSessionQueueName`)
+
+`CreateGameSession` targets one fleet and fails with `FleetCapacityExceededException` when no
+process is free - which is why the client has a 90 s retry loop. A **game session queue** moves
+that wait into GameLift: `StartGameSessionPlacement` returns a `PENDING` placement, GameLift
+tries each destination (fleets/aliases, several regions, Spot before On-Demand) until one has
+capacity or the queue timeout passes, reserves the host's player slot in the same request, and
+the client only polls `DescribeGameSessionPlacement` until `FULFILLED` (IP, port and
+`PlacedPlayerSessions[0].PlayerSessionId` arrive together) or `TIMED_OUT`.
+
+```bash
+aws gamelift create-game-session-queue --name frontendui-dev --timeout-in-seconds 120 \
+  --destinations DestinationArn=arn:aws:gamelift:us-east-1::alias/alias-...     # alias or fleet ARNs, in priority order
+# proxy: terraform apply ... -var queue_name=frontendui-dev   (pins the queue, allows the two placement calls)
+```
+
+Client: `GameSessionQueueName=frontendui-dev` (`-GameLiftQueue=`, `GAMELIFT_QUEUE_NAME`). Host
+then uses placement; Find / Join are unchanged (alias/fleet + `CreatePlayerSession`). With a
+container fleet behind the alias and min 1 / max 2 instances, two Hosts in a row show the
+difference: the second placement stays `PENDING` while auto-scaling adds an instance (~2-3 min)
+and then fulfils, where `CreateGameSession` would have given up.
+
 ---
 
 ## 7. Operations — Alias, Cost Guardrails

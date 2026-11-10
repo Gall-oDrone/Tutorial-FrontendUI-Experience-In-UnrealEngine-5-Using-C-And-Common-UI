@@ -62,6 +62,16 @@ public:
 	FString Location;
 
 	/**
+	 * Optional GameLift game session queue (name or ARN). When set, Host uses
+	 * StartGameSessionPlacement on the queue instead of CreateGameSession on FleetId/AliasId:
+	 * GameLift waits for capacity (auto-scaling, several fleets/regions) and reserves the host's
+	 * player slot in the same request. Find / Join still use FleetId/AliasId.
+	 * Overridable with -GameLiftQueue= or GAMELIFT_QUEUE_NAME.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Fleet")
+	FString GameSessionQueueName;
+
+	/**
 	 * Optional HTTPS URL of a backend proxy (API Gateway / Lambda) that forwards GameLift
 	 * JSON-RPC requests. Required in Shipping builds so AWS credentials never ship in the client.
 	 * When empty in non-Shipping builds, the client talks directly to https://gamelift.<AwsRegion>.amazonaws.com/.
@@ -73,6 +83,13 @@ public:
 	/** Seconds to poll DescribeGameSessions while a newly created game session is in ACTIVATING state. */
 	UPROPERTY(Config, EditAnywhere, Category = "Client", meta = (ClampMin = "1", UIMin = "1", UIMax = "60"))
 	float SessionActivationTimeoutSeconds = 15.f;
+
+	/**
+	 * Seconds to poll DescribeGameSessionPlacement before giving up on a queued Host. Should be
+	 * a little above the queue's own TimeoutInSeconds so GameLift's TIMED_OUT verdict is seen.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Client", meta = (ClampMin = "5", UIMin = "5", UIMax = "600"))
+	float PlacementTimeoutSeconds = 150.f;
 
 	/**
 	 * How long Host keeps retrying CreateGameSession (every 5 s) while GameLift answers
@@ -144,6 +161,7 @@ public:
 	FString ResolveFleetId() const;
 	FString ResolveAliasId() const;
 	FString ResolveLocation() const;
+	FString ResolveGameSessionQueueName() const;
 	FString ResolveApiEndpointUrl() const;
 	bool ResolveAwsCredentials(FString& OutAccessKey, FString& OutSecretKey, FString& OutSessionToken) const;
 
@@ -228,6 +246,11 @@ private:
 	bool HandleCreateRetryTick(float DeltaTime);
 	bool HandleActivationPollTick(float DeltaTime);
 	void PollActivatingGameSession();
+	/** Queue path: StartGameSessionPlacement, then poll DescribeGameSessionPlacement until a terminal status. */
+	void SendStartGameSessionPlacementRequest();
+	bool HandlePlacementPollTick(float DeltaTime);
+	void PollGameSessionPlacement();
+	void HandlePlacementObject(const TSharedPtr<FJsonObject>& PlacementObject);
 	/** bIsJoinRequest selects which Report* answers on failure: ReportSessionJoined (Join) or ReportSessionCreated (Host). */
 	void RequestPlayerSessionForGameSession(const FString& GameSessionId, const FString& DisplayName, int32 MaxPlayers, bool bIsJoinRequest);
 	void CancelPendingClientRequests();
@@ -276,6 +299,12 @@ private:
 	int32 PendingCreateMaxPlayers = 0;
 	double CreateRetryDeadlineSeconds = 0.0;
 	int32 CreateRetryAttempts = 0;
+
+	/** Queued Host: placement being polled until FULFILLED / TIMED_OUT / CANCELLED / FAILED. */
+	FTSTicker::FDelegateHandle PlacementPollTickerHandle;
+	FString PendingPlacementId;
+	double PlacementPollDeadlineSeconds = 0.0;
+	bool bPlacementPollRequestInFlight = false;
 
 	/** Session metadata for the match this client joined or this server is hosting. */
 	FString ActiveSessionDisplayName;
