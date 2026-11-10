@@ -444,6 +444,36 @@ exactly one of `GameSessionId` / `FleetId` / `AliasId` - a proxy that blindly pi
 enforces the fleet lock on session-addressed calls by checking the ARN segment
 `:gamesession/<fleet-id>/` instead (note the `:` - GameLift session ARNs are `...:us-east-1::gamesession/...`).
 
+### Player authentication (`auth_mode = eos`)
+
+Without auth, anyone who learns the URL can create sessions (throttled, fleet-pinned, but still).
+The proxy can require an Epic Online Services identity instead — no new accounts, the game
+already signs players in with EOS:
+
+- Client: `UFrontendSessionBackend_GameLiftEOS` (module `FrontendMultiplayerOSS`) = the GameLift
+  backend + EOS sign-in. Host / Find / Join first log local user 0 in (same credential chain as
+  the OSS backend: `-AUTH_*` from LaunchInstances.bat / Dev Auth Tool, `persistentauth`,
+  Project Settings), then every proxy call carries `Authorization: Bearer <EOS access token>`
+  (`IOnlineIdentity::GetAuthToken(0)`).
+- Proxy: `terraform apply -var auth_mode=eos -var eos_client_id=<your EOS Client ID>`. The
+  Lambda introspects the token with Epic (`POST https://api.epicgames.dev/epic/oauth/v2/tokenInfo`,
+  no client secret needed), requires `active` and `client_id == eos_client_id`, caches the
+  verdict until the token expires (≤ 10 min), and **replaces `PlayerId` / `CreatorId` with the
+  verified `account_id`** — the client cannot pick its own identity. Missing or bad tokens get
+  `401 UnauthorizedException`, which the game shows as "Sign in to Epic Online Services first".
+
+```bat
+REM Dev Auth Tool running with users User1 / User2 (Docs/EOSSetup.md), then:
+set GAMELIFT_ENDPOINT_URL=https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/
+set GAMELIFT_AUTH=EOS
+LaunchInstances.bat 2 GAMELIFT
+```
+
+`GAMELIFT_AUTH=EOS` switches the backend class to `FrontendSessionBackend_GameLiftEOS`, adds
+`DefaultPlatformService=EOS` and the per-window `-AUTH_LOGIN=... -AUTH_PASSWORD=UserN`. The
+client log shows `[gamelift-eos] Login(developer) ... Signed in as 'User1'` before the first
+`CreateGameSession`; the API Gateway access log shows 401s for unauthenticated probes.
+
 To ship: package a `Shipping` client (`BuildCookRun ... -clientconfig=Shipping`) with
 `ApiEndpointUrl` in `DefaultGame.ini` and no `AWS_*` variables on the machine — Host/Find/Join
 must work exactly as in Development, and a build without `ApiEndpointUrl` fails fast with
@@ -490,6 +520,8 @@ $40, e-mail at 50/80/100 % actual and 100 % forecast) is the safety net; the com
 
 | Symptom | Cause / Fix |
 |---|---|
+| `incompatible_unique_net_id` (client `PendingConnectionFailure`) right after the EOS sign-in | The dedicated server runs the Null subsystem and only accepts its own id type. `[/Script/OnlineSubsystemUtils.OnlineEngineInterfaceImpl] +CompatibleUniqueNetIdTypes=EOS` (DefaultEngine.ini; `LaunchDedicatedServer.bat` and `docker/entrypoint.sh` also pass it as `-ini:` for servers packaged before the line existed). |
+| Server log: `EOS: UEOSSettings::GetSelectedArtifactSettings ... no settings found` / `Unable to create OnlineSubsystem instance EOS` right before `Login request ... platform: EOS` | Cosmetic. When an EOS-typed player id arrives, the engine asks for an EOS subsystem instance on the (Null) server to interpret it; packaged servers have no EOS artifact settings, so it fails and the engine falls back to a generic id. The login still succeeds (`Join succeeded`). |
 | `GameLift Fleet ID or Alias ID is not configured` | Set `FleetId` in `Config/UserGame.ini`, pass `-GameLiftFleetId=fleet-...`, or export `GAMELIFT_SDK_FLEET_ID`. |
 | `No GameLift API Endpoint URL or AWS credentials found` | Export `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (or set them in `Config/UserGame.ini`) for non-Shipping builds, or configure `ApiEndpointUrl`. |
 | `GameLift error (400): Unable to reserve a process (No active and available server processes found on the fleet)` | Either no server process has completed `ActivateServerProcess` (check `Server.log` for `ActivateServerProcess acknowledged`), or the only process is still attached to an earlier game session. With **Exit Process When Session Empty** on, the server exits a few seconds after its last player leaves and the launch script / fleet restarts it; if you turned that off, restart the server by hand. |

@@ -33,4 +33,5 @@ exec "$BIN" FrontendUI "$MAP" \
     -log -stdout -FullStdOutLogOutput -unattended -NullRHI "-port=$PORT" \
     "-ini:Game:[/Script/FrontendMultiplayer.FrontendMultiplayerSettings]:SessionBackendClass=$BACKEND" \
     "-ini:Game:[/Script/GameUI.GameUIDeveloperSettings]:bAutoStartWhenAllReady=True" \
+    "-ini:Engine:[/Script/OnlineSubsystemUtils.OnlineEngineInterfaceImpl]:CompatibleUniqueNetIdTypes=EOS" \
     ${SERVER_EXTRA_ARGS:-} "$@"

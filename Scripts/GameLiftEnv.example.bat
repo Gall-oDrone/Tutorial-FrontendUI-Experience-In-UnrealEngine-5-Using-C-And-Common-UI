@@ -25,3 +25,6 @@ REM Optional: route the client's GameLift calls through the API Gateway + Lambda
 REM (Docs/GameLift.md section 6) instead of signing them with your own AWS keys. This is
 REM what Shipping builds use; setting it here lets you exercise the same path in Development.
 REM if not defined GAMELIFT_ENDPOINT_URL  set "GAMELIFT_ENDPOINT_URL=https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/"
+REM Optional: sign each client window in with EOS (Dev Auth Tool, like EOS mode) and use the
+REM GameLiftEOS backend so the proxy can authenticate players (Docs/GameLift.md section 6).
+REM if not defined GAMELIFT_AUTH          set "GAMELIFT_AUTH=EOS"

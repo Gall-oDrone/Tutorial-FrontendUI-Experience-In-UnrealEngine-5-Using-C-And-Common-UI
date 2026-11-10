@@ -14,6 +14,7 @@ UFrontendSessionBackend (abstract) ─────┘
         ├── UFrontendSessionBackend_Stub          simulated, no networking             (FrontendMultiplayer)
         ├── UFrontendSessionBackend_FixedAddress  single dedicated server IP:port      (FrontendMultiplayer)
         ├── UFrontendSessionBackend_GameLift      Amazon GameLift Anywhere / Container (FrontendMultiplayer)
+        │       └── UFrontendSessionBackend_GameLiftEOS  + EOS sign-in, token to the proxy (FrontendMultiplayerOSS)
         └── UFrontendSessionBackend_OSS           IOnlineSession: Null/Steam/EOS       (FrontendMultiplayerOSS)
 ```
 
@@ -121,6 +122,7 @@ Equivalent manual command, run twice:
 | **Steam** | Enable `OnlineSubsystemSteam`; `DefaultPlatformService=Steam`; add the `[OnlineSubsystemSteam]` block (`bEnabled`, `SteamDevAppId=480`) and the Steam net driver definition. Steam signs in through the running client, so the credential chain is a no-op. No code change. |
 | **Dedicated server at a known address** | Already wired: `UFrontendSessionBackend_FixedAddress` (this module, no OSS needed). Host and Join both connect to **Project Settings → Game → Frontend Multiplayer Fixed Address → Server Address** (or `-ServerAddress=host:port`); Find returns that one row. `LaunchInstances.bat 2 DEDICATED` selects it per launch. [Docs/DedicatedServer.md](../../../Docs/DedicatedServer.md). |
 | **GameLift** | Already wired: `UFrontendSessionBackend_GameLift` (this module, zero external SDK binaries). Speaks GameLift JSON-RPC 1.1 (`CreateGameSession`, `DescribeGameSessions`, `CreatePlayerSession`) on the client and the GameLift Server SDK 5.x WebSocket protocol on `-server`. `LaunchDedicatedServer.bat 7777 GAMELIFT` and `LaunchInstances.bat 2 GAMELIFT` select it per launch. [Docs/GameLift.md](../../../Docs/GameLift.md). |
+| **GameLift + EOS identity** | `UFrontendSessionBackend_GameLiftEOS` (FrontendMultiplayerOSS) derives from the GameLift backend and adds the sign-in the Shipping path needs: local user 0 is logged in on EOS first (same credential chain as the OSS backend, shared in `FrontendOSSCredentials`), and the EOS access token travels as `Authorization: Bearer` to `ApiEndpointUrl`, where the proxy verifies it with Epic. `set GAMELIFT_AUTH=EOS` before `LaunchInstances.bat 2 GAMELIFT`. [Docs/GameLift.md §6](../../../Docs/GameLift.md). |
 
 ## Writing your own backend
 

@@ -114,8 +114,12 @@ if "%AWS_ACCESS_KEY_ID%"=="" (
 ) else (
 	echo AWS credentials: present ^(key id ends in %AWS_ACCESS_KEY_ID:~-4%^)
 )
-if "%GAMELIFT_SDK_FLEET_ID%"=="" if "%GAMELIFT_FLEET_ID%"=="" echo WARNING: GAMELIFT_SDK_FLEET_ID is not set; the client cannot target a fleet.
-echo GameLift: region=%AWS_REGION%%GAMELIFT_REGION% fleet=%GAMELIFT_SDK_FLEET_ID% location=%GAMELIFT_LOCATION%
+if "%GAMELIFT_SDK_FLEET_ID%"=="" if "%GAMELIFT_FLEET_ID%"=="" if "%GAMELIFT_ALIAS_ID%"=="" echo WARNING: GAMELIFT_SDK_FLEET_ID / GAMELIFT_ALIAS_ID is not set; the client cannot target a fleet.
+echo GameLift: region=%AWS_REGION%%GAMELIFT_REGION% fleet=%GAMELIFT_SDK_FLEET_ID% alias=%GAMELIFT_ALIAS_ID% location=%GAMELIFT_LOCATION%
+if not "%GAMELIFT_ENDPOINT_URL%"=="" echo GameLift: calls go through the proxy %GAMELIFT_ENDPOINT_URL%
+REM GAMELIFT_AUTH=EOS: sign each window in with its own Dev Auth Tool user (like EOS mode) and
+REM use the GameLiftEOS backend, which sends the EOS token to the proxy as a Bearer header.
+if /i "%GAMELIFT_AUTH%"=="EOS" echo GameLift: EOS identity on (Dev Auth Tool at %DEVAUTH_HOST%, backend FrontendSessionBackend_GameLiftEOS)
 
 :launch
 echo Launching %COUNT% instance(s) in %MODE% mode (%BUILD%).
@@ -132,6 +136,7 @@ for /l %%i in (1,1,%COUNT%) do (
 	)
 	if /i "%MODE%"=="GAMELIFT" (
 		set "EXTRA=-ini:Game:[/Script/FrontendMultiplayer.FrontendMultiplayerSettings]:SessionBackendClass=/Script/FrontendMultiplayer.FrontendSessionBackend_GameLift"
+		if /i "%GAMELIFT_AUTH%"=="EOS" set "EXTRA=-ini:Game:[/Script/FrontendMultiplayer.FrontendMultiplayerSettings]:SessionBackendClass=/Script/FrontendMultiplayerOSS.FrontendSessionBackend_GameLiftEOS -ini:Engine:[OnlineSubsystem]:DefaultPlatformService=EOS -AUTH_TYPE=developer -AUTH_LOGIN=%DEVAUTH_HOST% -AUTH_PASSWORD=User%%i"
 	)
 	start "FrontendUI instance %%i (%MODE%, %BUILD%)" !LAUNCH! -windowed -ResX=1280 -ResY=720 -WinX=!X! -WinY=60 -log -LOG=Instance%%i.log !EXTRA!
 	set /a X+=1300

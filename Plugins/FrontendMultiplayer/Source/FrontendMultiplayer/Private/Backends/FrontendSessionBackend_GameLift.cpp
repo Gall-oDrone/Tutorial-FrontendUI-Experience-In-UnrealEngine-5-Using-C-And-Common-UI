@@ -1222,6 +1222,13 @@ void UFrontendSessionBackend_GameLift::SendGameLiftRequest(const FString& Target
 		HttpRequest->SetURL(ProxyUrl);
 		HttpRequest->SetHeader(TEXT("Content-Type"), TEXT("application/x-amz-json-1.1"));
 		HttpRequest->SetHeader(TEXT("X-Amz-Target"), TargetAction);
+		// Player identity for the proxy (EOS access token on the GameLiftEOS backend). The
+		// proxy decides whether it is required; sending it to GameLift directly would be wrong.
+		const FString BearerToken = GetClientAuthToken();
+		if (!BearerToken.IsEmpty())
+		{
+			HttpRequest->SetHeader(TEXT("Authorization"), TEXT("Bearer ") + BearerToken);
+		}
 	}
 	else
 	{
