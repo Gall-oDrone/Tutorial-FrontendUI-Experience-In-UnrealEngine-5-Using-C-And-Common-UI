@@ -520,6 +520,7 @@ $40, e-mail at 50/80/100 % actual and 100 % forecast) is the safety net; the com
 
 | Symptom | Cause / Fix |
 |---|---|
+| `incompatible_unique_net_id` (client `PendingConnectionFailure`) right after the EOS sign-in | The dedicated server runs the Null subsystem and only accepts its own id type. `[/Script/OnlineSubsystemUtils.OnlineEngineInterfaceImpl] +CompatibleUniqueNetIdTypes=EOS` (DefaultEngine.ini; `LaunchDedicatedServer.bat` and `docker/entrypoint.sh` also pass it as `-ini:` for servers packaged before the line existed). |
 | `GameLift Fleet ID or Alias ID is not configured` | Set `FleetId` in `Config/UserGame.ini`, pass `-GameLiftFleetId=fleet-...`, or export `GAMELIFT_SDK_FLEET_ID`. |
 | `No GameLift API Endpoint URL or AWS credentials found` | Export `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (or set them in `Config/UserGame.ini`) for non-Shipping builds, or configure `ApiEndpointUrl`. |
 | `GameLift error (400): Unable to reserve a process (No active and available server processes found on the fleet)` | Either no server process has completed `ActivateServerProcess` (check `Server.log` for `ActivateServerProcess acknowledged`), or the only process is still attached to an earlier game session. With **Exit Process When Session Empty** on, the server exits a few seconds after its last player leaves and the launch script / fleet restarts it; if you turned that off, restart the server by hand. |

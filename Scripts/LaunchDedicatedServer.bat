@@ -53,10 +53,13 @@ REM Both processes read the same project settings; the override makes the server
 REM UFrontendMultiplayerSubsystem answer GetActiveSessionInfo with the FixedAddress or
 REM GameLift session title and player cap, which the lobby shows to every client.
 set "BACKEND=-ini:Game:[/Script/FrontendMultiplayer.FrontendMultiplayerSettings]:SessionBackendClass=/Script/FrontendMultiplayer.FrontendSessionBackend_FixedAddress"
+REM Accept EOS-signed-in clients on this Null-subsystem server (also in DefaultEngine.ini; the
+REM override covers packaged servers staged before that line existed).
+set "BACKEND=%BACKEND% -ini:Engine:[/Script/OnlineSubsystemUtils.OnlineEngineInterfaceImpl]:CompatibleUniqueNetIdTypes=EOS"
 if /i not "%MODE%"=="GAMELIFT" goto :resolve_exe
 
 REM ---- GAMELIFT ---------------------------------------------------------------------
-set "BACKEND=-ini:Game:[/Script/FrontendMultiplayer.FrontendMultiplayerSettings]:SessionBackendClass=/Script/FrontendMultiplayer.FrontendSessionBackend_GameLift"
+set "BACKEND=-ini:Game:[/Script/FrontendMultiplayer.FrontendMultiplayerSettings]:SessionBackendClass=/Script/FrontendMultiplayer.FrontendSessionBackend_GameLift -ini:Engine:[/Script/OnlineSubsystemUtils.OnlineEngineInterfaceImpl]:CompatibleUniqueNetIdTypes=EOS"
 
 if "%GAMELIFT_SDK_WEBSOCKET_URL%"=="" echo WARNING: GAMELIFT_SDK_WEBSOCKET_URL is not set; the server will run without GameLift.
 if "%GAMELIFT_SDK_FLEET_ID%"=="" echo WARNING: GAMELIFT_SDK_FLEET_ID is not set.
