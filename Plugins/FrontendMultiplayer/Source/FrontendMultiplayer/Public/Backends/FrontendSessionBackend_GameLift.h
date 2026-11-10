@@ -87,9 +87,11 @@ public:
 	/**
 	 * Seconds to poll DescribeGameSessionPlacement before giving up on a queued Host. Should be
 	 * a little above the queue's own TimeoutInSeconds so GameLift's TIMED_OUT verdict is seen.
+	 * Measured 2026-11-10: a cold scale-out on a container fleet (new instance -> container ->
+	 * ActivateServerProcess) took ~7 min, so the dev queue uses 480 s and this 510 s.
 	 */
-	UPROPERTY(Config, EditAnywhere, Category = "Client", meta = (ClampMin = "5", UIMin = "5", UIMax = "600"))
-	float PlacementTimeoutSeconds = 150.f;
+	UPROPERTY(Config, EditAnywhere, Category = "Client", meta = (ClampMin = "5", UIMin = "5", UIMax = "900"))
+	float PlacementTimeoutSeconds = 510.f;
 
 	/**
 	 * How long Host keeps retrying CreateGameSession (every 5 s) while GameLift answers

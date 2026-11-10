@@ -499,10 +499,19 @@ aws gamelift create-game-session-queue --name frontendui-dev --timeout-in-second
 ```
 
 Client: `GameSessionQueueName=frontendui-dev` (`-GameLiftQueue=`, `GAMELIFT_QUEUE_NAME`). Host
-then uses placement; Find / Join are unchanged (alias/fleet + `CreatePlayerSession`). With a
-container fleet behind the alias and min 1 / max 2 instances, two Hosts in a row show the
-difference: the second placement stays `PENDING` while auto-scaling adds an instance (~2-3 min)
-and then fulfils, where `CreateGameSession` would have given up.
+then uses placement; Find / Join are unchanged (alias/fleet + `CreatePlayerSession`).
+
+Verified 2026-11-10 from the CLI against a `c6i.large` container fleet (min 1 / max 2, target
+50 % available sessions, `container-fleet.sh create`): placement #1 `FULFILLED` in < 15 s with
+IP, port and the reserved player session; placement #2, issued while the only container was
+busy, stayed `PENDING` and **timed out at the queue's original 120 s** - target tracking had not
+added the instance yet. Measured separately: from "0 % available" to the second instance
+`ACTIVE` with an idle container took **409 s (~7 min)**; a placement issued then fulfilled in
+< 5 s. Consequences baked into the defaults: queue timeout **480 s**,
+`PlacementTimeoutSeconds` **510 s**, and - the real fix - size fleets so the scaling signal
+fires *before* the last slot is used (min 2 instances, or 2+ sessions per instance with a
+larger CGD), so players rarely wait on a cold scale-out. `CreateGameSession` would have failed
+outright in the same situation.
 
 ---
 
