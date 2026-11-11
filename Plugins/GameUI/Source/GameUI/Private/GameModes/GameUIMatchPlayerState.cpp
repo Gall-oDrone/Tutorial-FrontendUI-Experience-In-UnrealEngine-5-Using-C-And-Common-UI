@@ -52,6 +52,17 @@ void AGameUIMatchPlayerState::SetIsHost(bool bInIsHost)
 	BroadcastLobbyFlagsChanged();
 }
 
+void AGameUIMatchPlayerState::OnRep_PlayerName()
+{
+	Super::OnRep_PlayerName();
+
+	// A joining player's state usually replicates a frame or two before its PlayerName does,
+	// and nothing else refreshes the lobby until the next ready / join / leave event - the row
+	// sat blank for 17 s in one test log. Same notification as the lobby flags: the game state
+	// rebroadcasts and the lobby screen re-reads the list.
+	BroadcastLobbyFlagsChanged();
+}
+
 void AGameUIMatchPlayerState::OnRep_LobbyFlags()
 {
 	BroadcastLobbyFlagsChanged();

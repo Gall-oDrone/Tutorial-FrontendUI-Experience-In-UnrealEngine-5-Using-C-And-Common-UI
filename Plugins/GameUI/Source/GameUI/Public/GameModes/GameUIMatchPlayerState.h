@@ -43,6 +43,8 @@ protected:
 
 	//~ Begin APlayerState Interface
 	virtual void CopyProperties(APlayerState* PlayerState) override;
+	/** The state can replicate before its name; refresh the lobby row when the name arrives. */
+	virtual void OnRep_PlayerName() override;
 	//~ End APlayerState Interface
 
 	UFUNCTION()
