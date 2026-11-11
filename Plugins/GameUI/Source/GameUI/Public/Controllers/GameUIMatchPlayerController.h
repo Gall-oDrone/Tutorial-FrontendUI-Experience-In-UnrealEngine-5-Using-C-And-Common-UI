@@ -47,6 +47,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Game UI|Lobby")
 	void SetReady(bool bReady);
 
+	/**
+	 * Flip the ready flag on the server. Unlike SetReady(!IsReady()) on the client, two quick
+	 * clicks before the first change has replicated back still count as two toggles.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Game UI|Lobby")
 	void ToggleReady();
 
@@ -77,6 +81,9 @@ protected:
 
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerSetReady(bool bReady);
+
+	UFUNCTION(Server, Reliable, WithValidation)
+	void ServerToggleReady();
 
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerRequestStartMatch();

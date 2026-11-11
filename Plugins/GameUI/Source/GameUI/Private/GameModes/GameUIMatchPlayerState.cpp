@@ -3,6 +3,7 @@
 
 #include "GameModes/GameUIMatchPlayerState.h"
 #include "GameModes/GameUIMatchGameState.h"
+#include "GameUILog.h"
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 
@@ -35,6 +36,7 @@ void AGameUIMatchPlayerState::SetReady(bool bInReady)
 	}
 
 	bIsReady = bInReady;
+	UE_LOG(LogGameUI, Log, TEXT("lobby: %s is %s"), *GetPlayerName(), bIsReady ? TEXT("ready") : TEXT("not ready"));
 	// OnRep is not called on the server; notify listeners here so server and client paths match.
 	BroadcastLobbyFlagsChanged();
 }
