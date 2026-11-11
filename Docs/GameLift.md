@@ -378,7 +378,9 @@ Notes learned the hard way:
   ```
   Only the default interactive SSM document is allowed by the returned session policy.
 - `GameServerContainerGroupsPerInstance` is computed by GameLift from the CGD limits; a
-  1 vCPU / 2 GiB group on c6i.large yields **1** concurrent session per instance.
+  1 vCPU / 2 GiB group yields **1** concurrent session per instance on `c6i.large` and **3** on
+  `c6i.xlarge` (measured 2026-11-11). At ~1.9x the hourly price that is 3x the sessions, and
+  it is what makes target-tracking usable (§6).
 - Fleet-level `--instance-inbound-permissions` must cover the whole
   `--instance-connection-port-range`, otherwise clients get the IP/port but UDP is dropped.
 - A new image needs a new CGD *version* (`update-container-group-definition`) and then
@@ -511,9 +513,21 @@ added the instance yet. Measured separately: from "0 % available" to the second 
 `ACTIVE` with an idle container took **409 s (~7 min)**; a placement issued then fulfilled in
 < 5 s. Consequences baked into the defaults: queue timeout **480 s**,
 `PlacementTimeoutSeconds` **510 s**, and - the real fix - size fleets so the scaling signal
-fires *before* the last slot is used (min 2 instances, or 2+ sessions per instance with a
-larger CGD), so players rarely wait on a cold scale-out. `CreateGameSession` would have failed
-outright in the same situation.
+fires *before* the last slot is used, so players rarely wait on a cold scale-out.
+`CreateGameSession` would have failed outright in the same situation.
+
+**Fleet shape (measured 2026-11-11).** The same 1 vCPU / 2 GiB CGD on **`c6i.xlarge`** gives
+**3 sessions per instance** (`GameServerContainerGroupsPerInstance`), i.e. 3x the sessions for
+~1.9x the price of `c6i.large`, and one instance at min 1 is cheaper than two `c6i.large` at
+min 2 while offering 3 slots instead of 2. With min 1 / max 2 / target 50 %: two placements
+issued back to back both `FULFILLED` in **1.9 s** on the same instance (ports 7777 / 7778, each
+with its reserved player session); that left 1 of 3 slots free (33 % < 50 %), and the second
+instance was `ACTIVE` with 3 more idle containers **between +392 s and +519 s** - the same ~7 min
+as before, but this time *in the background, with a slot still open for the next player*. Two
+quirks to know: the target-tracking adjustment does **not** show up in
+`describe-fleet-location-capacity`'s `InstanceCounts.DESIRED` (it stayed 1 while `ACTIVE` read 2;
+watch `ACTIVE` and the container counts instead) and emits no `FLEET_SCALING_EVENT`. This is
+now the default of `container-fleet.sh create` (`--instance-type c6i.xlarge`).
 
 Verified 2026-11-11 from Launcher clients (`GAMELIFT_ENDPOINT_URL` + `GAMELIFT_AUTH=EOS` +
 `GAMELIFT_QUEUE_NAME=frontendui-dev`, packaged Windows server on the Anywhere fleet behind the
@@ -549,7 +563,8 @@ session-ownership check.
 | UE 5.6 source snapshot, 500 GB | $25/mo standard tier, **$6.25/mo archive** | always; restore to standard costs ~$12.60 one-off and lasts the days you ask for |
 | Build-box AMI snapshot, 100 GB | $5/mo | always |
 | Build box `c6i.4xlarge` + 500 GB gp3 + **NAT Gateway** | ≈ $0.68/h + $0.05/h + **$0.045/h** | only while `environments/dev` exists — the NAT gateway is the one people forget |
-| Container fleet `c6i.large` | ≈ $0.09/h | only while the fleet exists |
+| Container fleet `c6i.large` (1 session / instance) | ≈ $0.09/h | only while the fleet exists |
+| Container fleet `c6i.xlarge` (3 sessions / instance, the `container-fleet.sh` default) | ≈ $0.17/h | only while the fleet exists |
 | Anywhere fleet, ECR (≤ 5 images), CGD, IAM, alias | $0 | — |
 | Proxy (HTTP API + Lambda) | ≈ $0 at tutorial volume | always |
 
