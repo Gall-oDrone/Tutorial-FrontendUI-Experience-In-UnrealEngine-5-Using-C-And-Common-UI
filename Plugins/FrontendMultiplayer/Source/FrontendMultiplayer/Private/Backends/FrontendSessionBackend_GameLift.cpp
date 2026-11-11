@@ -403,6 +403,15 @@ FString UFrontendGameLiftSettings::ResolveLocation() const
 		Location);
 }
 
+FString UFrontendGameLiftSettings::ResolveGameSessionQueueName() const
+{
+	return ResolveSettingWithOverrides(
+		TEXT("GameLiftQueue="),
+		TEXT("GAMELIFT_QUEUE_NAME"),
+		nullptr,
+		GameSessionQueueName);
+}
+
 FString UFrontendGameLiftSettings::ResolveApiEndpointUrl() const
 {
 	return ResolveSettingWithOverrides(
@@ -502,11 +511,12 @@ void UFrontendSessionBackend_GameLift::Initialize(UFrontendMultiplayerSubsystem*
 
 	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
 	const FString Proxy = Settings->ResolveApiEndpointUrl();
-	LogDebug(FString::Printf(TEXT("[gamelift] backend ready: region=%s fleet=%s alias=%s location=%s endpoint=%s"),
+	LogDebug(FString::Printf(TEXT("[gamelift] backend ready: region=%s fleet=%s alias=%s location=%s queue=%s endpoint=%s"),
 		*Settings->ResolveAwsRegion(),
 		*Settings->ResolveFleetId(),
 		*Settings->ResolveAliasId(),
 		*Settings->ResolveLocation(),
+		*Settings->ResolveGameSessionQueueName(),
 		Proxy.IsEmpty() ? TEXT("direct (SigV4)") : *Proxy));
 
 	// On a dedicated server the WebSocket is opened from OnWorldLoaded, once the match map
@@ -557,9 +567,10 @@ void UFrontendSessionBackend_GameLift::CreateSession(FName SessionName, int32 Ma
 	CancelPendingClientRequests();
 
 	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
-	if (Settings->ResolveFleetId().IsEmpty() && Settings->ResolveAliasId().IsEmpty())
+	const FString QueueName = Settings->ResolveGameSessionQueueName();
+	if (QueueName.IsEmpty() && Settings->ResolveFleetId().IsEmpty() && Settings->ResolveAliasId().IsEmpty())
 	{
-		LogDebug(TEXT("[gamelift] CreateSession: no FleetId or AliasId configured"));
+		LogDebug(TEXT("[gamelift] CreateSession: no FleetId, AliasId or GameSessionQueueName configured"));
 		ReportSessionCreated(false, LOCTEXT("MissingFleetOrAlias",
 			"GameLift Fleet ID or Alias ID is not configured. Set it in Project Settings > Game > Frontend Multiplayer GameLift or pass -GameLiftFleetId=fleet-..."));
 		return;
@@ -570,8 +581,202 @@ void UFrontendSessionBackend_GameLift::CreateSession(FName SessionName, int32 Ma
 	CreateRetryAttempts = 0;
 	CreateRetryDeadlineSeconds = FPlatformTime::Seconds() + static_cast<double>(FMath::Max(0.f, Settings->CreateSessionRetryTimeoutSeconds));
 
+	if (!QueueName.IsEmpty())
+	{
+		LogDebug(FString::Printf(TEXT("[gamelift] StartGameSessionPlacement '%s' (%d players) on queue %s"), *PendingCreateDisplayName, PendingCreateMaxPlayers, *QueueName));
+		SendStartGameSessionPlacementRequest();
+		return;
+	}
+
 	LogDebug(FString::Printf(TEXT("[gamelift] CreateGameSession '%s' (%d players)"), *PendingCreateDisplayName, PendingCreateMaxPlayers));
 	SendCreateGameSessionRequest();
+}
+
+void UFrontendSessionBackend_GameLift::SendStartGameSessionPlacementRequest()
+{
+	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
+	const UFrontendMultiplayerSettings* MpSettings = UFrontendMultiplayerSettings::Get();
+	const FString MapLeaf = MpSettings->HostMap.IsNull() ? FString(TEXT("L_MatchTest")) : MpSettings->HostMap.GetAssetName();
+	const FString PlayerId = BuildLocalPlayerId();
+
+	// PlacementId: [a-zA-Z0-9-], <= 48 chars; GameLift dedupes on it, so it is fresh per attempt.
+	PendingPlacementId = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower);
+	PlacementPollDeadlineSeconds = FPlatformTime::Seconds() + static_cast<double>(FMath::Max(5.f, Settings->PlacementTimeoutSeconds));
+	bPlacementPollRequestInFlight = false;
+
+	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("PlacementId"), PendingPlacementId);
+	Payload->SetStringField(TEXT("GameSessionQueueName"), Settings->ResolveGameSessionQueueName());
+	Payload->SetStringField(TEXT("GameSessionName"), PendingCreateDisplayName);
+	Payload->SetNumberField(TEXT("MaximumPlayerSessionCount"), PendingCreateMaxPlayers);
+
+	TArray<TSharedPtr<FJsonValue>> GameProperties;
+	{
+		TSharedRef<FJsonObject> HostProp = MakeShared<FJsonObject>();
+		HostProp->SetStringField(TEXT("Key"), TEXT("HostName"));
+		HostProp->SetStringField(TEXT("Value"), PlayerId);
+		GameProperties.Add(MakeShared<FJsonValueObject>(HostProp));
+
+		TSharedRef<FJsonObject> MapProp = MakeShared<FJsonObject>();
+		MapProp->SetStringField(TEXT("Key"), TEXT("MapName"));
+		MapProp->SetStringField(TEXT("Value"), MapLeaf);
+		GameProperties.Add(MakeShared<FJsonValueObject>(MapProp));
+	}
+	Payload->SetArrayField(TEXT("GameProperties"), GameProperties);
+
+	// The host's own slot is reserved as part of the placement; no separate CreatePlayerSession.
+	TArray<TSharedPtr<FJsonValue>> DesiredPlayers;
+	{
+		TSharedRef<FJsonObject> Me = MakeShared<FJsonObject>();
+		Me->SetStringField(TEXT("PlayerId"), PlayerId);
+		DesiredPlayers.Add(MakeShared<FJsonValueObject>(Me));
+	}
+	Payload->SetArrayField(TEXT("DesiredPlayerSessions"), DesiredPlayers);
+
+	TWeakObjectPtr<ThisClass> WeakThis(this);
+	SendGameLiftRequest(TEXT("GameLift.StartGameSessionPlacement"), Payload,
+		[WeakThis](bool bSuccess, TSharedPtr<FJsonObject> ResponseObject, const FText& ErrorText)
+		{
+			ThisClass* Self = WeakThis.Get();
+			if (!Self || Self->PendingPlacementId.IsEmpty())
+			{
+				return;
+			}
+			if (!bSuccess || !ResponseObject.IsValid())
+			{
+				Self->CancelPendingClientRequests();
+				Self->ReportSessionCreated(false, ErrorText);
+				return;
+			}
+			const TSharedPtr<FJsonObject>* PlacementObj = nullptr;
+			if (!ResponseObject->TryGetObjectField(TEXT("GameSessionPlacement"), PlacementObj) || !PlacementObj || !PlacementObj->IsValid())
+			{
+				Self->CancelPendingClientRequests();
+				Self->ReportSessionCreated(false, LOCTEXT("MissingPlacementField", "GameLift response did not contain a GameSessionPlacement object."));
+				return;
+			}
+			// Usually PENDING here; FULFILLED straight away is possible on a warm fleet.
+			Self->HandlePlacementObject(*PlacementObj);
+			if (!Self->PendingPlacementId.IsEmpty())
+			{
+				Self->PlacementPollTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+					FTickerDelegate::CreateUObject(Self, &ThisClass::HandlePlacementPollTick), 2.0f);
+			}
+		});
+}
+
+bool UFrontendSessionBackend_GameLift::HandlePlacementPollTick(float /*DeltaTime*/)
+{
+	PollGameSessionPlacement();
+	return !PendingPlacementId.IsEmpty();
+}
+
+void UFrontendSessionBackend_GameLift::PollGameSessionPlacement()
+{
+	if (PendingPlacementId.IsEmpty() || bPlacementPollRequestInFlight)
+	{
+		return;
+	}
+	if (FPlatformTime::Seconds() > PlacementPollDeadlineSeconds)
+	{
+		LogDebug(FString::Printf(TEXT("[gamelift] placement %s not fulfilled in time"), *PendingPlacementId));
+		CancelPendingClientRequests();
+		ReportSessionCreated(false, LOCTEXT("PlacementClientTimeout",
+			"GameLift did not find a game server in time. The queue has no destination with free capacity; check the fleet's auto-scaling and that a server process is connected."));
+		return;
+	}
+
+	bPlacementPollRequestInFlight = true;
+	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("PlacementId"), PendingPlacementId);
+
+	TWeakObjectPtr<ThisClass> WeakThis(this);
+	SendGameLiftRequest(TEXT("GameLift.DescribeGameSessionPlacement"), Payload,
+		[WeakThis](bool bSuccess, TSharedPtr<FJsonObject> ResponseObject, const FText& ErrorText)
+		{
+			ThisClass* Self = WeakThis.Get();
+			if (!Self)
+			{
+				return;
+			}
+			Self->bPlacementPollRequestInFlight = false;
+			if (Self->PendingPlacementId.IsEmpty())
+			{
+				return; // cancelled while in flight
+			}
+			if (!bSuccess || !ResponseObject.IsValid())
+			{
+				Self->CancelPendingClientRequests();
+				Self->ReportSessionCreated(false, ErrorText);
+				return;
+			}
+			const TSharedPtr<FJsonObject>* PlacementObj = nullptr;
+			if (ResponseObject->TryGetObjectField(TEXT("GameSessionPlacement"), PlacementObj) && PlacementObj && PlacementObj->IsValid())
+			{
+				Self->HandlePlacementObject(*PlacementObj);
+			}
+		});
+}
+
+void UFrontendSessionBackend_GameLift::HandlePlacementObject(const TSharedPtr<FJsonObject>& PlacementObject)
+{
+	FString Status;
+	PlacementObject->TryGetStringField(TEXT("Status"), Status);
+
+	if (Status.Equals(TEXT("PENDING"), ESearchCase::IgnoreCase))
+	{
+		return; // keep polling
+	}
+
+	if (!Status.Equals(TEXT("FULFILLED"), ESearchCase::IgnoreCase))
+	{
+		LogDebug(FString::Printf(TEXT("[gamelift] placement %s ended as %s"), *PendingPlacementId, *Status));
+		CancelPendingClientRequests();
+		const FText Reason = Status.Equals(TEXT("TIMED_OUT"), ESearchCase::IgnoreCase)
+			? LOCTEXT("PlacementTimedOut", "GameLift could not find a game server within the queue's timeout. Try again in a moment - the fleet may still be scaling up.")
+			: FText::Format(LOCTEXT("PlacementFailedFmt", "GameLift game session placement ended with status {0}."), FText::FromString(Status));
+		ReportSessionCreated(false, Reason);
+		return;
+	}
+
+	FString GameSessionArn;
+	FString IpAddress;
+	int32 Port = 0;
+	FString PlayerSessionId;
+	PlacementObject->TryGetStringField(TEXT("GameSessionArn"), GameSessionArn);
+	PlacementObject->TryGetStringField(TEXT("IpAddress"), IpAddress);
+	PlacementObject->TryGetNumberField(TEXT("Port"), Port);
+	const TArray<TSharedPtr<FJsonValue>>* Placed = nullptr;
+	if (PlacementObject->TryGetArrayField(TEXT("PlacedPlayerSessions"), Placed) && Placed && Placed->Num() > 0)
+	{
+		const TSharedPtr<FJsonObject> First = (*Placed)[0]->AsObject();
+		if (First.IsValid())
+		{
+			First->TryGetStringField(TEXT("PlayerSessionId"), PlayerSessionId);
+		}
+	}
+
+	const FString DisplayName = PendingCreateDisplayName;
+	const int32 MaxPlayers = PendingCreateMaxPlayers;
+	const FString PlacementId = PendingPlacementId;
+	CancelPendingClientRequests();
+
+	if (IpAddress.IsEmpty() || Port <= 0)
+	{
+		ReportSessionCreated(false, LOCTEXT("PlacementNoEndpoint", "GameLift placement was fulfilled without an IP address and port."));
+		return;
+	}
+
+	ActiveGameSessionId = GameSessionArn;
+	ActivePlayerSessionId = PlayerSessionId;
+	ActiveSessionDisplayName = DisplayName;
+	ActiveSessionMaxPlayers = MaxPlayers;
+
+	const FString ConnectAddress = PlayerSessionId.IsEmpty()
+		? FString::Printf(TEXT("%s:%d"), *IpAddress, Port)
+		: FString::Printf(TEXT("%s:%d?PlayerSessionId=%s"), *IpAddress, Port, *FGenericPlatformHttp::UrlEncode(PlayerSessionId));
+	LogDebug(FString::Printf(TEXT("[gamelift] placement %s FULFILLED -> %s; travelling to %s"), *PlacementId, *GameSessionArn, *ConnectAddress));
+	ReportSessionCreatedRemote(ConnectAddress);
 }
 
 void UFrontendSessionBackend_GameLift::SendCreateGameSessionRequest()
@@ -1329,6 +1534,15 @@ void UFrontendSessionBackend_GameLift::CancelPendingClientRequests()
 	PendingActivationMaxPlayers = 0;
 	ActivationPollDeadlineSeconds = 0.0;
 	bActivationPollRequestInFlight = false;
+
+	if (PlacementPollTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(PlacementPollTickerHandle);
+		PlacementPollTickerHandle.Reset();
+	}
+	PendingPlacementId.Reset();
+	PlacementPollDeadlineSeconds = 0.0;
+	bPlacementPollRequestInFlight = false;
 
 	if (ActiveHttpRequest.IsValid())
 	{

@@ -28,3 +28,8 @@ REM if not defined GAMELIFT_ENDPOINT_URL  set "GAMELIFT_ENDPOINT_URL=https://xxx
 REM Optional: sign each client window in with EOS (Dev Auth Tool, like EOS mode) and use the
 REM GameLiftEOS backend so the proxy can authenticate players (Docs/GameLift.md section 6).
 REM if not defined GAMELIFT_AUTH          set "GAMELIFT_AUTH=EOS"
+
+REM Optional: Host through a GameLift game session queue (StartGameSessionPlacement) instead of
+REM CreateGameSession on the fleet/alias - GameLift waits for capacity (auto-scaling, several
+REM fleets) and reserves the host slot in the same call. Find/Join keep using the alias/fleet.
+REM if not defined GAMELIFT_QUEUE_NAME    set "GAMELIFT_QUEUE_NAME=frontendui-dev"

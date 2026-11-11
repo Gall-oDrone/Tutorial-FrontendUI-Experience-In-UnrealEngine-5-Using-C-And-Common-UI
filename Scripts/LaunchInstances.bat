@@ -117,6 +117,7 @@ if "%AWS_ACCESS_KEY_ID%"=="" (
 if "%GAMELIFT_SDK_FLEET_ID%"=="" if "%GAMELIFT_FLEET_ID%"=="" if "%GAMELIFT_ALIAS_ID%"=="" echo WARNING: GAMELIFT_SDK_FLEET_ID / GAMELIFT_ALIAS_ID is not set; the client cannot target a fleet.
 echo GameLift: region=%AWS_REGION%%GAMELIFT_REGION% fleet=%GAMELIFT_SDK_FLEET_ID% alias=%GAMELIFT_ALIAS_ID% location=%GAMELIFT_LOCATION%
 if not "%GAMELIFT_ENDPOINT_URL%"=="" echo GameLift: calls go through the proxy %GAMELIFT_ENDPOINT_URL%
+if not "%GAMELIFT_QUEUE_NAME%"=="" echo GameLift: Host uses queue %GAMELIFT_QUEUE_NAME% (StartGameSessionPlacement)
 REM GAMELIFT_AUTH=EOS: sign each window in with its own Dev Auth Tool user (like EOS mode) and
 REM use the GameLiftEOS backend, which sends the EOS token to the proxy as a Bearer header.
 if /i "%GAMELIFT_AUTH%"=="EOS" echo GameLift: EOS identity on (Dev Auth Tool at %DEVAUTH_HOST%, backend FrontendSessionBackend_GameLiftEOS)
