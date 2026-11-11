@@ -508,8 +508,9 @@ void AGameUIMatchPlayerController::SetReady(bool bReady)
 
 void AGameUIMatchPlayerController::ToggleReady()
 {
-	const AGameUIMatchPlayerState* MatchPlayerState = GetPlayerState<AGameUIMatchPlayerState>();
-	ServerSetReady(!(MatchPlayerState && MatchPlayerState->IsReady()));
+	// Flipped on the server: deriving the new value from the replicated flag here would send the
+	// same value twice when a second click lands before the first change has replicated back.
+	ServerToggleReady();
 }
 
 void AGameUIMatchPlayerController::RequestStartMatch()
@@ -540,6 +541,19 @@ void AGameUIMatchPlayerController::ServerSetReady_Implementation(bool bReady)
 	if (AGameUIMatchPlayerState* MatchPlayerState = GetPlayerState<AGameUIMatchPlayerState>())
 	{
 		MatchPlayerState->SetReady(bReady);
+	}
+}
+
+bool AGameUIMatchPlayerController::ServerToggleReady_Validate()
+{
+	return true;
+}
+
+void AGameUIMatchPlayerController::ServerToggleReady_Implementation()
+{
+	if (AGameUIMatchPlayerState* MatchPlayerState = GetPlayerState<AGameUIMatchPlayerState>())
+	{
+		MatchPlayerState->SetReady(!MatchPlayerState->IsReady());
 	}
 }
 

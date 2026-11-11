@@ -3,6 +3,7 @@
 
 #include "GameModes/GameUIMatchPlayerState.h"
 #include "GameModes/GameUIMatchGameState.h"
+#include "GameUILog.h"
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 
@@ -35,6 +36,7 @@ void AGameUIMatchPlayerState::SetReady(bool bInReady)
 	}
 
 	bIsReady = bInReady;
+	UE_LOG(LogGameUI, Log, TEXT("lobby: %s is %s"), *GetPlayerName(), bIsReady ? TEXT("ready") : TEXT("not ready"));
 	// OnRep is not called on the server; notify listeners here so server and client paths match.
 	BroadcastLobbyFlagsChanged();
 }
@@ -47,6 +49,17 @@ void AGameUIMatchPlayerState::SetIsHost(bool bInIsHost)
 	}
 
 	bIsHost = bInIsHost;
+	BroadcastLobbyFlagsChanged();
+}
+
+void AGameUIMatchPlayerState::OnRep_PlayerName()
+{
+	Super::OnRep_PlayerName();
+
+	// A joining player's state usually replicates a frame or two before its PlayerName does,
+	// and nothing else refreshes the lobby until the next ready / join / leave event - the row
+	// sat blank for 17 s in one test log. Same notification as the lobby flags: the game state
+	// rebroadcasts and the lobby screen re-reads the list.
 	BroadcastLobbyFlagsChanged();
 }
 

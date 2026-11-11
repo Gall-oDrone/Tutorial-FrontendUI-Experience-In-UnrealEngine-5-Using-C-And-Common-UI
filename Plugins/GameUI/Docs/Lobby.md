@@ -231,3 +231,14 @@ is set, so Start visibly spawns something.
   says so to the host.
 - The lobby never pauses the world, so the countdown and replication keep running even
   when *Pause Game While Menu Open* is on.
+- Un-readying during the countdown cancels it on the server
+  (`AGameUIMatchGameMode::HandleLobbyStateChanged`), and the timer re-checks
+  `CanStartMatch` when it fires, so a Not Ready that *reaches the server* before the end
+  always wins. What it cannot do is beat the clock: the number on screen trails the server's
+  time by up to a net update plus a frame, so on a hitching PC a click at "1" can land after
+  `StartMatch`. `Server.log` tells which happened - `lobby: <name> is not ready` followed by
+  `start countdown cancelled (...)` is a cancel; `countdown finished; starting match` before
+  the `not ready` line is a late click. Give slow machines a longer *Start Countdown Seconds*
+  (5) rather than a faster hand. The Ready button is a **server-side toggle**
+  (`ServerToggleReady`), so two quick clicks count as two even if the first has not
+  replicated back yet.

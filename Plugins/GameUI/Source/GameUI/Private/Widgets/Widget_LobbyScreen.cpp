@@ -8,6 +8,7 @@
 #include "GameModes/GameUIMatchGameState.h"
 #include "GameModes/GameUIMatchPlayerState.h"
 #include "Subsystems/FrontendUISubsystem.h"
+#include "GameUILog.h"
 #include "CommonListView.h"
 #include "CommonTextBlock.h"
 #include "Engine/World.h"
@@ -310,6 +311,7 @@ void UWidget_LobbyScreen::RefreshPlayerList()
 	});
 
 	ListItems.Reserve(Sorted.Num());
+	FString Roster;
 	for (const AGameUIMatchPlayerState* MatchPlayerState : Sorted)
 	{
 		UGameUILobbyPlayerEntryData* Entry = NewObject<UGameUILobbyPlayerEntryData>(this);
@@ -319,7 +321,13 @@ void UWidget_LobbyScreen::RefreshPlayerList()
 		Entry->bIsHost = MatchPlayerState->IsHost();
 		Entry->bIsLocalPlayer = (MatchPlayerState == LocalPlayerState);
 		ListItems.Add(Entry);
+
+		Roster += FString::Printf(TEXT("%s%s%s%s%s"), Roster.IsEmpty() ? TEXT("") : TEXT(", "), *Entry->PlayerName,
+			Entry->bIsLocalPlayer ? TEXT("*") : TEXT(""), Entry->bIsHost ? TEXT(" (host)") : TEXT(""), Entry->bIsReady ? TEXT(" [ready]") : TEXT(""));
 	}
+	// One line per refresh (join / leave / ready / host change): who this client thinks is in the
+	// lobby. * = local player. Cheap, and the first thing to look at when a row is missing.
+	UE_LOG(LogGameUI, Log, TEXT("lobby list: %d of %d player states shown [%s]"), Sorted.Num(), MatchGameState->PlayerArray.Num(), *Roster);
 
 	CommonListView_Players->SetListItems(ListItems);
 }
