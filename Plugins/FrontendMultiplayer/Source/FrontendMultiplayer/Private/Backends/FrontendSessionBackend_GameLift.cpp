@@ -541,6 +541,7 @@ void UFrontendSessionBackend_GameLift::Shutdown()
 		FPlatformProcess::Sleep(0.25f);
 	}
 
+	CancelSessionNoPlayerExit();
 	CloseServerWebSocket();
 	RetiredServerWebSocket.Reset();
 	if (ServerBootstrapHttpRequest.IsValid())
@@ -644,6 +645,7 @@ void UFrontendSessionBackend_GameLift::SendStartGameSessionPlacementRequest()
 			}
 			if (!bSuccess || !ResponseObject.IsValid())
 			{
+				Self->PendingPlacementId.Reset(); // Start was refused: nothing to stop on GameLift's side
 				Self->CancelPendingClientRequests();
 				Self->ReportSessionCreated(false, ErrorText);
 				return;
@@ -651,6 +653,7 @@ void UFrontendSessionBackend_GameLift::SendStartGameSessionPlacementRequest()
 			const TSharedPtr<FJsonObject>* PlacementObj = nullptr;
 			if (!ResponseObject->TryGetObjectField(TEXT("GameSessionPlacement"), PlacementObj) || !PlacementObj || !PlacementObj->IsValid())
 			{
+				Self->PendingPlacementId.Reset();
 				Self->CancelPendingClientRequests();
 				Self->ReportSessionCreated(false, LOCTEXT("MissingPlacementField", "GameLift response did not contain a GameSessionPlacement object."));
 				return;
@@ -731,6 +734,7 @@ void UFrontendSessionBackend_GameLift::HandlePlacementObject(const TSharedPtr<FJ
 	if (!Status.Equals(TEXT("FULFILLED"), ESearchCase::IgnoreCase))
 	{
 		LogDebug(FString::Printf(TEXT("[gamelift] placement %s ended as %s"), *PendingPlacementId, *Status));
+		PendingPlacementId.Reset(); // terminal on GameLift's side: nothing to stop
 		CancelPendingClientRequests();
 		const FText Reason = Status.Equals(TEXT("TIMED_OUT"), ESearchCase::IgnoreCase)
 			? LOCTEXT("PlacementTimedOut", "GameLift could not find a game server within the queue's timeout. Try again in a moment - the fleet may still be scaling up.")
@@ -759,6 +763,7 @@ void UFrontendSessionBackend_GameLift::HandlePlacementObject(const TSharedPtr<FJ
 	const FString DisplayName = PendingCreateDisplayName;
 	const int32 MaxPlayers = PendingCreateMaxPlayers;
 	const FString PlacementId = PendingPlacementId;
+	PendingPlacementId.Reset(); // fulfilled: nothing to stop
 	CancelPendingClientRequests();
 
 	if (IpAddress.IsEmpty() || Port <= 0)
@@ -777,6 +782,40 @@ void UFrontendSessionBackend_GameLift::HandlePlacementObject(const TSharedPtr<FJ
 		: FString::Printf(TEXT("%s:%d?PlayerSessionId=%s"), *IpAddress, Port, *FGenericPlatformHttp::UrlEncode(PlayerSessionId));
 	LogDebug(FString::Printf(TEXT("[gamelift] placement %s FULFILLED -> %s; travelling to %s"), *PlacementId, *GameSessionArn, *ConnectAddress));
 	ReportSessionCreatedRemote(ConnectAddress);
+}
+
+void UFrontendSessionBackend_GameLift::StopAbandonedPlacement(const FString& PlacementId)
+{
+	// We stop waiting on a placement that may still be PENDING (Back / new Host / LeaveSession /
+	// client-side timeout / engine exit). Left alone, GameLift keeps trying until the queue's
+	// timeout and may fulfil it later: a game session, with a slot reserved for a host that is
+	// gone, that nobody joins. The server's no-player exit covers that too; this spares the fleet
+	// the detour. Fire and forget: the outcome does not change what the player sees.
+	if (PlacementId.IsEmpty())
+	{
+		return;
+	}
+
+	LogDebug(FString::Printf(TEXT("[gamelift] StopGameSessionPlacement %s (placement abandoned)"), *PlacementId));
+
+	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("PlacementId"), PlacementId);
+
+	TWeakObjectPtr<ThisClass> WeakThis(this);
+	SendGameLiftRequest(TEXT("GameLift.StopGameSessionPlacement"), Payload,
+		[WeakThis, PlacementId](bool bSuccess, TSharedPtr<FJsonObject> /*ResponseObject*/, const FText& ErrorText)
+		{
+			if (ThisClass* Self = WeakThis.Get())
+			{
+				Self->LogDebug(bSuccess
+					? FString::Printf(TEXT("[gamelift] placement %s stopped"), *PlacementId)
+					: FString::Printf(TEXT("[gamelift] StopGameSessionPlacement %s: %s (ignored; it had probably already ended)"), *PlacementId, *ErrorText.ToString()));
+			}
+		});
+
+	// Detach it from the slot CancelPendingClientRequests cancels: the next Host must neither
+	// kill this request nor wait for it. The HTTP manager keeps it alive until it completes.
+	ActiveHttpRequest.Reset();
 }
 
 void UFrontendSessionBackend_GameLift::SendCreateGameSessionRequest()
@@ -1314,6 +1353,11 @@ bool UFrontendSessionBackend_GameLift::AcceptPlayerSession(const FString& Player
 
 	// Someone came (back) in during the empty-session grace period: keep the process.
 	CancelPendingServerExit();
+	// First player of this game session: the no-player rule is done, the empty-session rule takes over.
+	if (CancelSessionNoPlayerExit())
+	{
+		LogDebug(TEXT("[gamelift] first player accepted; no-player exit disarmed"));
+	}
 
 	LogDebug(FString::Printf(TEXT("[gamelift] AcceptPlayerSession %s"), *PlayerSessionId));
 	return true;
@@ -1377,8 +1421,52 @@ void UFrontendSessionBackend_GameLift::CancelPendingServerExit()
 	}
 }
 
+void UFrontendSessionBackend_GameLift::ArmSessionNoPlayerExit()
+{
+	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
+	CancelSessionNoPlayerExit();
+	if (!Settings->bExitProcessWhenSessionEmpty || Settings->SessionNoPlayerExitDelaySeconds <= 0.f || ServerGameSessionId.IsEmpty())
+	{
+		return;
+	}
+
+	// A game session nobody joins never "empties", so the last-player-left rule never fires and
+	// the session stays attached to this process until the process exits. Give the first player
+	// a bounded time to arrive (the host travels right after placement / CreatePlayerSession;
+	// GameLift itself drops a RESERVED slot after 60 s), then recycle exactly like an empty session.
+	const float Delay = Settings->SessionNoPlayerExitDelaySeconds;
+	LogDebug(FString::Printf(TEXT("[gamelift] game session %s activated; exiting in %.0fs unless a player joins"), *ServerGameSessionId, Delay));
+	ServerSessionNoPlayerExitTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateUObject(this, &ThisClass::HandleSessionNoPlayerExitTick), Delay);
+}
+
+bool UFrontendSessionBackend_GameLift::CancelSessionNoPlayerExit()
+{
+	if (!ServerSessionNoPlayerExitTickerHandle.IsValid())
+	{
+		return false;
+	}
+	FTSTicker::GetCoreTicker().RemoveTicker(ServerSessionNoPlayerExitTickerHandle);
+	ServerSessionNoPlayerExitTickerHandle.Reset();
+	return true;
+}
+
+bool UFrontendSessionBackend_GameLift::HandleSessionNoPlayerExitTick(float /*DeltaTime*/)
+{
+	ServerSessionNoPlayerExitTickerHandle.Reset();
+	if (ServerGameSessionId.IsEmpty())
+	{
+		return false; // session already gone (TerminateProcess / shutdown)
+	}
+	LogDebug(FString::Printf(TEXT("[gamelift] no player joined game session %s within %.0fs; ending it and exiting so the fleet can recycle this process"),
+		*ServerGameSessionId, UFrontendGameLiftSettings::Get()->SessionNoPlayerExitDelaySeconds));
+	TerminateServerProcessAndExit(TEXT("no player joined"));
+	return false; // one-shot
+}
+
 void UFrontendSessionBackend_GameLift::TerminateServerProcessAndExit(const TCHAR* Reason)
 {
+	CancelSessionNoPlayerExit();
 	LogDebug(FString::Printf(TEXT("[gamelift] TerminateServerProcess (%s) -> exiting"), Reason));
 
 	TSharedRef<FJsonObject> TerminateMsg = MakeShared<FJsonObject>();
@@ -1540,6 +1628,11 @@ void UFrontendSessionBackend_GameLift::CancelPendingClientRequests()
 		FTSTicker::GetCoreTicker().RemoveTicker(PlacementPollTickerHandle);
 		PlacementPollTickerHandle.Reset();
 	}
+	// Still tracked here means GameLift never told us the placement ended (the terminal paths
+	// clear it before calling this): we are walking away from it, so cancel it on their side.
+	// Taken before the HTTP cancel below: a cancelled poll's completion early-returns on an
+	// empty PendingPlacementId, and the Stop must not be the request that just got cancelled.
+	const FString AbandonedPlacementId = PendingPlacementId;
 	PendingPlacementId.Reset();
 	PlacementPollDeadlineSeconds = 0.0;
 	bPlacementPollRequestInFlight = false;
@@ -1548,6 +1641,11 @@ void UFrontendSessionBackend_GameLift::CancelPendingClientRequests()
 	{
 		ActiveHttpRequest->CancelRequest();
 		ActiveHttpRequest.Reset();
+	}
+
+	if (!AbandonedPlacementId.IsEmpty())
+	{
+		StopAbandonedPlacement(AbandonedPlacementId);
 	}
 }
 
@@ -2013,6 +2111,7 @@ void UFrontendSessionBackend_GameLift::HandleWebSocketMessage(const FString& Mes
 		SendServerWebSocketMessage(ActivateSessionMsg);
 
 		ReportServerSessionInfoUpdated();
+		ArmSessionNoPlayerExit();
 	}
 	else if (Action.Equals(TEXT("RefreshConnection"), ESearchCase::IgnoreCase))
 	{
