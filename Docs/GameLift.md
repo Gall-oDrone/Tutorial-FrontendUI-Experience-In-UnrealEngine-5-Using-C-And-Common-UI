@@ -489,6 +489,26 @@ Verified 2026-11-10 with two Dev Auth Tool users on the Anywhere fleet: the game
 `CreatorId` is the host's Epic account id (set by the proxy from the verified token), both
 player sessions were accepted, token-less / bogus-token calls got `401 UnauthorizedException`.
 
+### Player identity on the server (`bVerifyPlayerSessionIdentity`)
+
+`AcceptPlayerSession` proves that a `PlayerSessionId` exists and is free; it does not prove that
+the *account* connecting with it is the one it was reserved for. Since `v1.6` the client sends its
+**unique net id** as `PlayerId` (`CreatePlayerSession`, `DesiredPlayerSessions`): the EOS
+`<account>|<puid>` pair, or the Null `<machine>-<guid>`. Through the proxy in `auth_mode=eos` the
+proxy replaces it with the verified Epic account id - the first half of the same pair. After
+login the dedicated server asks GameLift `DescribePlayerSessions` over the Server SDK WebSocket
+and compares the stored `PlayerId` with `APlayerState::GetUniqueId()`; a mismatch is a kick
+(`This player session was reserved for a different account.`), logged as
+`player session psess-… was reserved for <id> but <other id> connected with it; rejecting`.
+A match logs `player session psess-… verified: reserved for <id>`. The check is **on** by
+default (*Project Settings → Game → Frontend Multiplayer GameLift → Verify Player Session
+Identity*) and fails open - the player stays, with an `identity check skipped` line - when
+GameLift does not answer within 10 s or the reply carries no `PlayerId`. Two things to know:
+clients older than `v1.6` sent their display name as `PlayerId` and are kicked by a server with
+the check on; and a server on the Null subsystem takes the EOS unique id from the login handshake
+at face value, so this closes the "stolen PlayerSessionId" case, not a forged unique id - the
+server-side EOS Connect validation that would is a later item.
+
 To ship: package a `Shipping` client (`BuildCookRun ... -clientconfig=Shipping`) with
 `ApiEndpointUrl` in `DefaultGame.ini` and no `AWS_*` variables on the machine — Host/Find/Join
 must work exactly as in Development, and a build without `ApiEndpointUrl` fails fast with
@@ -552,7 +572,13 @@ Main Menu, the client-side `PlacementTimeoutSeconds`, closing the window) it sen
 queue's timeout and could fulfil it minutes later: a game session, with a slot reserved for a host
 who is gone, that nobody joins. The server's no-player exit (§3) would still recycle that process
 after 120 s; the Stop spares the fleet the detour. Best effort: a Stop that arrives after the
-placement already ended is answered with an error the client logs and ignores.
+placement already ended is answered with an error the client logs and ignores. **Back on the
+Host screen is the in-app Cancel**: while Create is busy it calls
+`UFrontendMultiplayerSubsystem::CancelSessionOperation()` (`Creating cancelled by the player.`
+in the debug panel), which the GameLift backend answers by tearing the request down - the Stop
+above included - and the Create button is released. A Blueprint can wire the same call to a
+Cancel label on the button. Backends that cannot abandon a call in flight (OnlineSubsystem) return
+false and the screen simply closes as before.
 
 ---
 
@@ -603,6 +629,8 @@ $40, e-mail at 50/80/100 % actual and 100 % forecast) is the safety net; the com
 | `GameLift error (400): Unable to reserve a process (No active and available server processes found on the fleet)` | Either no server process has completed `ActivateServerProcess` (check `Server.log` for `ActivateServerProcess acknowledged`), or the only process is still attached to an earlier game session. With **Exit Process When Session Empty** on, the server exits a few seconds after its last player leaves - or 120 s after activation if nobody joined - and the launch script / fleet restarts it; if you turned that off, restart the server by hand. |
 | `Server.log`: `no player joined game session … within 120s; ending it and exiting` right after a real Host | The host's client never reached the server inside **Session No Player Exit Delay Seconds**: check the client log for the travel line (`travelling to <ip>:<port>?PlayerSessionId=`) and for `PendingConnectionFailure` / firewall drops on the UDP port; the map load of a Launcher-editor client can take 30-60 s on a slow PC, so raise the delay if that is the bottleneck. A session created from the CLI (`Probe`) exiting this way is expected. |
 | Host with a queue: `GameLift could not find a game server within the queue's timeout` (placement `TIMED_OUT`) or `GameLift did not find a game server in time` (client gave up after `PlacementTimeoutSeconds`) | No destination of the queue had a free process in time. `aws gamelift describe-game-session-queues --names <queue>` lists the destinations; `aws gamelift describe-alias --alias-id <alias>` must point at a live fleet; a server process must be `ACTIVE on the fleet` (Anywhere) or the container fleet must have capacity (`container-fleet.sh status`). `aws gamelift describe-game-session-placement --placement-id <id>` shows the placement's own status. If the fleet was scaling out, size it so the scaling signal fires before the last slot is used (§6). |
+| Client kicked right after joining with `This player session was reserved for a different account.`; `Server.log`: `player session psess-… was reserved for <id> but <other id> connected with it; rejecting` | The identity check (§6) found a `PlayerSessionId` created for another account. Legitimate causes: a client older than `v1.6` (it sent its display name as `PlayerId` - rebuild it), or two windows sharing one EOS account where one reuses the other's slot. Turn **Verify Player Session Identity** off only for such debugging. |
+| `Server.log`: `DescribePlayerSessions psess-… gave no PlayerId (status …); identity check skipped` or `… unanswered after 10s; identity check skipped` | The check failed open: GameLift did not return the player session (or the WebSocket was reconnecting). The player stays. If it happens on every login, read the reply shape in the line and compare with the Server SDK 5.x `DescribePlayerSessions` response. |
 | `Server WebSocket connection error` / `403 Forbidden` | The Anywhere compute auth token expired (tokens from `GetComputeAuthToken` last about 3 hours). Re-run `LaunchDedicatedServer.bat 7777 GAMELIFT` with `GAMELIFT_SDK_AUTH_TOKEN` unset so it fetches a fresh token via `aws gamelift get-compute-auth-token`. |
 | `GameLift server requires a valid ?PlayerSessionId= option to join` | Client connected directly by IP without calling `CreatePlayerSession`. Use the Host or Server Browser Join flow in `GAMELIFT` mode, or disable `bRequirePlayerSessionIdOnServer` when testing raw `open 127.0.0.1:7777`. |
 | Client reaches the server, then `LogNet: Error: Server is incompatible with the local version of the game: RemoteNetworkVersion=… vs LocalNetworkVersion=…` / `OutdatedClient` | Client and server were built by different engine builds (Launcher editor vs. source-built 5.6.1 on the build box). The engine's default network version hashes the engine changelist. This project pins it to `ProjectVersion` instead (`FFrontendUIGameModule::GetProjectNetworkVersion`), so **both** sides must be built from a revision that has that override (≥ `v1.1.1`) and share the same `ProjectVersion` in `DefaultGame.ini`. If you bump `ProjectVersion`, rebuild the server artifacts. The flip side: with the pin, a client and a server of **different revisions but the same `ProjectVersion`** connect happily even if a replicated class changed between them, and RPC / property indices then land on the wrong functions - symptoms like buttons that do nothing or players missing from the lobby list. Rule: **any change to a replicated class (new RPC, new replicated property) bumps `ProjectVersion`**, so a stale packaged server is refused instead of half-working. |

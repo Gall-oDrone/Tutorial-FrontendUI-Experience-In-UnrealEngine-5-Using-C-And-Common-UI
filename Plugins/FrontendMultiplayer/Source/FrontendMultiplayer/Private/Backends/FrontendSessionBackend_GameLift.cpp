@@ -26,7 +26,9 @@
 #include "HAL/PlatformTime.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
+#include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
+#include "GameFramework/OnlineReplStructs.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 
@@ -542,6 +544,12 @@ void UFrontendSessionBackend_GameLift::Shutdown()
 	}
 
 	CancelSessionNoPlayerExit();
+	if (PlayerSessionVerificationTickerHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(PlayerSessionVerificationTickerHandle);
+		PlayerSessionVerificationTickerHandle.Reset();
+	}
+	PendingPlayerSessionVerifications.Empty();
 	CloseServerWebSocket();
 	RetiredServerWebSocket.Reset();
 	if (ServerBootstrapHttpRequest.IsValid())
@@ -599,6 +607,7 @@ void UFrontendSessionBackend_GameLift::SendStartGameSessionPlacementRequest()
 	const UFrontendMultiplayerSettings* MpSettings = UFrontendMultiplayerSettings::Get();
 	const FString MapLeaf = MpSettings->HostMap.IsNull() ? FString(TEXT("L_MatchTest")) : MpSettings->HostMap.GetAssetName();
 	const FString PlayerId = BuildLocalPlayerId();
+	const FString HostDisplayName = BuildLocalPlayerDisplayName();
 
 	// PlacementId: [a-zA-Z0-9-], <= 48 chars; GameLift dedupes on it, so it is fresh per attempt.
 	PendingPlacementId = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower);
@@ -615,7 +624,7 @@ void UFrontendSessionBackend_GameLift::SendStartGameSessionPlacementRequest()
 	{
 		TSharedRef<FJsonObject> HostProp = MakeShared<FJsonObject>();
 		HostProp->SetStringField(TEXT("Key"), TEXT("HostName"));
-		HostProp->SetStringField(TEXT("Value"), PlayerId);
+		HostProp->SetStringField(TEXT("Value"), HostDisplayName);
 		GameProperties.Add(MakeShared<FJsonValueObject>(HostProp));
 
 		TSharedRef<FJsonObject> MapProp = MakeShared<FJsonObject>();
@@ -825,6 +834,7 @@ void UFrontendSessionBackend_GameLift::SendCreateGameSessionRequest()
 	const FString AliasId = Settings->ResolveAliasId();
 	const FString Location = Settings->ResolveLocation();
 	const FString CreatorId = BuildLocalPlayerId();
+	const FString HostDisplayName = BuildLocalPlayerDisplayName();
 	const FString RequestedDisplayName = PendingCreateDisplayName;
 	const int32 ClampedMaxPlayers = PendingCreateMaxPlayers;
 
@@ -852,7 +862,7 @@ void UFrontendSessionBackend_GameLift::SendCreateGameSessionRequest()
 	{
 		TSharedRef<FJsonObject> HostProp = MakeShared<FJsonObject>();
 		HostProp->SetStringField(TEXT("Key"), TEXT("HostName"));
-		HostProp->SetStringField(TEXT("Value"), CreatorId);
+		HostProp->SetStringField(TEXT("Value"), HostDisplayName);
 		GameProperties.Add(MakeShared<FJsonValueObject>(HostProp));
 
 		TSharedRef<FJsonObject> MapProp = MakeShared<FJsonObject>();
@@ -1284,6 +1294,17 @@ void UFrontendSessionBackend_GameLift::LeaveSession()
 	ReportSessionLeft();
 }
 
+bool UFrontendSessionBackend_GameLift::CancelPendingOperation()
+{
+	// Everything a Host / Find / Join leaves in flight is client request state: the HTTP call,
+	// the capacity-retry / activation-poll / placement-poll tickers. Tearing that down (which
+	// also stops a PENDING placement on GameLift's side) is the whole cancel; no Report* follows
+	// because the completion of a cancelled request is dropped by generation.
+	LogDebug(TEXT("[gamelift] pending request cancelled by the player"));
+	CancelPendingClientRequests();
+	return true;
+}
+
 void UFrontendSessionBackend_GameLift::FetchLeaderboard(ELeaderboardCategory Category)
 {
 	// GameLift places and hosts sessions; it has no leaderboard service. Same policy as FixedAddress.
@@ -1464,6 +1485,152 @@ bool UFrontendSessionBackend_GameLift::HandleSessionNoPlayerExitTick(float /*Del
 	return false; // one-shot
 }
 
+void UFrontendSessionBackend_GameLift::VerifyPlayerSession(const FString& PlayerSessionId, const FString& UniqueNetIdString, FOnFrontendPlayerSessionVerified OnVerified)
+{
+	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
+	if (!Settings->bVerifyPlayerSessionIdentity || PlayerSessionId.IsEmpty() || UniqueNetIdString.IsEmpty()
+		|| !ServerWebSocket.IsValid() || !ServerWebSocket->IsConnected() || !bServerProcessReady || ServerGameSessionId.IsEmpty())
+	{
+		OnVerified.ExecuteIfBound(true, FString());
+		return;
+	}
+
+	// Server SDK 5.x: DescribePlayerSessions by PlayerSessionId; the reply echoes the Action and
+	// RequestId with a PlayerSessions array (same shape as the REST API's PlayerSession).
+	const FString RequestId = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower);
+	FPendingPlayerSessionVerification& Pending = PendingPlayerSessionVerifications.Add(RequestId);
+	Pending.PlayerSessionId = PlayerSessionId;
+	Pending.UniqueNetIdString = UniqueNetIdString;
+	Pending.OnVerified = MoveTemp(OnVerified);
+	Pending.DeadlineSeconds = FPlatformTime::Seconds() + 10.0;
+
+	TSharedRef<FJsonObject> Message = MakeShared<FJsonObject>();
+	Message->SetStringField(TEXT("Action"), TEXT("DescribePlayerSessions"));
+	Message->SetStringField(TEXT("RequestId"), RequestId);
+	Message->SetStringField(TEXT("PlayerSessionId"), PlayerSessionId);
+	Message->SetNumberField(TEXT("Limit"), 1);
+	SendServerWebSocketMessage(Message);
+	LogDebug(FString::Printf(TEXT("[gamelift] DescribePlayerSessions %s (verifying it belongs to %s)"), *PlayerSessionId, *UniqueNetIdString));
+
+	if (!PlayerSessionVerificationTickerHandle.IsValid())
+	{
+		PlayerSessionVerificationTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateUObject(this, &ThisClass::HandlePlayerSessionVerificationTimeout), 1.0f);
+	}
+}
+
+bool UFrontendSessionBackend_GameLift::PlayerIdMatchesUniqueNetId(const FString& PlayerId, const FString& UniqueNetIdString)
+{
+	if (PlayerId.IsEmpty() || UniqueNetIdString.IsEmpty())
+	{
+		return false;
+	}
+	// The repl string may carry a type prefix ("EOS:<account>|<puid>", "NULL:<machine>-<guid>");
+	// the client sent the bare id, and the proxy in auth_mode=eos pins the EOS account id alone.
+	FString Id = UniqueNetIdString;
+	int32 ColonIndex = INDEX_NONE;
+	if (Id.FindChar(TEXT(':'), ColonIndex) && ColonIndex > 0 && ColonIndex < 8)
+	{
+		Id = Id.Mid(ColonIndex + 1);
+	}
+	if (PlayerId.Equals(UniqueNetIdString, ESearchCase::IgnoreCase) || PlayerId.Equals(Id, ESearchCase::IgnoreCase))
+	{
+		return true;
+	}
+	FString AccountId;
+	FString ProductUserId;
+	if (Id.Split(TEXT("|"), &AccountId, &ProductUserId))
+	{
+		return PlayerId.Equals(AccountId, ESearchCase::IgnoreCase) || PlayerId.Equals(ProductUserId, ESearchCase::IgnoreCase);
+	}
+	return false;
+}
+
+void UFrontendSessionBackend_GameLift::HandlePlayerSessionVerificationReply(const FString& RequestId, const TSharedPtr<FJsonObject>& ReplyObject)
+{
+	FPendingPlayerSessionVerification Pending;
+	if (!PendingPlayerSessionVerifications.RemoveAndCopyValue(RequestId, Pending))
+	{
+		return;
+	}
+
+	int32 StatusCode = 200;
+	FString ErrorMessage;
+	ReplyObject->TryGetNumberField(TEXT("StatusCode"), StatusCode);
+	ReplyObject->TryGetStringField(TEXT("ErrorMessage"), ErrorMessage);
+
+	FString ReservedFor;
+	const TArray<TSharedPtr<FJsonValue>>* PlayerSessions = nullptr;
+	if (ReplyObject->TryGetArrayField(TEXT("PlayerSessions"), PlayerSessions) && PlayerSessions)
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *PlayerSessions)
+		{
+			const TSharedPtr<FJsonObject> Entry = Value.IsValid() ? Value->AsObject() : nullptr;
+			if (!Entry.IsValid())
+			{
+				continue;
+			}
+			FString EntryId;
+			Entry->TryGetStringField(TEXT("PlayerSessionId"), EntryId);
+			if (EntryId.IsEmpty() || EntryId.Equals(Pending.PlayerSessionId, ESearchCase::IgnoreCase))
+			{
+				Entry->TryGetStringField(TEXT("PlayerId"), ReservedFor);
+				break;
+			}
+		}
+	}
+
+	if (StatusCode != 200 || ReservedFor.IsEmpty())
+	{
+		// Not GameLift saying "someone else": a protocol or service hiccup. Keep the player
+		// (the PlayerSessionId itself was already accepted) and leave a loud trace.
+		LogDebug(FString::Printf(TEXT("[gamelift] DescribePlayerSessions %s gave no PlayerId (status %d%s%s); identity check skipped"),
+			*Pending.PlayerSessionId, StatusCode, ErrorMessage.IsEmpty() ? TEXT("") : TEXT(": "), *ErrorMessage));
+		Pending.OnVerified.ExecuteIfBound(true, FString());
+		return;
+	}
+
+	if (PlayerIdMatchesUniqueNetId(ReservedFor, Pending.UniqueNetIdString))
+	{
+		LogDebug(FString::Printf(TEXT("[gamelift] player session %s verified: reserved for %s"), *Pending.PlayerSessionId, *ReservedFor));
+		Pending.OnVerified.ExecuteIfBound(true, FString());
+		return;
+	}
+
+	LogDebug(FString::Printf(TEXT("[gamelift] player session %s was reserved for %s but %s connected with it; rejecting"),
+		*Pending.PlayerSessionId, *ReservedFor, *Pending.UniqueNetIdString));
+	Pending.OnVerified.ExecuteIfBound(false, TEXT("This player session was reserved for a different account."));
+}
+
+bool UFrontendSessionBackend_GameLift::HandlePlayerSessionVerificationTimeout(float /*DeltaTime*/)
+{
+	const double Now = FPlatformTime::Seconds();
+	TArray<FString> Expired;
+	for (const TPair<FString, FPendingPlayerSessionVerification>& Pair : PendingPlayerSessionVerifications)
+	{
+		if (Now > Pair.Value.DeadlineSeconds)
+		{
+			Expired.Add(Pair.Key);
+		}
+	}
+	for (const FString& RequestId : Expired)
+	{
+		FPendingPlayerSessionVerification Pending;
+		if (PendingPlayerSessionVerifications.RemoveAndCopyValue(RequestId, Pending))
+		{
+			LogDebug(FString::Printf(TEXT("[gamelift] DescribePlayerSessions %s unanswered after 10s; identity check skipped"), *Pending.PlayerSessionId));
+			Pending.OnVerified.ExecuteIfBound(true, FString());
+		}
+	}
+
+	if (PendingPlayerSessionVerifications.Num() == 0)
+	{
+		PlayerSessionVerificationTickerHandle.Reset();
+		return false; // nothing left to watch; re-armed by the next VerifyPlayerSession
+	}
+	return true;
+}
+
 void UFrontendSessionBackend_GameLift::TerminateServerProcessAndExit(const TCHAR* Reason)
 {
 	CancelSessionNoPlayerExit();
@@ -1541,14 +1708,23 @@ void UFrontendSessionBackend_GameLift::SendGameLiftRequest(const FString& Target
 	}
 
 	ActiveHttpRequest = HttpRequest;
+	const uint32 Generation = ClientRequestGeneration;
 	TWeakObjectPtr<ThisClass> WeakThis(this);
 	HttpRequest->OnProcessRequestComplete().BindLambda(
-		[WeakThis, TargetAction, Callback](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully)
+		[WeakThis, TargetAction, Callback, Generation](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully)
 		{
 			ThisClass* Self = WeakThis.Get();
 			if (Self && Self->ActiveHttpRequest == Request)
 			{
 				Self->ActiveHttpRequest.Reset();
+			}
+
+			// Cancelled (CancelRequest completes with a failure) or superseded by a newer Host /
+			// Find / Join / Leave: nobody is waiting for this answer, and reporting it would show
+			// an error for a request the player already walked away from.
+			if (Self && Self->ClientRequestGeneration != Generation)
+			{
+				return;
 			}
 
 			if (!bConnectedSuccessfully || !Response.IsValid())
@@ -1604,6 +1780,8 @@ void UFrontendSessionBackend_GameLift::SendGameLiftRequest(const FString& Target
 
 void UFrontendSessionBackend_GameLift::CancelPendingClientRequests()
 {
+	// Everything sent before this point belongs to a request nobody waits for anymore.
+	++ClientRequestGeneration;
 	if (CreateRetryTickerHandle.IsValid())
 	{
 		FTSTicker::GetCoreTicker().RemoveTicker(CreateRetryTickerHandle);
@@ -1650,6 +1828,34 @@ void UFrontendSessionBackend_GameLift::CancelPendingClientRequests()
 }
 
 FString UFrontendSessionBackend_GameLift::BuildLocalPlayerId() const
+{
+	// The id GameLift stores on the player session, and what the server compares against the
+	// identity that connects (VerifyPlayerSession). Use the same unique net id the engine puts
+	// in the login handshake: EOS "<account>|<puid>" (the proxy in auth_mode=eos replaces it
+	// with the verified account id - the first half), Null "<machine>-<guid>". The player state
+	// cannot be used here: in the frontend map it was created before the EOS sign-in.
+	if (const UWorld* World = GetGameWorld())
+	{
+		if (const APlayerController* PC = World->GetFirstPlayerController())
+		{
+			if (const ULocalPlayer* LocalPlayer = PC->GetLocalPlayer())
+			{
+				const FUniqueNetIdRepl UniqueId = LocalPlayer->GetPreferredUniqueNetId();
+				if (UniqueId.IsValid())
+				{
+					const FString IdString = UniqueId.ToString();
+					if (!IdString.IsEmpty())
+					{
+						return IdString;
+					}
+				}
+			}
+		}
+	}
+	return BuildLocalPlayerDisplayName();
+}
+
+FString UFrontendSessionBackend_GameLift::BuildLocalPlayerDisplayName() const
 {
 	if (const UWorld* World = GetGameWorld())
 	{
@@ -2134,6 +2340,14 @@ void UFrontendSessionBackend_GameLift::HandleWebSocketMessage(const FString& Mes
 	{
 		// Replies to our own requests (ActivateServerProcess, Heartbeat, ActivateGameSession...)
 		// come back with the same Action plus StatusCode / ErrorMessage. Surface failures.
+		FString RequestId;
+		JsonObj->TryGetStringField(TEXT("RequestId"), RequestId);
+		if (!RequestId.IsEmpty() && PendingPlayerSessionVerifications.Contains(RequestId))
+		{
+			HandlePlayerSessionVerificationReply(RequestId, JsonObj);
+			return;
+		}
+
 		int32 StatusCode = 200;
 		FString ErrorMessage;
 		JsonObj->TryGetNumberField(TEXT("StatusCode"), StatusCode);

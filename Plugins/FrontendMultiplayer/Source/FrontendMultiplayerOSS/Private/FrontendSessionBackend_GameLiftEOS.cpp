@@ -66,6 +66,21 @@ void UFrontendSessionBackend_GameLiftEOS::JoinSession(int32 SessionIndex)
 	EnsureLoggedInThen(EDeferred::Join);
 }
 
+bool UFrontendSessionBackend_GameLiftEOS::CancelPendingOperation()
+{
+	// Still waiting for the EOS sign-in: nothing has reached GameLift, so forgetting the
+	// deferred request is the whole cancel. The sign-in itself is left to finish - it is per
+	// process and the next Host / Find / Join reuses it. Past the sign-in, the base class owns
+	// whatever is in flight.
+	if (DeferredRequest != EDeferred::None)
+	{
+		LogDebug(TEXT("[gamelift-eos] request cancelled by the player while signing in"));
+		DeferredRequest = EDeferred::None;
+		return true;
+	}
+	return Super::CancelPendingOperation();
+}
+
 FString UFrontendSessionBackend_GameLiftEOS::GetBackendDisplayName() const
 {
 	const IOnlineSubsystem* OnlineSubsystem = Online::GetSubsystem(GetOwningSubsystem() && GetOwningSubsystem()->GetGameInstance() ? GetOwningSubsystem()->GetGameInstance()->GetWorld() : nullptr);

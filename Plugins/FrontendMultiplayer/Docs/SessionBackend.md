@@ -135,3 +135,12 @@ your service needs an account, override `IsLoggedIn` / `Login` / `GetLocalPlayer
 and answer `Login` with `ReportLoginChanged`. Use `LogDebug` generously; it is free and
 shows up in the API debug panel. Select the class in Frontend Multiplayer Settings —
 nothing else needs to change.
+
+Two optional hooks: `CancelPendingOperation()` lets the player abandon a request in flight
+(the Host screen calls it on Back) - return `true` **only** if no `Report*` will follow, because
+the subsystem clears the operation on `true`; a call that will still complete (an OnlineSubsystem
+`CreateSession`) must return `false` and the subsystem keeps waiting. `VerifyPlayerSession()` is
+the dedicated-server counterpart of `AcceptPlayerSession`: after login, confirm with the service
+that the slot was reserved for the identity that connected and answer through the delegate
+(false = the game mode kicks). The GameLift backend implements both; the defaults are "cannot
+cancel" and "always matches".
