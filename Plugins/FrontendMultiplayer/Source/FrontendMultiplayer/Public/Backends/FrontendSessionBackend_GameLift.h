@@ -157,6 +157,18 @@ public:
 	/** Grace period before the exit above, so a player who reconnects immediately keeps the session alive. */
 	UPROPERTY(Config, EditAnywhere, Category = "Dedicated Server", meta = (ClampMin = "0", UIMin = "0", UIMax = "120"))
 	float SessionEmptyExitDelaySeconds = 5.f;
+
+	/**
+	 * After ActivateGameSession, seconds to wait for the first AcceptPlayerSession before ending
+	 * the game session and exiting, exactly as when the last player leaves. Covers sessions
+	 * nobody ever joins: a host whose client died between placement and travel, a placement the
+	 * client abandoned, a CLI probe session, a RESERVED player slot GameLift expired after 60 s.
+	 * GameLift only detaches a game session when the process exits, so without this such a
+	 * session pins the process (and, at one session per instance, the instance) for good.
+	 * Requires Exit Process When Session Empty; 0 disables.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Dedicated Server", meta = (ClampMin = "0", UIMin = "0", UIMax = "600"))
+	float SessionNoPlayerExitDelaySeconds = 120.f;
 	//~ End Dedicated Server
 
 	FString ResolveAwsRegion() const;
@@ -198,6 +210,9 @@ struct FFrontendGameLiftSessionSummary
  * Client side:
  *   - Host:  GameLift.CreateGameSession -> (polls DescribeGameSessions if ACTIVATING) ->
  *            GameLift.CreatePlayerSession -> ReportSessionCreatedRemote("ip:port?PlayerSessionId=...")
+ *            With GameSessionQueueName: GameLift.StartGameSessionPlacement -> polls
+ *            DescribeGameSessionPlacement until FULFILLED (host slot included); a placement
+ *            abandoned while PENDING is cancelled with GameLift.StopGameSessionPlacement
  *   - Find:  GameLift.DescribeGameSessions (StatusFilter=ACTIVE) -> ReportSessionsFound
  *   - Join:  GameLift.CreatePlayerSession -> ReportSessionJoined(true, "ip:port?PlayerSessionId=...")
  *   - Leave: clears local session state -> ReportSessionLeft
@@ -207,6 +222,9 @@ struct FFrontendGameLiftSessionSummary
  *   - Sends ActivateServerProcess (ProcessReady) and periodic HeartbeatServerProcess messages
  *   - Handles CreateGameSession -> updates lobby title/cap and replies ActivateGameSession
  *   - Validates joining clients with AcceptPlayerSession and frees slots on logout with RemovePlayerSession
+ *   - Ends the session and exits (TerminateServerProcess) when the last player leaves, or when
+ *     no player joined within SessionNoPlayerExitDelaySeconds of activation, so the fleet can
+ *     hand the recycled process a new session
  *   - Handles RefreshConnection and TerminateProcess cleanly
  */
 UCLASS()
@@ -253,6 +271,8 @@ private:
 	bool HandlePlacementPollTick(float DeltaTime);
 	void PollGameSessionPlacement();
 	void HandlePlacementObject(const TSharedPtr<FJsonObject>& PlacementObject);
+	/** Best-effort GameLift.StopGameSessionPlacement for a placement we stop waiting on while it may still be PENDING. */
+	void StopAbandonedPlacement(const FString& PlacementId);
 	/** bIsJoinRequest selects which Report* answers on failure: ReportSessionJoined (Join) or ReportSessionCreated (Host). */
 	void RequestPlayerSessionForGameSession(const FString& GameSessionId, const FString& DisplayName, int32 MaxPlayers, bool bIsJoinRequest);
 	void CancelPendingClientRequests();
@@ -273,6 +293,10 @@ private:
 	bool HandleServerHeartbeatTick(float DeltaTime);
 	bool HandleSessionEmptyExitTick(float DeltaTime);
 	void CancelPendingServerExit();
+	/** Armed when a game session is activated; disarmed by the first AcceptPlayerSession (returns true if it was armed). */
+	void ArmSessionNoPlayerExit();
+	bool CancelSessionNoPlayerExit();
+	bool HandleSessionNoPlayerExitTick(float DeltaTime);
 	void TerminateServerProcessAndExit(const TCHAR* Reason);
 
 	void HandleWebSocketConnected();
@@ -321,6 +345,7 @@ private:
 	FTSTicker::FDelegateHandle ServerHeartbeatTickerHandle;
 	FTSTicker::FDelegateHandle ServerReconnectTickerHandle;
 	FTSTicker::FDelegateHandle ServerSessionEmptyExitTickerHandle;
+	FTSTicker::FDelegateHandle ServerSessionNoPlayerExitTickerHandle;
 	int32 ServerReconnectAttempts = 0;
 	FString ServerProcessId;
 	FString ServerHostId;

@@ -156,6 +156,8 @@ GameLift attaches **one game session per server process**. While that session ex
 
 `UFrontendSessionBackend_GameLift::HandleServerSessionEmpty` implements it: after **Session Empty Exit Delay Seconds** (default 5 s; a player arriving in that window cancels the exit) it sends `TerminateServerProcess` and requests engine exit. Turn **Exit Process When Session Empty** off in *Project Settings → Game → Frontend Multiplayer GameLift* to keep the old behaviour (the game mode resets the match to the lobby, and the game session stays attached until the process ends). The FixedAddress backend is unaffected: it has no session service, so the server simply returns to the lobby.
 
+A second rule covers the session that **nobody ever joins** - the "last player left" rule cannot fire for it, so it would pin the process (and, at one session per instance, the whole instance) until someone noticed. When the server activates a game session it arms **Session No Player Exit Delay Seconds** (default 120 s): `[gamelift] game session … activated; exiting in 120s unless a player joins`. The first `AcceptPlayerSession` disarms it (`first player accepted; no-player exit disarmed`); if none arrives, `no player joined game session … within 120s; ending it and exiting` → `TerminateServerProcess (no player joined)` and the fleet recycles the process exactly as above. The cases it catches: a host whose client crashed between placement / `CreatePlayerSession` and the travel, a queue placement the client abandoned that GameLift fulfilled anyway, a `Probe` session created from the CLI, and a `RESERVED` player slot that GameLift expired after 60 s. Same gate (**Exit Process When Session Empty**); 0 disables it.
+
 The replacement process takes a while to come back (30–60 s for the editor binary, a few seconds for a packaged server). Two things cover that window:
 
 - **The client waits.** When `CreateGameSession` answers `FleetCapacityExceededException` (no free process), Host retries every 5 s for **Create Session Retry Timeout Seconds** (default 90 s) with the button in its busy state — `[gamelift] no free server process on the fleet yet; retrying CreateGameSession in 5s (attempt 1, 85s left)` — and only then fails with *No game server became available in time*.
@@ -278,6 +280,9 @@ aws gamelift create-game-session --fleet-id $FLEET --location custom-frontendui-
   --maximum-player-session-count 4 --name Probe --region us-east-1 --query GameSession.GameSessionId --output text
 aws gamelift describe-game-sessions --game-session-id <arn> --region us-east-1 --query 'GameSessions[0].Status'
 #   "ACTIVE"   (within ~3 s; container log shows "CreateGameSession received ... -> ActivateGameSession")
+#   120 s later, nobody having joined: "no player joined game session ... -> TerminateServerProcess
+#   (no player joined) -> exiting" and the container stops (section 3). docker compose restarts it;
+#   this bare docker run needs --restart unless-stopped, or just start it again.
 ```
 
 `docker compose up` does the same with the variables from the environment; without
@@ -343,12 +348,14 @@ aws gamelift describe-container-fleet --fleet-id <containerfleet-id> \
 aws gamelift describe-fleet-events --fleet-id <containerfleet-id>      # FLEET_STATE_ACTIVE etc.
 
 # 5. Smoke test without a client; ACTIVE proves the container answered ActivateGameSession.
-#    Then terminate it: a session with no players never empties, and with one process per
-#    instance it blocks real clients with FleetCapacityExceededException.
+#    A session with no players never empties; the server ends it itself after
+#    SessionNoPlayerExitDelaySeconds (120 s) - terminate it by hand to free the slot sooner
+#    (with one process per instance it blocks real clients with FleetCapacityExceededException
+#    until then).
 aws gamelift create-game-session --fleet-id <containerfleet-id> --maximum-player-session-count 4 \
   --name Probe --query 'GameSession.[GameSessionId,IpAddress,Port]' --output text
 aws gamelift describe-game-sessions --game-session-id <arn> --query 'GameSessions[0].Status'
-aws gamelift terminate-game-session --game-session-id <arn> --termination-mode TRIGGER_ON_PROCESS_TERMINATE
+aws gamelift terminate-game-session --game-session-id <arn> --termination-mode TRIGGER_ON_PROCESS_TERMINATE   # optional
 
 # 6. Tear down the same day. The CGD and ECR image survive for next time.
 aws gamelift delete-container-fleet --fleet-id <containerfleet-id> --region us-east-1
@@ -401,8 +408,9 @@ an API Gateway **HTTP API** with a single `POST /` route in front of an arm64 Py
 (`lambda/proxy.py`, no dependencies). It
 
 - allows exactly `GameLift.CreateGameSession`, `GameLift.DescribeGameSessions`,
-  `GameLift.CreatePlayerSession` - plus `GameLift.StartGameSessionPlacement` and
-  `GameLift.DescribeGameSessionPlacement` when deployed with `queue_name` (see below);
+  `GameLift.CreatePlayerSession` and the queue trio `GameLift.StartGameSessionPlacement`,
+  `GameLift.DescribeGameSessionPlacement`, `GameLift.StopGameSessionPlacement` (the queue name
+  is pinned when deployed with `queue_name`, see below);
 - **pins the fleet** (`-var fleet_id=` or `alias_id=`) onto every request and clamps
   `MaximumPlayerSessionCount` to 1-16, so a shipped client cannot be retargeted by editing an ini;
 - signs with its own role (SigV4) and returns GameLift's status **and body verbatim** — the
@@ -523,6 +531,15 @@ with no separate `CreatePlayerSession` for the host; Join / Return / Host-again 
 The dedicated server needs no queue configuration: it receives the same `CreateGameSession`
 WebSocket event whether the session came from `CreateGameSession` or from a placement.
 
+If the client walks away from a placement that is still `PENDING` (Back, a new Host, Return to
+Main Menu, the client-side `PlacementTimeoutSeconds`, closing the window) it sends
+`StopGameSessionPlacement` on the way out - `[gamelift] StopGameSessionPlacement <id>
+(placement abandoned)` → `placement <id> stopped`. Otherwise GameLift would keep trying until the
+queue's timeout and could fulfil it minutes later: a game session, with a slot reserved for a host
+who is gone, that nobody joins. The server's no-player exit (§3) would still recycle that process
+after 120 s; the Stop spares the fleet the detour. Best effort: a Stop that arrives after the
+placement already ended is answered with an error the client logs and ignores.
+
 ---
 
 ## 7. Operations — Alias, Cost Guardrails
@@ -568,7 +585,8 @@ $40, e-mail at 50/80/100 % actual and 100 % forecast) is the safety net; the com
 | Server log: `EOS: UEOSSettings::GetSelectedArtifactSettings ... no settings found` / `Unable to create OnlineSubsystem instance EOS` right before `Login request ... platform: EOS` | Cosmetic. When an EOS-typed player id arrives, the engine asks for an EOS subsystem instance on the (Null) server to interpret it; packaged servers have no EOS artifact settings, so it fails and the engine falls back to a generic id. The login still succeeds (`Join succeeded`). |
 | `GameLift Fleet ID or Alias ID is not configured` | Set `FleetId` in `Config/UserGame.ini`, pass `-GameLiftFleetId=fleet-...`, or export `GAMELIFT_SDK_FLEET_ID`. |
 | `No GameLift API Endpoint URL or AWS credentials found` | Export `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (or set them in `Config/UserGame.ini`) for non-Shipping builds, or configure `ApiEndpointUrl`. |
-| `GameLift error (400): Unable to reserve a process (No active and available server processes found on the fleet)` | Either no server process has completed `ActivateServerProcess` (check `Server.log` for `ActivateServerProcess acknowledged`), or the only process is still attached to an earlier game session. With **Exit Process When Session Empty** on, the server exits a few seconds after its last player leaves and the launch script / fleet restarts it; if you turned that off, restart the server by hand. |
+| `GameLift error (400): Unable to reserve a process (No active and available server processes found on the fleet)` | Either no server process has completed `ActivateServerProcess` (check `Server.log` for `ActivateServerProcess acknowledged`), or the only process is still attached to an earlier game session. With **Exit Process When Session Empty** on, the server exits a few seconds after its last player leaves - or 120 s after activation if nobody joined - and the launch script / fleet restarts it; if you turned that off, restart the server by hand. |
+| `Server.log`: `no player joined game session … within 120s; ending it and exiting` right after a real Host | The host's client never reached the server inside **Session No Player Exit Delay Seconds**: check the client log for the travel line (`travelling to <ip>:<port>?PlayerSessionId=`) and for `PendingConnectionFailure` / firewall drops on the UDP port; the map load of a Launcher-editor client can take 30-60 s on a slow PC, so raise the delay if that is the bottleneck. A session created from the CLI (`Probe`) exiting this way is expected. |
 | Host with a queue: `GameLift could not find a game server within the queue's timeout` (placement `TIMED_OUT`) or `GameLift did not find a game server in time` (client gave up after `PlacementTimeoutSeconds`) | No destination of the queue had a free process in time. `aws gamelift describe-game-session-queues --names <queue>` lists the destinations; `aws gamelift describe-alias --alias-id <alias>` must point at a live fleet; a server process must be `ACTIVE on the fleet` (Anywhere) or the container fleet must have capacity (`container-fleet.sh status`). `aws gamelift describe-game-session-placement --placement-id <id>` shows the placement's own status. If the fleet was scaling out, size it so the scaling signal fires before the last slot is used (§6). |
 | `Server WebSocket connection error` / `403 Forbidden` | The Anywhere compute auth token expired (tokens from `GetComputeAuthToken` last about 3 hours). Re-run `LaunchDedicatedServer.bat 7777 GAMELIFT` with `GAMELIFT_SDK_AUTH_TOKEN` unset so it fetches a fresh token via `aws gamelift get-compute-auth-token`. |
 | `GameLift server requires a valid ?PlayerSessionId= option to join` | Client connected directly by IP without calling `CreatePlayerSession`. Use the Host or Server Browser Join flow in `GAMELIFT` mode, or disable `bRequirePlayerSessionIdOnServer` when testing raw `open 127.0.0.1:7777`. |
