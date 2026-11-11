@@ -88,7 +88,7 @@ In order of visibility:
 | LAN play only | Nothing. `DefaultPlatformService=Null` is the default. |
 | Epic Online Services | `Docs/EOSSetup.md`. ~1 hour including the portal. |
 | Steam | `DefaultPlatformService=Steam`, enable `OnlineSubsystemSteam`, Steam App ID in `DefaultEngine.ini`. Same backend class; untested in this repo, expected to work for sessions (not P2P transport). |
-| Dedicated servers | `UFrontendSessionBackend_FixedAddress` ([Docs/DedicatedServer.md](DedicatedServer.md)) for a known IP:port or Docker server, or `UFrontendSessionBackend_GameLift` ([Docs/GameLift.md](GameLift.md)) for Amazon GameLift Anywhere and Managed Container Fleets. |
+| Dedicated servers | `UFrontendSessionBackend_FixedAddress` ([Docs/DedicatedServer.md](DedicatedServer.md)) for a known IP:port or Docker server, or `UFrontendSessionBackend_GameLift` ([Docs/GameLift.md](GameLift.md)) for Amazon GameLift Anywhere and Managed Container Fleets. For shipped clients point at an **alias** (`AliasId`) and, once the fleet auto-scales, a **game session queue** (`GameSessionQueueName`) rather than a fleet id, with every call going through `ApiEndpointUrl` ([Docs/GameLift.md](GameLift.md) §6-§7). |
 
 ## 5. Package once before building features
 

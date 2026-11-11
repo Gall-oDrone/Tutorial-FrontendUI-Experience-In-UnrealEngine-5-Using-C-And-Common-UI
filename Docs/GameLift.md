@@ -52,6 +52,7 @@ Open **Project Settings → Game → Frontend Multiplayer GameLift**, or configu
 | **Fleet Id** | `FleetId` | `-GameLiftFleetId=` | `GAMELIFT_SDK_FLEET_ID` / `GAMELIFT_FLEET_ID` | Target GameLift Fleet ID (`fleet-...`) |
 | **Alias Id** | `AliasId` | `-GameLiftAliasId=` | `GAMELIFT_ALIAS_ID` | Optional GameLift Alias ID (`alias-...`, takes precedence over `FleetId` on client requests) |
 | **Location** | `Location` | `-GameLiftLocation=` | `GAMELIFT_LOCATION` | Custom location name (e.g. `custom-location-1`) for Anywhere fleets |
+| **Game Session Queue Name** | `GameSessionQueueName` | `-GameLiftQueue=` | `GAMELIFT_QUEUE_NAME` | Optional game session queue (name or ARN). When set, Host uses `StartGameSessionPlacement` on the queue instead of `CreateGameSession` on the fleet/alias (§6); Find / Join keep using the fleet/alias |
 | **Api Endpoint Url** | `ApiEndpointUrl` | `-GameLiftEndpoint=` | `GAMELIFT_ENDPOINT_URL` | Optional HTTPS proxy URL (required in Shipping client builds) |
 | **Access Key Id** | `AccessKeyId` | `-GameLiftAccessKey=` | `GAMELIFT_ACCESS_KEY` / `AWS_ACCESS_KEY_ID` | Dev-only IAM Access Key (compiled out in `UE_BUILD_SHIPPING`) |
 | **Secret Access Key** | `SecretAccessKey` | `-GameLiftSecretKey=` | `GAMELIFT_SECRET_KEY` / `AWS_SECRET_ACCESS_KEY` | Dev-only IAM Secret Key (compiled out in `UE_BUILD_SHIPPING`) |
@@ -400,7 +401,8 @@ an API Gateway **HTTP API** with a single `POST /` route in front of an arm64 Py
 (`lambda/proxy.py`, no dependencies). It
 
 - allows exactly `GameLift.CreateGameSession`, `GameLift.DescribeGameSessions`,
-  `GameLift.CreatePlayerSession`;
+  `GameLift.CreatePlayerSession` - plus `GameLift.StartGameSessionPlacement` and
+  `GameLift.DescribeGameSessionPlacement` when deployed with `queue_name` (see below);
 - **pins the fleet** (`-var fleet_id=` or `alias_id=`) onto every request and clamps
   `MaximumPlayerSessionCount` to 1-16, so a shipped client cannot be retargeted by editing an ini;
 - signs with its own role (SigV4) and returns GameLift's status **and body verbatim** — the
@@ -513,6 +515,14 @@ fires *before* the last slot is used (min 2 instances, or 2+ sessions per instan
 larger CGD), so players rarely wait on a cold scale-out. `CreateGameSession` would have failed
 outright in the same situation.
 
+Verified 2026-11-11 from Launcher clients (`GAMELIFT_ENDPOINT_URL` + `GAMELIFT_AUTH=EOS` +
+`GAMELIFT_QUEUE_NAME=frontendui-dev`, packaged Windows server on the Anywhere fleet behind the
+alias): `Instance1.log` shows `StartGameSessionPlacement 'Alpha' (4 players) on queue frontendui-dev`
+-> `placement <id> FULFILLED -> arn:…:gamesession/…; travelling to 127.0.0.1:7777?PlayerSessionId=psess-…`
+with no separate `CreatePlayerSession` for the host; Join / Return / Host-again are unchanged.
+The dedicated server needs no queue configuration: it receives the same `CreateGameSession`
+WebSocket event whether the session came from `CreateGameSession` or from a placement.
+
 ---
 
 ## 7. Operations — Alias, Cost Guardrails
@@ -559,6 +569,7 @@ $40, e-mail at 50/80/100 % actual and 100 % forecast) is the safety net; the com
 | `GameLift Fleet ID or Alias ID is not configured` | Set `FleetId` in `Config/UserGame.ini`, pass `-GameLiftFleetId=fleet-...`, or export `GAMELIFT_SDK_FLEET_ID`. |
 | `No GameLift API Endpoint URL or AWS credentials found` | Export `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` (or set them in `Config/UserGame.ini`) for non-Shipping builds, or configure `ApiEndpointUrl`. |
 | `GameLift error (400): Unable to reserve a process (No active and available server processes found on the fleet)` | Either no server process has completed `ActivateServerProcess` (check `Server.log` for `ActivateServerProcess acknowledged`), or the only process is still attached to an earlier game session. With **Exit Process When Session Empty** on, the server exits a few seconds after its last player leaves and the launch script / fleet restarts it; if you turned that off, restart the server by hand. |
+| Host with a queue: `GameLift could not find a game server within the queue's timeout` (placement `TIMED_OUT`) or `GameLift did not find a game server in time` (client gave up after `PlacementTimeoutSeconds`) | No destination of the queue had a free process in time. `aws gamelift describe-game-session-queues --names <queue>` lists the destinations; `aws gamelift describe-alias --alias-id <alias>` must point at a live fleet; a server process must be `ACTIVE on the fleet` (Anywhere) or the container fleet must have capacity (`container-fleet.sh status`). `aws gamelift describe-game-session-placement --placement-id <id>` shows the placement's own status. If the fleet was scaling out, size it so the scaling signal fires before the last slot is used (§6). |
 | `Server WebSocket connection error` / `403 Forbidden` | The Anywhere compute auth token expired (tokens from `GetComputeAuthToken` last about 3 hours). Re-run `LaunchDedicatedServer.bat 7777 GAMELIFT` with `GAMELIFT_SDK_AUTH_TOKEN` unset so it fetches a fresh token via `aws gamelift get-compute-auth-token`. |
 | `GameLift server requires a valid ?PlayerSessionId= option to join` | Client connected directly by IP without calling `CreatePlayerSession`. Use the Host or Server Browser Join flow in `GAMELIFT` mode, or disable `bRequirePlayerSessionIdOnServer` when testing raw `open 127.0.0.1:7777`. |
 | Client reaches the server, then `LogNet: Error: Server is incompatible with the local version of the game: RemoteNetworkVersion=… vs LocalNetworkVersion=…` / `OutdatedClient` | Client and server were built by different engine builds (Launcher editor vs. source-built 5.6.1 on the build box). The engine's default network version hashes the engine changelist. This project pins it to `ProjectVersion` instead (`FFrontendUIGameModule::GetProjectNetworkVersion`), so **both** sides must be built from a revision that has that override (≥ `v1.1.1`) and share the same `ProjectVersion` in `DefaultGame.ini`. If you bump `ProjectVersion`, rebuild the server artifacts. |
