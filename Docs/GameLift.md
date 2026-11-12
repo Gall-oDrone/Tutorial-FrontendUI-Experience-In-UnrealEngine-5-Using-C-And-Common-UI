@@ -165,7 +165,7 @@ The replacement process takes a while to come back (30–60 s for the editor bin
 
 ---
 
-## 4. Stage 2 — Building the Linux Dedicated Server & Docker Image (verified 2026-11-08)
+## 4. Stage 2 — Building the Linux Dedicated Server & Docker Image (verified 2026-11-08, rebuilt 2026-11-11 at `ProjectVersion` 1.2.0)
 
 Launcher engines cannot build Server targets, so the Linux server is built on a headless
 EC2 box whose data volume is restored from the 500 GB snapshot of the **UE 5.6.1 source
@@ -184,7 +184,8 @@ cd infrastructure/terraform/environments/dev && terraform apply        # ~1 min
 
 # 2. Build + cook + stage, zip, upload. Everything runs on the box under SSM Run Command.
 cd ../../../scripts/build
-./run-build.sh --ref master --also-windows                             # see timings below
+./run-build.sh --ref master --also-windows                             # Linux + Windows servers
+./run-build.sh --ref master --windows-client --client-only             # + the Shipping client (below)
 
 # 3. Stop paying. The snapshot keeps the engine; the box and volume are disposable.
 cd ../../terraform/environments/dev && terraform destroy
@@ -212,7 +213,12 @@ logs to `builds/logs/`.
 | Whole session incl. apply/destroy | 2 h 25 min, ≈ $1.90 |
 
 Subsequent sessions reuse the compiled engine modules if the volume is kept; from a fresh
-snapshot restore they recompile.
+snapshot restore they recompile. The 2026-11-11 rebuild at `5a0dbd7` (`ProjectVersion` 1.2.0,
+fresh restore) took 71 min for both servers and another 43 min for the Shipping client;
+2 h 05 min from `apply` to `destroy`, ≈ $1.6. It produced `FrontendUI-LinuxServer-5a0dbd7-*.zip`
+(1.21 GB), `FrontendUI-WindowsServer-5a0dbd7-*.zip` (0.77 GB), `FrontendUI-WindowsClient-Shipping-5a0dbd7-*.zip`
+(0.78 GB), the ECR image `frontendui-server:5a0dbd7` and **container group definition
+`frontendui-server` version 4** - the first server artifacts that accept `v1.5` clients (section 3).
 
 Three things the first run taught (all handled in the scripts now):
 
@@ -292,6 +298,49 @@ The packaged Linux server initialises the engine in **0.7 s** (the editor binary
 Stage 1 needs ~60 s), which is also why the Windows server zip is worth having on the PC:
 `LaunchDedicatedServer.bat 7777 GAMELIFT PACKAGED` with `Saved\StagedBuilds\WindowsServer`
 unzipped makes the recycle-and-rehost loop near instant.
+
+### The Shipping client (`run-build.sh --windows-client`)
+
+A Shipping client is the real test of section 6: `ResolveAwsCredentials` refuses IAM keys in
+`UE_BUILD_SHIPPING`, and Shipping reads no `-ini:` overrides, so the proxy URL, alias, location
+and queue must be **inside the package**. The same build box produces it:
+
+```bash
+export GAMELIFT_ENDPOINT_URL=https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/   # -> ApiEndpointUrl
+export GAMELIFT_ALIAS_ID=alias-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx                   # -> AliasId
+export GAMELIFT_LOCATION=custom-frontendui-dev                                         # -> Location
+export GAMELIFT_QUEUE_NAME=frontendui-dev                                              # -> GameSessionQueueName
+./run-build.sh --ref master --windows-client [--client-only]
+#   client config: backend=.../FrontendSessionBackend_GameLiftEOS endpoint=https://... alias=alias-... location=custom-... queue=frontendui-dev eos=True
+#   RunUAT BuildCookRun -platform=Win64 -clientconfig=Shipping -build -cook -stage -pak        (43 min)
+#   uploaded s3://ue5-artifacts-<account>-us-east-1/builds/FrontendUI-WindowsClient-Shipping-<sha>-<stamp>.zip
+```
+
+`build-linux-server.ps1` appends those four values to the working copy's `Config/DefaultGame.ini`,
+and - if the SSM SecureString `/frontendui/eos/artifacts` holds the `+Artifacts=(...)` line from
+`Docs/EOSSetup.md` - `DefaultPlatformService=EOS` plus that line to `DefaultEngine.ini` and
+switches `SessionBackendClass` to `UFrontendSessionBackend_GameLiftEOS`. It reverts `Config/`
+right after the cook, so the ids never reach the repository and the Development/editor
+configuration keeps using `GameLiftEnv.bat` / `UserEngine.ini` as before.
+
+The zip unpacks to `Windows\` (`FrontendUI.exe` launcher, `FrontendUI\Binaries\Win64\FrontendUI-Win64-Shipping.exe`),
+which is exactly where `LaunchInstances.bat … PACKAGED` looks:
+
+```bat
+unzip FrontendUI-WindowsClient-Shipping-<sha>-<stamp>.zip -d Saved\StagedBuilds\
+Scripts\LaunchDedicatedServer.bat 7777 GAMELIFT PACKAGED      &:: or without PACKAGED for the editor binary
+Scripts\LaunchInstances.bat 2 GAMELIFT PACKAGED                &:: two Shipping clients side by side
+```
+
+What proves the package: a Shipping build *cannot* sign requests itself, so Host / Find / Join
+working at all means every call went through the proxy with the baked values - run it on the
+DevPC, `aws configure` and `AWS_*` variables are irrelevant to it. `FrontendUI.Target.cs` does not
+set `bUseLoggingInShipping`, so the client writes no `Instance*.log`; look at the server side
+instead: the `[gamelift]` lines of the dedicated server (`CreateGameSession received … -> ActivateGameSession`,
+`first player accepted; no-player exit disarmed`, `AcceptPlayerSession psess-…`) and the API Gateway access log `/aws/apigateway/frontendui-gamelift-proxy`
+(one line per request from the client's IP, HTTP 200; a `401` there means the EOS token was not
+accepted). The EOS sign-in panel opening the account portal is the visible proof that the artifact
+line was baked.
 
 ---
 
@@ -439,6 +488,7 @@ Point the game at it (any one of):
 | Where | Value |
 |---|---|
 | `Config/DefaultGame.ini` (ships) | `[/Script/FrontendMultiplayer.FrontendGameLiftSettings]` `ApiEndpointUrl=https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/` |
+| Shipping package (`run-build.sh --windows-client`, section 4) | the build box appends `ApiEndpointUrl` / `AliasId` / `Location` / `GameSessionQueueName` to `DefaultGame.ini` from `GAMELIFT_*` variables before the cook and reverts the file afterwards |
 | Command line | `-GameLiftEndpoint=https://.../` |
 | Environment (`GameLiftEnv.bat`) | `GAMELIFT_ENDPOINT_URL=https://.../` |
 
