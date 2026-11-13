@@ -575,7 +575,7 @@ player sessions were accepted, token-less / bogus-token calls got `401 Unauthori
 
 ### Player identity on the server (`bVerifyPlayerSessionIdentity`)
 
-`AcceptPlayerSession` proves that a `PlayerSessionId` exists and is free; it does not prove that
+`AcceptPlayerSession` asks GameLift whether a `PlayerSessionId` exists and is free; it does not prove that
 the *account* connecting with it is the one it was reserved for. Since `v1.6` the client sends its
 **unique net id** as `PlayerId` (`CreatePlayerSession`, `DesiredPlayerSessions`): the EOS
 `<account>|<puid>` pair, or the Null `<machine>-<guid>`. Through the proxy in `auth_mode=eos` the
@@ -592,6 +592,21 @@ clients older than `v1.6` sent their display name as `PlayerId` and are kicked b
 the check on; and a server on the Null subsystem takes the EOS unique id from the login handshake
 at face value, so this closes the "stolen PlayerSessionId" case, not a forged unique id - the
 server-side EOS Connect validation that would is a later item.
+
+Two rules close what a raw `open <ip>:<port>?PlayerSessionId=…` could still do (both seen on
+2026-11-13, when a client that had not signed in got into a lobby twice that way):
+
+- **No identity, no slot.** A player whose login carries no unique net id at all (not signed in)
+  is kicked: `player session psess-… : the player connected without a unique net id; rejecting`.
+  Before, the comparison was silently skipped for such a player, so a stolen id worked for anyone
+  who simply did not sign in. A setup whose clients have no online identity must turn *Verify
+  Player Session Identity* off.
+- **GameLift's refusal is enforced.** The answer to `AcceptPlayerSession` arrives over the
+  WebSocket after `PreLogin` has already admitted the player. A refusal (`… has a status of
+  TIMEDOUT instead of RESERVED`, an id already used, an unknown id) used to be a log line and
+  nothing else; now the player is removed: `player session psess-… was refused by GameLift;
+  removing the player`. Tied to *Require Player Session Id On Server*. A player who drops and
+  comes back needs a new player session (Join again), not the old id.
 
 To ship: package a `Shipping` client (`BuildCookRun ... -clientconfig=Shipping`) with
 `ApiEndpointUrl` in `DefaultGame.ini` and no `AWS_*` variables on the machine — Host/Find/Join

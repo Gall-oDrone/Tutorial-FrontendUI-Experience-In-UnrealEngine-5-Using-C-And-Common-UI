@@ -566,6 +566,9 @@ void UFrontendSessionBackend_GameLift::Shutdown()
 		PlayerSessionVerificationTickerHandle.Reset();
 	}
 	PendingPlayerSessionVerifications.Empty();
+	PendingPlayerSessionAccepts.Empty();
+	RejectedPlayerSessionIds.Empty();
+	PlayerSessionKickers.Empty();
 	CloseServerWebSocket();
 	RetiredServerWebSocket.Reset();
 	if (ServerBootstrapHttpRequest.IsValid())
@@ -1381,9 +1384,14 @@ bool UFrontendSessionBackend_GameLift::AcceptPlayerSession(const FString& Player
 		return false;
 	}
 
+	// GameLift answers later, over the socket, and the answer only echoes the RequestId: remember
+	// which PlayerSessionId it was about so a refusal can be acted on (HandleWebSocketMessage).
+	const FString RequestId = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower);
+	PendingPlayerSessionAccepts.Add(RequestId, PlayerSessionId);
+
 	TSharedRef<FJsonObject> Message = MakeShared<FJsonObject>();
 	Message->SetStringField(TEXT("Action"), TEXT("AcceptPlayerSession"));
-	Message->SetStringField(TEXT("RequestId"), FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphensLower));
+	Message->SetStringField(TEXT("RequestId"), RequestId);
 	Message->SetStringField(TEXT("GameSessionId"), ServerGameSessionId);
 	Message->SetStringField(TEXT("PlayerSessionId"), PlayerSessionId);
 	SendServerWebSocketMessage(Message);
@@ -1402,8 +1410,18 @@ bool UFrontendSessionBackend_GameLift::AcceptPlayerSession(const FString& Player
 
 void UFrontendSessionBackend_GameLift::RemovePlayerSession(const FString& PlayerSessionId)
 {
+	// The player is gone either way: forget what was kept in order to remove them.
+	PlayerSessionKickers.Remove(PlayerSessionId);
+	const bool bRefusedByGameLift = RejectedPlayerSessionIds.Remove(PlayerSessionId) > 0;
+
 	if (!ServerWebSocket.IsValid() || !ServerWebSocket->IsConnected() || ServerGameSessionId.IsEmpty() || PlayerSessionId.IsEmpty())
 	{
+		return;
+	}
+
+	if (bRefusedByGameLift)
+	{
+		// GameLift never counted this player in: there is no slot to free.
 		return;
 	}
 
@@ -1501,13 +1519,48 @@ bool UFrontendSessionBackend_GameLift::HandleSessionNoPlayerExitTick(float /*Del
 	return false; // one-shot
 }
 
+namespace
+{
+	const TCHAR* const GameLiftPlayerSessionRefusedReason = TEXT("GameLift did not accept this player session (expired, already used or unknown).");
+}
+
 void UFrontendSessionBackend_GameLift::VerifyPlayerSession(const FString& PlayerSessionId, const FString& UniqueNetIdString, FOnFrontendPlayerSessionVerified OnVerified)
 {
 	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
-	if (!Settings->bVerifyPlayerSessionIdentity || PlayerSessionId.IsEmpty() || UniqueNetIdString.IsEmpty()
+	if (PlayerSessionId.IsEmpty()
 		|| !ServerWebSocket.IsValid() || !ServerWebSocket->IsConnected() || !bServerProcessReady || ServerGameSessionId.IsEmpty())
 	{
 		OnVerified.ExecuteIfBound(true, FString());
+		return;
+	}
+
+	// PreLogin could only send AcceptPlayerSession; GameLift's verdict comes over the socket.
+	// Usually it is here by now (it takes a fraction of the login handshake). If it is a
+	// refusal, the player goes. If it is still out, keep the means to remove the player later.
+	if (Settings->bRequirePlayerSessionIdOnServer)
+	{
+		if (RejectedPlayerSessionIds.Contains(PlayerSessionId))
+		{
+			LogDebug(FString::Printf(TEXT("[gamelift] player session %s was refused by GameLift; removing the player"), *PlayerSessionId));
+			RejectPlayerSessionNextTick(OnVerified, GameLiftPlayerSessionRefusedReason);
+			return;
+		}
+		PlayerSessionKickers.Add(PlayerSessionId, OnVerified);
+	}
+
+	if (!Settings->bVerifyPlayerSessionIdentity)
+	{
+		OnVerified.ExecuteIfBound(true, FString());
+		return;
+	}
+
+	// The slot is reserved for an account. A player who presents no identity at all (not signed
+	// in: the login carries no unique net id) cannot be that account - and letting them through
+	// would make a stolen PlayerSessionId work for anyone who simply skips the sign-in.
+	if (UniqueNetIdString.IsEmpty() || UniqueNetIdString.Equals(TEXT("INVALID"), ESearchCase::IgnoreCase))
+	{
+		LogDebug(FString::Printf(TEXT("[gamelift] player session %s: the player connected without a unique net id; rejecting"), *PlayerSessionId));
+		RejectPlayerSessionNextTick(OnVerified, TEXT("This player session is reserved for an account and no account was presented (not signed in)."));
 		return;
 	}
 
@@ -1560,6 +1613,43 @@ bool UFrontendSessionBackend_GameLift::PlayerIdMatchesUniqueNetId(const FString&
 		return PlayerId.Equals(AccountId, ESearchCase::IgnoreCase) || PlayerId.Equals(ProductUserId, ESearchCase::IgnoreCase);
 	}
 	return false;
+}
+
+void UFrontendSessionBackend_GameLift::HandlePlayerSessionAcceptRejected(const FString& PlayerSessionId)
+{
+	if (!UFrontendGameLiftSettings::Get()->bRequirePlayerSessionIdOnServer)
+	{
+		return;
+	}
+	RejectedPlayerSessionIds.Add(PlayerSessionId);
+
+	// An identity check in flight for the same id has nothing left to decide.
+	for (auto It = PendingPlayerSessionVerifications.CreateIterator(); It; ++It)
+	{
+		if (It.Value().PlayerSessionId == PlayerSessionId)
+		{
+			It.RemoveCurrent();
+		}
+	}
+
+	// Not logged in yet (the usual order): VerifyPlayerSession will find the id in
+	// RejectedPlayerSessionIds. Already logged in: remove the player now.
+	if (const FOnFrontendPlayerSessionVerified* Kicker = PlayerSessionKickers.Find(PlayerSessionId))
+	{
+		// A copy: the kick ends in RemovePlayerSession, which removes the map entry under us.
+		const FOnFrontendPlayerSessionVerified KickerCopy = *Kicker;
+		LogDebug(FString::Printf(TEXT("[gamelift] player session %s was refused by GameLift after the login; removing the player"), *PlayerSessionId));
+		KickerCopy.ExecuteIfBound(false, GameLiftPlayerSessionRefusedReason);
+	}
+}
+
+void UFrontendSessionBackend_GameLift::RejectPlayerSessionNextTick(const FOnFrontendPlayerSessionVerified& OnVerified, const FString& Reason)
+{
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this, [OnVerified, Reason](float)
+	{
+		OnVerified.ExecuteIfBound(false, Reason);
+		return false;
+	}));
 }
 
 void UFrontendSessionBackend_GameLift::HandlePlayerSessionVerificationReply(const FString& RequestId, const TSharedPtr<FJsonObject>& ReplyObject)
@@ -2370,6 +2460,10 @@ void UFrontendSessionBackend_GameLift::HandleWebSocketMessage(const FString& Mes
 			return;
 		}
 
+		// GameLift's verdict on an AcceptPlayerSession of ours, if this is one.
+		FString AnsweredPlayerSessionId;
+		const bool bIsAcceptAnswer = !RequestId.IsEmpty() && PendingPlayerSessionAccepts.RemoveAndCopyValue(RequestId, AnsweredPlayerSessionId);
+
 		int32 StatusCode = 200;
 		FString ErrorMessage;
 		JsonObj->TryGetNumberField(TEXT("StatusCode"), StatusCode);
@@ -2377,6 +2471,14 @@ void UFrontendSessionBackend_GameLift::HandleWebSocketMessage(const FString& Mes
 		if (StatusCode != 200 || !ErrorMessage.IsEmpty())
 		{
 			LogDebug(FString::Printf(TEXT("[gamelift] %s rejected by GameLift (status %d): %s"), *Action, StatusCode, *ErrorMessage));
+			if (bIsAcceptAnswer)
+			{
+				HandlePlayerSessionAcceptRejected(AnsweredPlayerSessionId);
+			}
+			else if (Action.Equals(TEXT("AcceptPlayerSession"), ESearchCase::IgnoreCase))
+			{
+				LogDebug(TEXT("[gamelift] that refusal carried no RequestId of ours; cannot tell which player it concerns, nobody removed"));
+			}
 		}
 		else if (Action.Equals(TEXT("ActivateServerProcess"), ESearchCase::IgnoreCase))
 		{
