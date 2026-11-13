@@ -16,17 +16,10 @@ public class FrontendUITarget : TargetRules
 
 		// Keep UE_LOG alive in Shipping so a packaged client writes Saved/Logs/FrontendUI.log and a
 		// failed HTTPS call (libcurl error 60 and friends) can be diagnosed; see Docs/GameLift.md §4.
-		// A Launcher engine cannot give a game target a unique build environment, so the setting is
-		// forced there (game and plugin modules log, the prebuilt engine modules stay silent); a
-		// source engine simply recompiles its Shipping modules with logging on.
+		// The setting changes a global define, which UBT only allows with a unique build environment
+		// or when forced; forcing works on a Launcher engine too (game and plugin modules log, the
+		// prebuilt engine modules stay silent), while a source engine recompiles everything with it.
 		bUseLoggingInShipping = true;
-		if (Unreal.IsEngineInstalled())
-		{
-			bOverrideBuildEnvironment = true;
-		}
-		else
-		{
-			BuildEnvironment = TargetBuildEnvironment.Unique;
-		}
+		bOverrideBuildEnvironment = true;
 	}
 }
