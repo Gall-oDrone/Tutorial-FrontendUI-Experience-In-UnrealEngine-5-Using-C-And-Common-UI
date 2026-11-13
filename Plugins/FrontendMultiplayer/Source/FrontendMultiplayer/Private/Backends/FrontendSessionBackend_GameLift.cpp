@@ -1,6 +1,7 @@
 // Diego Gallo All Rights Reserved
 
 #include "Backends/FrontendSessionBackend_GameLift.h"
+#include "FrontendMultiplayerLog.h"
 #include "FrontendMultiplayerSettings.h"
 #include "FrontendMultiplayerSubsystem.h"
 #include "FrontendSessionListEntryData.h"
@@ -331,6 +332,14 @@ namespace FrontendGameLiftCrypto
 
 namespace
 {
+	/** "http(s)://host..." - what is left of an .ini URL once the parser has eaten the // is "https:". */
+	bool IsPlausibleEndpointUrl(const FString& Url)
+	{
+		const FString Lower = Url.ToLower();
+		const int32 SchemeEnd = Lower.StartsWith(TEXT("https://")) ? 8 : (Lower.StartsWith(TEXT("http://")) ? 7 : INDEX_NONE);
+		return SchemeEnd != INDEX_NONE && Url.Len() > SchemeEnd && !FChar::IsWhitespace(Url[SchemeEnd]) && Url[SchemeEnd] != TEXT('/');
+	}
+
 	FString ResolveSettingWithOverrides(
 		const TCHAR* CommandLineKey,
 		const TCHAR* PrimaryEnvVar,
@@ -520,6 +529,13 @@ void UFrontendSessionBackend_GameLift::Initialize(UFrontendMultiplayerSubsystem*
 		*Settings->ResolveLocation(),
 		*Settings->ResolveGameSessionQueueName(),
 		Proxy.IsEmpty() ? TEXT("direct (SigV4)") : *Proxy));
+
+	// An unquoted URL in an .ini is cut at the "//" (the config parser reads it as a trailing
+	// comment), which leaves "https:" behind and every request failing with a bare network error.
+	if (!Proxy.IsEmpty() && !IsPlausibleEndpointUrl(Proxy))
+	{
+		UE_LOG(LogFrontendMultiplayer, Error, TEXT("[gamelift] ApiEndpointUrl '%s' is not a usable URL. In an .ini the value must be quoted: ApiEndpointUrl=\"https://host/\""), *Proxy);
+	}
 
 	// On a dedicated server the WebSocket is opened from OnWorldLoaded, once the match map
 	// (and its listening port) is up. Connecting here as well would open a second socket
@@ -1729,9 +1745,15 @@ void UFrontendSessionBackend_GameLift::SendGameLiftRequest(const FString& Target
 
 			if (!bConnectedSuccessfully || !Response.IsValid())
 			{
+				const FString Url = Request.IsValid() ? Request->GetURL() : FString();
 				if (Self)
 				{
-					Self->LogDebug(FString::Printf(TEXT("[gamelift] %s: no response (network error)"), *TargetAction));
+					Self->LogDebug(FString::Printf(TEXT("[gamelift] %s: no response (network error) from '%s'"), *TargetAction, *Url));
+				}
+				if (!IsPlausibleEndpointUrl(Url))
+				{
+					Callback(false, nullptr, FText::Format(LOCTEXT("BadEndpointFmt", "GameLift endpoint '{0}' is not a valid URL (an unquoted URL in an .ini is cut at the //)."), FText::FromString(Url)));
+					return;
 				}
 				Callback(false, nullptr, FText::Format(LOCTEXT("NetworkErrorFmt", "Could not reach GameLift endpoint for {0}."), FText::FromString(TargetAction)));
 				return;
