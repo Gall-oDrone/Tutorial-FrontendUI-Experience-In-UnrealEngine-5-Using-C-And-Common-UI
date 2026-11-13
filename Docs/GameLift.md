@@ -299,7 +299,7 @@ Stage 1 needs ~60 s), which is also why the Windows server zip is worth having o
 `LaunchDedicatedServer.bat 7777 GAMELIFT PACKAGED` with `Saved\StagedBuilds\WindowsServer`
 unzipped makes the recycle-and-rehost loop near instant.
 
-### The Shipping client (`run-build.sh --windows-client`)
+### The Shipping client (`run-build.sh --windows-client`, verified 2026-11-13)
 
 A Shipping client is the real test of section 6: `ResolveAwsCredentials` refuses IAM keys in
 `UE_BUILD_SHIPPING`, and Shipping reads no `-ini:` overrides, so the proxy URL, alias, location
@@ -344,6 +344,16 @@ user profile: `%LOCALAPPDATA%\FrontendUI\Saved\Logs\Instance1.log` with `LaunchI
 (one line per request from the client's IP, HTTP 200; a `401` there means the EOS token was not
 accepted). The EOS sign-in panel opening the account portal is the visible proof that the artifact
 line was baked.
+
+Verified run (2026-11-13, package `317f3a9`, packaged 1.2.0 Windows server on the Anywhere fleet,
+two Shipping instances on the DevPC, no `GAMELIFT_*` variable set): both signed in silently through
+`persistentauth`; Host `StartGameSessionPlacement 'Alpha' (4 players) on queue frontendui-dev` →
+`placement … FULFILLED` **3.2 s** later; Join `DescribeGameSessions -> 1 active session(s)` →
+`CreatePlayerSession -> psess-…; travelling to 127.0.0.1:7777?PlayerSessionId=…`; both players
+listed and ready on both clients. The API Gateway access log holds exactly four requests from the
+client IP, all `200` (placement 775 ms, placement poll 48 ms, describe 236 ms, player session
+122 ms); GameLift shows two `COMPLETED` player sessions with the same Epic account id (one PC, one
+persistent-auth cache) and the session `TERMINATED` 5 s after the second client quit.
 
 **Quote URLs in .ini files (the first Shipping package failed here, 2026-11-12).** UE's config
 parser treats an unquoted `//` as the start of a trailing comment, so
@@ -681,3 +691,4 @@ $40, e-mail at 50/80/100 % actual and 100 % forecast) is the safety net; the com
 | `GameLift server requires a valid ?PlayerSessionId= option to join` | Client connected directly by IP without calling `CreatePlayerSession`. Use the Host or Server Browser Join flow in `GAMELIFT` mode, or disable `bRequirePlayerSessionIdOnServer` when testing raw `open 127.0.0.1:7777`. |
 | Client reaches the server, then `LogNet: Error: Server is incompatible with the local version of the game: RemoteNetworkVersion=… vs LocalNetworkVersion=…` / `OutdatedClient` | Client and server were built by different engine builds (Launcher editor vs. source-built 5.6.1 on the build box). The engine's default network version hashes the engine changelist. This project pins it to `ProjectVersion` instead (`FFrontendUIGameModule::GetProjectNetworkVersion`), so **both** sides must be built from a revision that has that override (≥ `v1.1.1`) and share the same `ProjectVersion` in `DefaultGame.ini`. If you bump `ProjectVersion`, rebuild the server artifacts. The flip side: with the pin, a client and a server of **different revisions but the same `ProjectVersion`** connect happily even if a replicated class changed between them, and RPC / property indices then land on the wrong functions - symptoms like buttons that do nothing or players missing from the lobby list. Rule: **any change to a replicated class (new RPC, new replicated property) bumps `ProjectVersion`**, so a stale packaged server is refused instead of half-working. |
 | Packaged client only (editor works): every Host / Find / Join fails at once with `Could not reach GameLift endpoint for …` and nothing reaches the API Gateway access log | Look at `LogHttp` in the client log (Shipping logs to `%LOCALAPPDATA%\FrontendUI\Saved\Logs\`). `POST https: completed with reason 'Other' after 0.00s` = the URL was cut at `//` by the ini parser: quote it (`ApiEndpointUrl="https://…/"`, section 4) - newer builds say *GameLift endpoint 'https:' is not a valid URL* outright. `libcurl error: 60 (SSL peer certificate …)` = no usable root certificate: make sure `Manifest_UFSFiles_Win64.txt` lists `FrontendUI/Content/Certificates/cacert.pem`. |
+| Shipping client against a **Development** server: `LogNetPackageMap: Error: UPackageMapClient::SerializeNewActor. Unresolved Archetype GUID. Path: Default__GameplayDebuggerCategoryReplicator` + `LogNet: Warning: … SerializeNewActor failed to find/spawn actor` once per connection | Harmless. The Development server spawns and replicates the Gameplay Debugger's replicator actor, which does not exist in a Shipping client, so the client drops that one channel. Disappears with a Shipping server or with the GameplayDebugger plugin disabled in the `.uproject`. |
