@@ -12,6 +12,7 @@ public class GameUI : ModuleRules
 			"FrontendUI", "FrontendMultiplayer"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
+		// CoreOnline: FUniqueNetIdWrapper::ToString (the unique id handed to VerifyPlayerSession).
+		PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore", "CoreOnline" });
 	}
 }
