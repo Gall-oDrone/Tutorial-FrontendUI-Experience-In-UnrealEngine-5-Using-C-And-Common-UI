@@ -190,7 +190,7 @@ The dedicated-server and Amazon GameLift path is complete end to end: `FrontendU
 - ~~Server artifacts at `ProjectVersion` 1.2.0 and the Shipping client package~~ - done (`v1.5.1-shipping-client`): CGD `frontendui-server` v4, Windows server zip, Shipping client proven through the proxy.
 - **In-app Cancel for a queued Host**: a placement can stay `PENDING` for up to the queue timeout and today the only ways out are quitting or waiting (Back hides the screen; Host / Refresh are gated on the operation in flight). A Cancel on the busy Host button should end the operation and send the Stop.
 - **Server-side identity cross-check**: `PreLogin` compares GameLift's `PlayerId` (the proxy-verified Epic account id) with the connecting EOS unique id.
-- **CI for the server image**: build on the EC2 box, push to ECR, new CGD version, optional fleet roll-out, from a `workflow_dispatch` action.
+- ~~CI for the server image~~ - done: companion `.github/workflows/server-image.yml` (`workflow_dispatch` → EC2 box → ECR → new CGD version → optional fleet roll-out → destroy + audit, GitHub OIDC role, no keys), [Docs/GameLift.md](Docs/GameLift.md) §4.
 - **Leaderboard** backed by DynamoDB through the same proxy and EOS identity (`FetchLeaderboard` is still simulated).
 - Studio logo as `FPreLoadScreenBase` so it precedes the loading screen; reconnect flow and match-specific HUD content.
 - Later, when there is a reason: FlexMatch on top of the queue, a second region, Spot fleets.
