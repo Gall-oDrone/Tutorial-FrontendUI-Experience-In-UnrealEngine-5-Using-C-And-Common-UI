@@ -18,6 +18,9 @@
  *   - local user 0 is signed in on the EOS OnlineSubsystem before Host / Find / Join run,
  *     using the same credential chain as UFrontendSessionBackend_OSS (command line for
  *     LaunchInstances.bat / Dev Auth Tool, persistentauth, Project Settings);
+ *   - the same sign-in runs before the leaderboard is read through ApiEndpointUrl: a proxy
+ *     that authenticates players refuses the read without a token, and needs the account to
+ *     tell which row is the player's own;
  *   - the user's EOS access token is attached as `Authorization: Bearer ...` to every call
  *     the client makes to ApiEndpointUrl, where the proxy verifies it with Epic and derives
  *     the GameLift PlayerId from the verified account.
@@ -39,6 +42,7 @@ public:
 	virtual void FindSessions() override;
 	virtual void JoinSession(int32 SessionIndex) override;
 	virtual bool CancelPendingOperation() override;
+	virtual void FetchLeaderboard(ELeaderboardCategory Category) override;
 	virtual FString GetBackendDisplayName() const override;
 	virtual bool RequiresLogin() const override { return true; }
 	virtual bool IsLoggedIn() const override;
@@ -69,6 +73,8 @@ private:
 	void FinishLogin(bool bWasSuccessful, const FString& Error);
 	void ContinueAfterLogin(EDeferred Request);
 	void FailDeferredRequest(EDeferred Request, const FText& ErrorText);
+	/** Answer a leaderboard fetch that waited for the sign-in: the real fetch, or an empty board when the sign-in failed. */
+	void ResolveDeferredLeaderboardFetch(bool bSignedIn);
 
 	void HandleLoginComplete(int32 LocalUserNum, bool bWasSuccessful, const FUniqueNetId& UserId, const FString& Error);
 	void HandleLoginStatusChanged(int32 LocalUserNum, ELoginStatus::Type OldStatus, ELoginStatus::Type NewStatus, const FUniqueNetId& NewId);
@@ -81,6 +87,13 @@ private:
 	FName DeferredSessionName;
 	int32 DeferredMaxPlayers = 0;
 	int32 DeferredJoinIndex = INDEX_NONE;
+
+	/**
+	 * A leaderboard fetch waiting for the sign-in. Not an EDeferred value on purpose: it is not a
+	 * session operation and may coexist with a parked Host / Find / Join, whose slot it must not take.
+	 */
+	bool bLeaderboardFetchDeferred = false;
+	ELeaderboardCategory DeferredLeaderboardCategory = ELeaderboardCategory::Main;
 
 	bool bLoginInFlight = false;
 	bool bHasFallbackCredentials = false;

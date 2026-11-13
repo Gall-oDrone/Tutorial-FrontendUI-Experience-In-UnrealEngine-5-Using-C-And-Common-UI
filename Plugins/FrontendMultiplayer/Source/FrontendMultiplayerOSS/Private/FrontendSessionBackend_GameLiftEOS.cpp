@@ -26,6 +26,7 @@ void UFrontendSessionBackend_GameLiftEOS::Shutdown()
 	LoginStatusChangedHandle.Reset();
 	bLoginInFlight = false;
 	DeferredRequest = EDeferred::None;
+	bLeaderboardFetchDeferred = false;
 
 	Super::Shutdown();
 }
@@ -79,6 +80,36 @@ bool UFrontendSessionBackend_GameLiftEOS::CancelPendingOperation()
 		return true;
 	}
 	return Super::CancelPendingOperation();
+}
+
+void UFrontendSessionBackend_GameLiftEOS::FetchLeaderboard(ELeaderboardCategory Category)
+{
+	// Signed in, or no proxy to sign in for (the base class answers that case itself).
+	if (IsLoggedIn() || UFrontendGameLiftSettings::Get()->ResolveApiEndpointUrl().IsEmpty())
+	{
+		Super::FetchLeaderboard(Category);
+		return;
+	}
+
+	// A proxy that authenticates players answers 401 without a token, so sign in first, the
+	// way Find does. Parked in its own slot: DeferredRequest belongs to Host / Find / Join.
+	bLeaderboardFetchDeferred = true;
+	DeferredLeaderboardCategory = Category;
+	if (bLoginInFlight)
+	{
+		LogDebug(TEXT("[gamelift-eos] FetchLeaderboard: waiting for the sign-in already in progress"));
+		return;
+	}
+
+	LogDebug(TEXT("[gamelift-eos] FetchLeaderboard: not signed in, signing in first"));
+	EnsureLoggedInThen(EDeferred::None);
+
+	// FinishLogin answers the parked fetch. If no sign-in is in flight now and it is still
+	// parked, none was started (no identity service) and nobody else will answer it.
+	if (!bLoginInFlight)
+	{
+		ResolveDeferredLeaderboardFetch(IsLoggedIn());
+	}
 }
 
 FString UFrontendSessionBackend_GameLiftEOS::GetBackendDisplayName() const
@@ -264,6 +295,7 @@ void UFrontendSessionBackend_GameLiftEOS::FinishLogin(bool bWasSuccessful, const
 		LogDebug(FString::Printf(TEXT("[gamelift-eos] Signed in as '%s'"), *GetLocalPlayerDisplayName()));
 		ReportLoginChanged(true);
 		ContinueAfterLogin(Request);
+		ResolveDeferredLeaderboardFetch(true);
 		return;
 	}
 
@@ -274,6 +306,7 @@ void UFrontendSessionBackend_GameLiftEOS::FinishLogin(bool bWasSuccessful, const
 
 	ReportLoginChanged(false, ErrorText);
 	FailDeferredRequest(Request, ErrorText);
+	ResolveDeferredLeaderboardFetch(false);
 }
 
 void UFrontendSessionBackend_GameLiftEOS::ContinueAfterLogin(EDeferred Request)
@@ -313,6 +346,26 @@ void UFrontendSessionBackend_GameLiftEOS::FailDeferredRequest(EDeferred Request,
 	default:
 		break;
 	}
+}
+
+void UFrontendSessionBackend_GameLiftEOS::ResolveDeferredLeaderboardFetch(bool bSignedIn)
+{
+	if (!bLeaderboardFetchDeferred)
+	{
+		return;
+	}
+	bLeaderboardFetchDeferred = false;
+
+	if (bSignedIn)
+	{
+		Super::FetchLeaderboard(DeferredLeaderboardCategory);
+		return;
+	}
+
+	// The board exists but this player could not be identified to it. Empty, not simulated:
+	// made-up rows would pass for the real ranking.
+	LogDebug(TEXT("[gamelift-eos] FetchLeaderboard: not signed in, the leaderboard was not requested"));
+	ReportLeaderboard(DeferredLeaderboardCategory, TArray<UFrontendLeaderboardEntryData*>());
 }
 
 void UFrontendSessionBackend_GameLiftEOS::HandleLoginStatusChanged(int32 LocalUserNum, ELoginStatus::Type OldStatus, ELoginStatus::Type NewStatus, const FUniqueNetId& NewId)

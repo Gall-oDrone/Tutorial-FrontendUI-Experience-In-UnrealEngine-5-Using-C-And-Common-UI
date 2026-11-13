@@ -495,7 +495,8 @@ an API Gateway **HTTP API** with a single `POST /` route in front of an arm64 Py
 - allows exactly `GameLift.CreateGameSession`, `GameLift.DescribeGameSessions`,
   `GameLift.CreatePlayerSession` and the queue trio `GameLift.StartGameSessionPlacement`,
   `GameLift.DescribeGameSessionPlacement`, `GameLift.StopGameSessionPlacement` (the queue name
-  is pinned when deployed with `queue_name`, see below);
+  is pinned when deployed with `queue_name`, see below), plus `Leaderboard.GetTop` when
+  deployed with `enable_leaderboard` (answered from DynamoDB, not GameLift - see *Leaderboard*);
 - **pins the fleet** (`-var fleet_id=` or `alias_id=`) onto every request and clamps
   `MaximumPlayerSessionCount` to 1-16, so a shipped client cannot be retargeted by editing an ini;
 - signs with its own role (SigV4) and returns GameLift's status **and body verbatim** — the
@@ -664,6 +665,37 @@ above included - and the Create button is released. A Blueprint can wire the sam
 Cancel label on the button. Backends that cannot abandon a call in flight (OnlineSubsystem) return
 false and the screen simply closes as before.
 
+### Leaderboard (`Leaderboard.GetTop`)
+
+GameLift has no leaderboard, so the board is a DynamoDB table behind the same proxy
+(companion repo: `-var enable_leaderboard=true`, deployed with
+`infrastructure/scripts/gamelift/proxy-deploy.sh`; table, index and response shape are in its
+`infrastructure/terraform/README.md`). The Leaderboard screen's `FetchLeaderboard` becomes one
+POST to `ApiEndpointUrl` with `X-Amz-Target: Leaderboard.GetTop` and
+`{"Board":"Main","Limit":50}` - the board name is the `ELeaderboardCategory` value's name, the
+limit is **Leaderboard Max Rows** (`LeaderboardMaxRows`, 1-100).
+
+| Answer | What the screen shows |
+|---|---|
+| 200 | The rows as ranked by the proxy (competition ranks: 1, 2, 2, 4). The player's own row is highlighted; when it ranks below the requested rows it is added at the end with its real rank |
+| No `ApiEndpointUrl` (direct SigV4), or `UnsupportedOperationException` (proxy without the leaderboard) | "No leaderboard service": simulated rows, or an empty list with *Simulate Leaderboard When Unsupported* off. **Turn it off for a build players get** - simulated rows look like a real ranking |
+| 401 (not signed in / token expired), 502 `LeaderboardUnavailableException`, network error | Empty list and a line in the API debug panel. Never simulated rows: the service exists |
+
+- **Whose row is "mine"**: with `auth_mode = eos` the proxy uses the verified Epic account of the
+  bearer token and nothing the client says; without auth the client's `PlayerId` is only a
+  highlight hint. Player ids never come back, only display names.
+- **Sign-in**: `UFrontendSessionBackend_GameLiftEOS` signs in before the first read, exactly as
+  it does for Find (`[gamelift-eos] FetchLeaderboard: not signed in, signing in first`). If the
+  sign-in fails the board is empty.
+- The read uses its own HTTP request: opening the screen does not cancel a Host / Find / Join
+  in flight, and those do not cancel it.
+- **Clients cannot write.** There is no score submission yet - the game has no score - so rows
+  come from the operator script (`infrastructure/scripts/gamelift/leaderboard.sh seed | put |
+  clear-seed`). A server-side write path is the next step.
+
+Debug panel on a good read: `[gamelift] Leaderboard.GetTop(Main) limit=50` →
+`[gamelift] Leaderboard.GetTop(Main) -> 25 row(s), own row: in the list`.
+
 ---
 
 ## 7. Operations — Alias, Cost Guardrails
@@ -719,4 +751,6 @@ $40, e-mail at 50/80/100 % actual and 100 % forecast) is the safety net; the com
 | `GameLift server requires a valid ?PlayerSessionId= option to join` | Client connected directly by IP without calling `CreatePlayerSession`. Use the Host or Server Browser Join flow in `GAMELIFT` mode, or disable `bRequirePlayerSessionIdOnServer` when testing raw `open 127.0.0.1:7777`. |
 | Client reaches the server, then `LogNet: Error: Server is incompatible with the local version of the game: RemoteNetworkVersion=… vs LocalNetworkVersion=…` / `OutdatedClient` | Client and server were built by different engine builds (Launcher editor vs. source-built 5.6.1 on the build box). The engine's default network version hashes the engine changelist. This project pins it to `ProjectVersion` instead (`FFrontendUIGameModule::GetProjectNetworkVersion`), so **both** sides must be built from a revision that has that override (≥ `v1.1.1`) and share the same `ProjectVersion` in `DefaultGame.ini`. If you bump `ProjectVersion`, rebuild the server artifacts. The flip side: with the pin, a client and a server of **different revisions but the same `ProjectVersion`** connect happily even if a replicated class changed between them, and RPC / property indices then land on the wrong functions - symptoms like buttons that do nothing or players missing from the lobby list. Rule: **any change to a replicated class (new RPC, new replicated property) bumps `ProjectVersion`**, so a stale packaged server is refused instead of half-working. |
 | Packaged client only (editor works): every Host / Find / Join fails at once with `Could not reach GameLift endpoint for …` and nothing reaches the API Gateway access log | Look at `LogHttp` in the client log (Shipping logs to `%LOCALAPPDATA%\FrontendUI\Saved\Logs\`). `POST https: completed with reason 'Other' after 0.00s` = the URL was cut at `//` by the ini parser: quote it (`ApiEndpointUrl="https://…/"`, section 4) - newer builds say *GameLift endpoint 'https:' is not a valid URL* outright. `libcurl error: 60 (SSL peer certificate …)` = no usable root certificate: make sure `Manifest_UFSFiles_Win64.txt` lists `FrontendUI/Content/Certificates/cacert.pem`. |
+| Leaderboard shows the simulated names (Valkyrie … You … Dusk, 40 rows) although the proxy is deployed | The debug panel says why: `no ApiEndpointUrl` (the client is on direct SigV4 - set `GAMELIFT_ENDPOINT_URL` / `ApiEndpointUrl`) or `the proxy has no leaderboard` (apply the proxy with `-var enable_leaderboard=true`). |
+| Leaderboard is empty | `Leaderboard.GetTop(Main) failed: HTTP 401 …`: not signed in to Epic or the token expired (sign-in line just above it in the debug panel). `HTTP 502 LeaderboardUnavailableException`: the Lambda could not read the table, cause in `/aws/lambda/frontendui-gamelift-proxy`. `-> 0 row(s)`: the table has no rows for that board (`leaderboard.sh count`). |
 | Shipping client against a **Development** server: `LogNetPackageMap: Error: UPackageMapClient::SerializeNewActor. Unresolved Archetype GUID. Path: Default__GameplayDebuggerCategoryReplicator` + `LogNet: Warning: … SerializeNewActor failed to find/spawn actor` once per connection | Harmless. The Development server spawns and replicates the Gameplay Debugger's replicator actor, which does not exist in a Shipping client, so the client drops that one channel. Disappears with a Shipping server or with the GameplayDebugger plugin disabled in the `.uproject`. |

@@ -100,6 +100,13 @@ public:
 	 */
 	UPROPERTY(Config, EditAnywhere, Category = "Client", meta = (ClampMin = "0", UIMin = "0", UIMax = "300"))
 	float CreateSessionRetryTimeoutSeconds = 90.f;
+
+	/**
+	 * Rows the Leaderboard screen asks ApiEndpointUrl for (Leaderboard.GetTop; the proxy caps a
+	 * request at 100). The player's own row is added to these when it ranks below them.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Client", meta = (ClampMin = "1", ClampMax = "100", UIMin = "1", UIMax = "100"))
+	int32 LeaderboardMaxRows = 50;
 	//~ End Client & Fleet configuration
 
 	//~ Begin Development-only direct AWS credentials (ignored in Shipping builds; keep in Config/UserGame.ini or env vars)
@@ -228,6 +235,9 @@ struct FFrontendGameLiftSessionSummary
  *   - Find:  GameLift.DescribeGameSessions (StatusFilter=ACTIVE) -> ReportSessionsFound
  *   - Join:  GameLift.CreatePlayerSession -> ReportSessionJoined(true, "ip:port?PlayerSessionId=...")
  *   - Leave: clears local session state -> ReportSessionLeft
+ *   - Leaderboard: Leaderboard.GetTop on ApiEndpointUrl (a table behind the proxy; GameLift has
+ *            no leaderboard). Without a proxy, or with one that has no leaderboard, the policy
+ *            is UFrontendMultiplayerSettings::bSimulateLeaderboardWhenUnsupported
  *
  * Server side (when running with -server and a GameLift WebSocket URL):
  *   - Connects to GameLift's Server SDK 5.x WebSocket endpoint on map load
@@ -297,6 +307,13 @@ private:
 	UWorld* GetGameWorld() const;
 	//~ End Client HTTP helpers
 
+	//~ Begin Leaderboard (Leaderboard.GetTop on the proxy)
+	void HandleLeaderboardResponse(ELeaderboardCategory Category, int32 StatusCode, const FString& ResponseBody);
+	/** No leaderboard service behind this configuration: simulated rows or an empty list, per bSimulateLeaderboardWhenUnsupported. */
+	void ReportLeaderboardUnsupported(ELeaderboardCategory Category, const TCHAR* Reason);
+	void CancelLeaderboardRequest();
+	//~ End Leaderboard
+
 	//~ Begin Server WebSocket helpers (GameLift Server SDK 5.x wire protocol)
 	void StartServerWebSocketIfConfigured(UWorld* LoadedWorld);
 	/** Container fleets: fetch ECS task credentials + task id, then connect with a SigV4-signed URL. */
@@ -338,6 +355,15 @@ private:
 	 * (new Host / Find / Join, Leave, the player's Cancel) and is dropped instead of reported.
 	 */
 	uint32 ClientRequestGeneration = 0;
+
+	/**
+	 * Leaderboard fetch in flight. Kept apart from ActiveHttpRequest and its generation: reading
+	 * the board is not a session operation, so it must neither cancel a Host / Find / Join nor be
+	 * cancelled by one. The serial is bumped per fetch (and on Shutdown); a completion that
+	 * arrives under an older one was superseded and is dropped.
+	 */
+	TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> LeaderboardHttpRequest;
+	uint32 LeaderboardRequestSerial = 0;
 
 	/** Polls DescribeGameSessions while a newly created session transitions from ACTIVATING to ACTIVE. */
 	FTSTicker::FDelegateHandle ActivationPollTickerHandle;

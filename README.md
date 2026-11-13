@@ -191,7 +191,7 @@ The dedicated-server and Amazon GameLift path is complete end to end: `FrontendU
 - **In-app Cancel for a queued Host**: a placement can stay `PENDING` for up to the queue timeout and today the only ways out are quitting or waiting (Back hides the screen; Host / Refresh are gated on the operation in flight). A Cancel on the busy Host button should end the operation and send the Stop.
 - **Server-side identity cross-check**: `PreLogin` compares GameLift's `PlayerId` (the proxy-verified Epic account id) with the connecting EOS unique id.
 - **CI for the server image**: build on the EC2 box, push to ECR, new CGD version, optional fleet roll-out, from a `workflow_dispatch` action.
-- **Leaderboard** backed by DynamoDB through the same proxy and EOS identity (`FetchLeaderboard` is still simulated).
+- **Leaderboard** backed by DynamoDB through the same proxy and EOS identity: the **read path** is in (`Leaderboard.GetTop`, [Docs/GameLift.md §6](Docs/GameLift.md)). Still open: **score submission** - the game has no score yet, and writes must come from the dedicated server, never from a client; until then rows are put in by the operator script.
 - Studio logo as `FPreLoadScreenBase` so it precedes the loading screen; reconnect flow and match-specific HUD content.
 - Later, when there is a reason: FlexMatch on top of the queue, a second region, Spot fleets.
 
