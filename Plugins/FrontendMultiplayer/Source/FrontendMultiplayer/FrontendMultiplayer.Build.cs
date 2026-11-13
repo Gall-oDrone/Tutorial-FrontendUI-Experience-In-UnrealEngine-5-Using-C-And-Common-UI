@@ -11,8 +11,9 @@ public class FrontendMultiplayer : ModuleRules
 			"GameplayTags", "DeveloperSettings", "FrontendUI"
 		});
 
+		// CoreOnline: FUniqueNetIdWrapper::ToString (the local player's id sent as GameLift PlayerId).
 		PrivateDependencyModuleNames.AddRange(new string[] {
-			"Slate", "SlateCore", "HTTP", "Json", "WebSockets"
+			"Slate", "SlateCore", "HTTP", "Json", "WebSockets", "CoreOnline"
 		});
 	}
 }
