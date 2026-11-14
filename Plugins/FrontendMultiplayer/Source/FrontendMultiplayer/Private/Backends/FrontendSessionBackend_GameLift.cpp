@@ -543,6 +543,17 @@ void UFrontendSessionBackend_GameLift::Initialize(UFrontendMultiplayerSubsystem*
 		*Settings->ResolveGameSessionQueueName(),
 		Proxy.IsEmpty() ? TEXT("direct (SigV4)") : *Proxy));
 
+	// A dedicated server reports leaderboard scores through the proxy, with a key from its
+	// environment. Say at startup whether it can, so "no points" is not the first sign that it
+	// cannot. The key itself is never logged.
+	if (IsRunningDedicatedServer())
+	{
+		const bool bHasServerKey = !Settings->ResolveLeaderboardServerKey().IsEmpty();
+		LogDebug(FString::Printf(TEXT("[gamelift] score submission: %s"),
+			Proxy.IsEmpty() ? TEXT("off (no ApiEndpointUrl; set GAMELIFT_ENDPOINT_URL for the server too)")
+			: (bHasServerKey ? TEXT("on (server key present, not shown)") : TEXT("off (GAMELIFT_SERVER_KEY is not set)"))));
+	}
+
 	// An unquoted URL in an .ini is cut at the "//" (the config parser reads it as a trailing
 	// comment), which leaves "https:" behind and every request failing with a bare network error.
 	if (!Proxy.IsEmpty() && !IsPlausibleEndpointUrl(Proxy))
@@ -1690,6 +1701,8 @@ void UFrontendSessionBackend_GameLift::AwardLeaderboardPoints(const FString& Pla
 			{
 				return;
 			}
+			// Answered, one way or the other: the empty-session exit no longer has to wait for it.
+			Self->PendingScoreSubmissions = FMath::Max(0, Self->PendingScoreSubmissions - 1);
 			if (!bConnectedSuccessfully || !Response.IsValid())
 			{
 				Self->LogDebug(FString::Printf(TEXT("[gamelift] Leaderboard.AddScore %s: no response (network error); the points were not recorded"), *PlayerSessionId));
@@ -1729,6 +1742,7 @@ void UFrontendSessionBackend_GameLift::AwardLeaderboardPoints(const FString& Pla
 		});
 
 	LogDebug(FString::Printf(TEXT("[gamelift] Leaderboard.AddScore %s +%d (%s)"), *PlayerSessionId, Points, *BoardName));
+	++PendingScoreSubmissions;
 	HttpRequest->ProcessRequest();
 }
 
@@ -1758,6 +1772,31 @@ bool UFrontendSessionBackend_GameLift::HandleServerSessionEmpty()
 
 bool UFrontendSessionBackend_GameLift::HandleSessionEmptyExitTick(float /*DeltaTime*/)
 {
+	// The score of the player who left last may still be on its way to the proxy (2.7 s against a
+	// cold proxy on 2026-11-14, with a 5 s exit delay). Exiting would lose it: hold the exit until
+	// every submission has been answered, within a limit.
+	if (PendingScoreSubmissions > 0)
+	{
+		const double Now = FPlatformTime::Seconds();
+		if (ScoreSubmissionExitDeadlineSeconds <= 0.0)
+		{
+			const double MaxHoldSeconds = 10.0;
+			ScoreSubmissionExitDeadlineSeconds = Now + MaxHoldSeconds;
+			LogDebug(FString::Printf(TEXT("[gamelift] %d score submission(s) not answered yet; holding the exit for up to %.0fs"), PendingScoreSubmissions, MaxHoldSeconds));
+			// Poll from here on (the configured delay may be long). The poller takes over the
+			// handle, so a player who joins meanwhile still cancels the exit.
+			ServerSessionEmptyExitTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+				FTickerDelegate::CreateUObject(this, &ThisClass::HandleSessionEmptyExitTick), 0.25f);
+			return false; // the delayed ticker is done
+		}
+		if (Now < ScoreSubmissionExitDeadlineSeconds)
+		{
+			return true; // keep polling
+		}
+		LogDebug(FString::Printf(TEXT("[gamelift] %d score submission(s) still not answered; exiting anyway"), PendingScoreSubmissions));
+	}
+
+	ScoreSubmissionExitDeadlineSeconds = 0.0;
 	ServerSessionEmptyExitTickerHandle.Reset();
 	TerminateServerProcessAndExit(TEXT("game session empty"));
 	return false; // one-shot
@@ -1769,6 +1808,7 @@ void UFrontendSessionBackend_GameLift::CancelPendingServerExit()
 	{
 		FTSTicker::GetCoreTicker().RemoveTicker(ServerSessionEmptyExitTickerHandle);
 		ServerSessionEmptyExitTickerHandle.Reset();
+		ScoreSubmissionExitDeadlineSeconds = 0.0;
 		LogDebug(TEXT("[gamelift] player joined during the empty-session grace period; keeping the process"));
 	}
 }

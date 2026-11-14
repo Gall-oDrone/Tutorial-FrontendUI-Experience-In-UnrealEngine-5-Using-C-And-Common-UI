@@ -445,6 +445,10 @@ private:
 	 * connected), until RemovePlayerSession. Only these can earn leaderboard points.
 	 */
 	TSet<FString> VerifiedPlayerSessionIds;
+	/** Leaderboard.AddScore requests sent and not answered yet; the empty-session exit waits for them, within a limit. */
+	int32 PendingScoreSubmissions = 0;
+	/** While the empty-session exit is held for PendingScoreSubmissions: when it stops waiting. 0 = not holding. */
+	double ScoreSubmissionExitDeadlineSeconds = 0.0;
 	int32 ServerReconnectAttempts = 0;
 	FString ServerProcessId;
 	FString ServerHostId;

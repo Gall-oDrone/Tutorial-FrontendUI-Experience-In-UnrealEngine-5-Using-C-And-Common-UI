@@ -755,10 +755,18 @@ builds) and not from the command line (that is written to the log). `LaunchDedic
 `Leaderboard: server key loaded from SSM (not shown)`; a container fleet gets it as a container
 environment variable. Without the key the server runs as before and adds nothing.
 
-`Server.log` on a good award: `[gamelift] Leaderboard.AddScore psess-… +100 (Main)` →
-`[gamelift] Leaderboard.AddScore psess-… -> +100 on Main`. Limits of the placeholder: nothing
-stops a player from starting and leaving matches to collect points, and an award in flight when
-the process is killed (not the normal empty-session exit, which waits 5 s) is lost.
+`Server.log` says at startup whether the server can submit at all -
+`[gamelift] score submission: on (server key present, not shown)` or `off (…)` with the reason -
+and on a good award: `[gamelift] Leaderboard.AddScore psess-… +100 (Main)` →
+`[gamelift] Leaderboard.AddScore psess-… -> +100 on Main`. The server restarts after every game
+session, so these lines are in the `Server-backup-…log` of the run that hosted the match, not in
+the fresh `Server.log`.
+
+When the last player leaves, their submission may still be on its way (2.7 s against a cold
+proxy, measured 2026-11-14) while the empty-session exit is due after 5 s: the exit is held until
+every submission has been answered, for at most 10 more seconds (`… not answered yet; holding
+the exit …`). Limits of the placeholder: nothing stops a player from starting and leaving
+matches to collect points, and an award in flight when the process is killed outright is lost.
 
 ---
 
