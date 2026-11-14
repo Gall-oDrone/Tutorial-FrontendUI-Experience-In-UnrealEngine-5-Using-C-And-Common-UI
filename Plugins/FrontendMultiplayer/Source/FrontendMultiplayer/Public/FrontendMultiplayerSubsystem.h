@@ -58,6 +58,15 @@ public:
 	void FetchLeaderboard(ELeaderboardCategory Category = ELeaderboardCategory::Main);
 
 	/**
+	 * Abandon the Host / Find / Join in flight. True if the backend could stop it (GameLift:
+	 * the HTTP request and a PENDING placement are cancelled); false if it must run to its
+	 * Report* (OnlineSubsystem calls), in which case nothing changes. The Host screen calls this
+	 * on Back while a request is pending; a Blueprint may wire it to a Cancel button.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Frontend Multiplayer")
+	bool CancelSessionOperation();
+
+	/**
 	 * Sign in to the online service explicitly (e.g. from a "Sign in" button). Not required:
 	 * Host and Find sign in on demand when the backend needs it.
 	 */
@@ -93,6 +102,8 @@ public:
 	//~ Begin dedicated-server hooks, forwarded to ActiveBackend.
 	bool AcceptPlayerSession(const FString& PlayerSessionId, FString& OutErrorMessage);
 	void RemovePlayerSession(const FString& PlayerSessionId);
+	/** Post-login identity check of a PlayerSessionId against the session service; false in the callback = kick. */
+	void VerifyPlayerSession(const FString& PlayerSessionId, const FString& UniqueNetIdString, FOnFrontendPlayerSessionVerified OnVerified);
 	/** The last player left the dedicated server. True if the backend will recycle the process; false means keep running (reset to lobby). */
 	bool NotifyServerSessionEmpty();
 	//~ End dedicated-server hooks.

@@ -48,6 +48,17 @@ UWidget* UWidget_HostSessionScreen::NativeGetDesiredFocusTarget() const
 
 void UWidget_HostSessionScreen::OnBackBoundActionTriggered()
 {
+	// Back while Create is still working (a queued GameLift placement can wait minutes for
+	// capacity): give the request up if the backend can, so the player is not stuck watching a
+	// disabled button or surprised by a travel after walking away. Backends that cannot cancel
+	// (OnlineSubsystem calls) keep running and the screen just closes, as before.
+	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
+	{
+		if (MultiplayerSubsystem->GetCurrentOperation() == EFrontendSessionOperation::Creating)
+		{
+			MultiplayerSubsystem->CancelSessionOperation();
+		}
+	}
 	DeactivateWidget();
 }
 

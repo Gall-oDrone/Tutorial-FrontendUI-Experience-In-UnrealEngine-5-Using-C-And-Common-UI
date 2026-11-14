@@ -38,6 +38,7 @@ public:
 	virtual void CreateSession(FName SessionName, int32 MaxPlayers) override;
 	virtual void FindSessions() override;
 	virtual void JoinSession(int32 SessionIndex) override;
+	virtual bool CancelPendingOperation() override;
 	virtual FString GetBackendDisplayName() const override;
 	virtual bool RequiresLogin() const override { return true; }
 	virtual bool IsLoggedIn() const override;

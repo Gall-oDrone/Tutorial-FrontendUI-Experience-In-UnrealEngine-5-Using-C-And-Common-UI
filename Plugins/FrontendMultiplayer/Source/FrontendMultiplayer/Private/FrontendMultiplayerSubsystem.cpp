@@ -172,6 +172,28 @@ void UFrontendMultiplayerSubsystem::LeaveSession()
 	}
 }
 
+bool UFrontendMultiplayerSubsystem::CancelSessionOperation()
+{
+	if (CurrentOperation == EFrontendSessionOperation::None || !ActiveBackend)
+	{
+		return false;
+	}
+
+	const EFrontendSessionOperation Operation = CurrentOperation;
+	const FString OperationName = UEnum::GetDisplayValueAsText(Operation).ToString();
+	if (!ActiveBackend->CancelPendingOperation())
+	{
+		// e.g. an OnlineSubsystem CreateSession already in flight: it will still answer, and
+		// clearing the operation now would let that answer travel behind the player's back.
+		BroadcastDebugLog(FString::Printf(TEXT("%s cannot be cancelled on this backend; waiting for it to finish."), *OperationName));
+		return false;
+	}
+
+	BroadcastDebugLog(FString::Printf(TEXT("%s cancelled by the player."), *OperationName));
+	FinishOperation(Operation);
+	return true;
+}
+
 void UFrontendMultiplayerSubsystem::FetchLeaderboard(ELeaderboardCategory Category)
 {
 	if (ActiveBackend)
@@ -220,6 +242,18 @@ bool UFrontendMultiplayerSubsystem::GetActiveSessionInfo(FString& OutDisplayName
 bool UFrontendMultiplayerSubsystem::AcceptPlayerSession(const FString& PlayerSessionId, FString& OutErrorMessage)
 {
 	return ActiveBackend ? ActiveBackend->AcceptPlayerSession(PlayerSessionId, OutErrorMessage) : true;
+}
+
+void UFrontendMultiplayerSubsystem::VerifyPlayerSession(const FString& PlayerSessionId, const FString& UniqueNetIdString, FOnFrontendPlayerSessionVerified OnVerified)
+{
+	if (ActiveBackend)
+	{
+		ActiveBackend->VerifyPlayerSession(PlayerSessionId, UniqueNetIdString, MoveTemp(OnVerified));
+	}
+	else
+	{
+		OnVerified.ExecuteIfBound(true, FString());
+	}
 }
 
 void UFrontendMultiplayerSubsystem::RemovePlayerSession(const FString& PlayerSessionId)

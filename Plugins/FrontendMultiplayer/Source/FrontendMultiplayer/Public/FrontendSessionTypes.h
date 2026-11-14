@@ -19,3 +19,9 @@ enum class EFrontendSessionOperation : uint8
 	Joining,
 	Leaving
 };
+
+/**
+ * Result of UFrontendSessionBackend::VerifyPlayerSession: does the identity that connected
+ * match the one the player session was reserved for. Reason is shown to a kicked player.
+ */
+DECLARE_DELEGATE_TwoParams(FOnFrontendPlayerSessionVerified, bool /*bMatches*/, const FString& /*Reason*/);

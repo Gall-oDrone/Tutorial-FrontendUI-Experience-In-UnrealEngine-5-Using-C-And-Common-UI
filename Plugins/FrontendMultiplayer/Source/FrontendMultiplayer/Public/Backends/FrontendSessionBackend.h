@@ -64,6 +64,15 @@ public:
 	 */
 	virtual void LeaveSession() {}
 
+	/**
+	 * The player gave up on the Host / Find / Join in flight (Back on the Host screen while a
+	 * queued placement waits for capacity). Stop it *without* a Report* call and return true;
+	 * the subsystem clears the operation itself. Return false when the request cannot be
+	 * abandoned (an OnlineSubsystem call already in flight will still complete), and the
+	 * subsystem keeps waiting for the Report*. Default: cannot cancel.
+	 */
+	virtual bool CancelPendingOperation() { return false; }
+
 	/** Answer with ReportLeaderboard. */
 	virtual void FetchLeaderboard(ELeaderboardCategory Category) PURE_VIRTUAL(UFrontendSessionBackend::FetchLeaderboard, );
 
@@ -112,6 +121,14 @@ public:
 	 * the game mode then leaves the match alone. Default false: keep running, reset to lobby.
 	 */
 	virtual bool HandleServerSessionEmpty() { return false; }
+
+	/**
+	 * After a player with a PlayerSessionId logged in: ask the session service who that slot was
+	 * reserved for and compare with the identity that actually connected (UniqueNetIdString is
+	 * APlayerState::GetUniqueId().ToString()). Answer through OnVerified, possibly later; false
+	 * means the game mode kicks the player with Reason. Default: no service, always true.
+	 */
+	virtual void VerifyPlayerSession(const FString& PlayerSessionId, const FString& UniqueNetIdString, FOnFrontendPlayerSessionVerified OnVerified) { OnVerified.ExecuteIfBound(true, FString()); }
 	//~ End dedicated-server hooks.
 
 protected:

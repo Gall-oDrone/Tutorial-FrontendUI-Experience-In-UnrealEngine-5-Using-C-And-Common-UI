@@ -141,7 +141,11 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Dedicated Server")
 	FString ServerAuthToken;
 
-	/** When true on a GameLift-connected server, reject PreLogin attempts that do not carry a ?PlayerSessionId= option. */
+	/**
+	 * When true on a GameLift-connected server, reject PreLogin attempts that do not carry a ?PlayerSessionId= option,
+	 * and remove a player whose PlayerSessionId GameLift then refuses (AcceptPlayerSession answered with an error:
+	 * expired, already used, unknown). That answer arrives after PreLogin has let the player in, so it is a kick.
+	 */
 	UPROPERTY(Config, EditAnywhere, Category = "Dedicated Server")
 	bool bRequirePlayerSessionIdOnServer = true;
 
@@ -169,6 +173,20 @@ public:
 	 */
 	UPROPERTY(Config, EditAnywhere, Category = "Dedicated Server", meta = (ClampMin = "0", UIMin = "0", UIMax = "600"))
 	float SessionNoPlayerExitDelaySeconds = 120.f;
+
+	/**
+	 * After a player with a PlayerSessionId logs in, ask GameLift (DescribePlayerSessions) which
+	 * PlayerId the slot was reserved for and kick the player if it is not the identity that
+	 * connected. Clients send their unique net id as PlayerId (the proxy in auth_mode=eos replaces
+	 * it with the verified Epic account id, which is the first half of an EOS unique id), so a
+	 * stolen or guessed ?PlayerSessionId= only works for the account it was created for. Clients
+	 * older than v1.6 sent their display name instead and are kicked when this is on.
+	 * A player who connects without any unique net id (not signed in) is kicked as well: the slot
+	 * is reserved for an account and none was presented.
+	 * Fails open (player stays) when GameLift does not answer within 10 s.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Dedicated Server")
+	bool bVerifyPlayerSessionIdentity = true;
 	//~ End Dedicated Server
 
 	FString ResolveAwsRegion() const;
@@ -241,12 +259,14 @@ public:
 	virtual void FindSessions() override;
 	virtual void JoinSession(int32 SessionIndex) override;
 	virtual void LeaveSession() override;
+	virtual bool CancelPendingOperation() override;
 	virtual void FetchLeaderboard(ELeaderboardCategory Category) override;
 	virtual FString GetBackendDisplayName() const override;
 	virtual bool GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const override;
 	virtual bool AcceptPlayerSession(const FString& PlayerSessionId, FString& OutErrorMessage) override;
 	virtual void RemovePlayerSession(const FString& PlayerSessionId) override;
 	virtual bool HandleServerSessionEmpty() override;
+	virtual void VerifyPlayerSession(const FString& PlayerSessionId, const FString& UniqueNetIdString, FOnFrontendPlayerSessionVerified OnVerified) override;
 	//~ End UFrontendSessionBackend Interface
 
 protected:
@@ -276,7 +296,10 @@ private:
 	/** bIsJoinRequest selects which Report* answers on failure: ReportSessionJoined (Join) or ReportSessionCreated (Host). */
 	void RequestPlayerSessionForGameSession(const FString& GameSessionId, const FString& DisplayName, int32 MaxPlayers, bool bIsJoinRequest);
 	void CancelPendingClientRequests();
+	/** What GameLift knows this player as: the local unique net id (EOS "<account>|<puid>", Null machine id), or the display name without one. */
 	FString BuildLocalPlayerId() const;
+	/** What other players see in the browser's host column. */
+	FString BuildLocalPlayerDisplayName() const;
 	UWorld* GetGameWorld() const;
 	//~ End Client HTTP helpers
 
@@ -298,6 +321,14 @@ private:
 	bool CancelSessionNoPlayerExit();
 	bool HandleSessionNoPlayerExitTick(float DeltaTime);
 	void TerminateServerProcessAndExit(const TCHAR* Reason);
+	/** DescribePlayerSessions reply (or its timeout) for a VerifyPlayerSession request. */
+	void HandlePlayerSessionVerificationReply(const FString& RequestId, const TSharedPtr<FJsonObject>& ReplyObject);
+	bool HandlePlayerSessionVerificationTimeout(float DeltaTime);
+	static bool PlayerIdMatchesUniqueNetId(const FString& PlayerId, const FString& UniqueNetIdString);
+	/** GameLift answered AcceptPlayerSession with an error: the player holding that id must go. */
+	void HandlePlayerSessionAcceptRejected(const FString& PlayerSessionId);
+	/** Answer OnVerified(false, Reason) on the next tick: a kick from inside PostLogin would destroy the controller the engine is still logging in. */
+	void RejectPlayerSessionNextTick(const FOnFrontendPlayerSessionVerified& OnVerified, const FString& Reason);
 
 	void HandleWebSocketConnected();
 	void HandleWebSocketConnectionError(const FString& Error);
@@ -310,6 +341,13 @@ private:
 
 	/** Active HTTP request in flight on the client, if any. */
 	TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> ActiveHttpRequest;
+
+	/**
+	 * Bumped by CancelPendingClientRequests. Each request remembers the value it was sent under;
+	 * a completion that arrives under a newer one belongs to a cancelled or superseded request
+	 * (new Host / Find / Join, Leave, the player's Cancel) and is dropped instead of reported.
+	 */
+	uint32 ClientRequestGeneration = 0;
 
 	/** Polls DescribeGameSessions while a newly created session transitions from ACTIVATING to ACTIVE. */
 	FTSTicker::FDelegateHandle ActivationPollTickerHandle;
@@ -346,6 +384,27 @@ private:
 	FTSTicker::FDelegateHandle ServerReconnectTickerHandle;
 	FTSTicker::FDelegateHandle ServerSessionEmptyExitTickerHandle;
 	FTSTicker::FDelegateHandle ServerSessionNoPlayerExitTickerHandle;
+
+	/** VerifyPlayerSession requests waiting for GameLift's DescribePlayerSessions reply, by RequestId. */
+	struct FPendingPlayerSessionVerification
+	{
+		FString PlayerSessionId;
+		FString UniqueNetIdString;
+		FOnFrontendPlayerSessionVerified OnVerified;
+		double DeadlineSeconds = 0.0;
+	};
+	TMap<FString, FPendingPlayerSessionVerification> PendingPlayerSessionVerifications;
+	FTSTicker::FDelegateHandle PlayerSessionVerificationTickerHandle;
+
+	/** AcceptPlayerSession requests GameLift has not answered yet: RequestId -> PlayerSessionId. */
+	TMap<FString, FString> PendingPlayerSessionAccepts;
+	/** PlayerSessionIds GameLift refused, kept until that player is gone (RemovePlayerSession). */
+	TSet<FString> RejectedPlayerSessionIds;
+	/**
+	 * How to remove the logged-in player holding a PlayerSessionId (the OnVerified handed to
+	 * VerifyPlayerSession), for a refusal that arrives after the login completed. Cleared by RemovePlayerSession.
+	 */
+	TMap<FString, FOnFrontendPlayerSessionVerified> PlayerSessionKickers;
 	int32 ServerReconnectAttempts = 0;
 	FString ServerProcessId;
 	FString ServerHostId;

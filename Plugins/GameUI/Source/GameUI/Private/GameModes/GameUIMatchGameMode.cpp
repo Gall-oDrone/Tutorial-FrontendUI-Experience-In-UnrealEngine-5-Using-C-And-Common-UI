@@ -10,6 +10,7 @@
 #include "FrontendMultiplayerSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "GameFramework/GameSession.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
 
@@ -118,6 +119,36 @@ void AGameUIMatchGameMode::PostLogin(APlayerController* NewPlayer)
 		if (AGameUIMatchPlayerState* MatchPlayerState = NewPlayer->GetPlayerState<AGameUIMatchPlayerState>())
 		{
 			MatchPlayerState->SetIsHost(true);
+		}
+	}
+
+	// Dedicated server under a session service: PreLogin accepted the PlayerSessionId; now make
+	// sure the identity that connected is the one the slot was reserved for. The answer comes
+	// back asynchronously, so a mismatch is a kick rather than a refused login.
+	if (GetNetMode() == NM_DedicatedServer && NewPlayer)
+	{
+		const AGameUIMatchPlayerState* MatchPlayerState = NewPlayer->GetPlayerState<AGameUIMatchPlayerState>();
+		UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UGameInstance::GetSubsystem<UFrontendMultiplayerSubsystem>(GetGameInstance());
+		if (MatchPlayerState && MultiplayerSubsystem && !MatchPlayerState->GetPlayerSessionId().IsEmpty())
+		{
+			TWeakObjectPtr<APlayerController> WeakPlayer(NewPlayer);
+			const FString PlayerName = MatchPlayerState->GetPlayerName();
+			MultiplayerSubsystem->VerifyPlayerSession(
+				MatchPlayerState->GetPlayerSessionId(),
+				MatchPlayerState->GetUniqueId().ToString(),
+				FOnFrontendPlayerSessionVerified::CreateWeakLambda(this, [this, WeakPlayer, PlayerName](bool bMatches, const FString& Reason)
+				{
+					APlayerController* Player = WeakPlayer.Get();
+					if (bMatches || !Player)
+					{
+						return;
+					}
+					UE_LOG(LogGameUI, Warning, TEXT("kicking %s: %s"), *PlayerName, *Reason);
+					if (GameSession)
+					{
+						GameSession->KickPlayer(Player, FText::FromString(Reason));
+					}
+				}));
 		}
 	}
 }
