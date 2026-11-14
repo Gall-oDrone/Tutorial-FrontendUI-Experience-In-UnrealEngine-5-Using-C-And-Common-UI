@@ -129,6 +129,14 @@ public:
 	 * means the game mode kicks the player with Reason. Default: no service, always true.
 	 */
 	virtual void VerifyPlayerSession(const FString& PlayerSessionId, const FString& UniqueNetIdString, FOnFrontendPlayerSessionVerified OnVerified) { OnVerified.ExecuteIfBound(true, FString()); }
+
+	/**
+	 * The player who logged in with PlayerSessionId earned Points on the leaderboard Category
+	 * (call it before RemovePlayerSession). Who that player is, and whether the slot counts, is
+	 * the session service's decision, not the caller's; PlayerDisplayName is only what the board
+	 * shows. Fire and forget: the outcome goes to the debug log. Default: no service, nothing.
+	 */
+	virtual void AwardLeaderboardPoints(const FString& PlayerSessionId, const FString& PlayerDisplayName, int32 Points, ELeaderboardCategory Category) {}
 	//~ End dedicated-server hooks.
 
 protected:

@@ -164,6 +164,14 @@ void AGameUIMatchGameMode::Logout(AController* Exiting)
 			{
 				if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UGameInstance::GetSubsystem<UFrontendMultiplayerSubsystem>(GetGameInstance()))
 				{
+					// Placeholder scoring (MatchCompletionLeaderboardPoints): a player who leaves a match
+					// that has started has finished it. Before RemovePlayerSession, which is where the
+					// backend forgets the player. The backend skips players it did not verify.
+					const int32 CompletionPoints = UGameUIDeveloperSettings::Get()->MatchCompletionLeaderboardPoints;
+					if (CompletionPoints > 0 && GetNetMode() == NM_DedicatedServer && GetMatchState() == MatchState::InProgress)
+					{
+						MultiplayerSubsystem->AwardLeaderboardPoints(PlayerSessionId, MatchPlayerState->GetPlayerName(), CompletionPoints, ELeaderboardCategory::Main);
+					}
 					MultiplayerSubsystem->RemovePlayerSession(PlayerSessionId);
 				}
 			}

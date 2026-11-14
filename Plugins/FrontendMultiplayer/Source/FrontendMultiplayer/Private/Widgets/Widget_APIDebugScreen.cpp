@@ -19,12 +19,21 @@ void UWidget_APIDebugScreen::NativeOnInitialized()
 			FSimpleDelegate::CreateUObject(this, &ThisClass::OnBackBoundActionTriggered)
 		)
 	);
+}
 
+void UWidget_APIDebugScreen::NativeConstruct()
+{
+	// Paired with NativeDestruct. The widget stack pools this screen: every close destructs it
+	// and every open constructs it again, while NativeOnInitialized runs once per instance, so
+	// a subscription made there is gone after the first close. Before Super, so a widget set to
+	// auto-activate is already listening when Super activates it.
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
 	{
-		MultiplayerSubsystem->OnAPIDebugLogUpdated.AddDynamic(this, &ThisClass::HandleAPIDebugLogUpdated);
-		MultiplayerSubsystem->OnAPIDebugLogCleared.AddDynamic(this, &ThisClass::HandleAPIDebugLogCleared);
+		MultiplayerSubsystem->OnAPIDebugLogUpdated.AddUniqueDynamic(this, &ThisClass::HandleAPIDebugLogUpdated);
+		MultiplayerSubsystem->OnAPIDebugLogCleared.AddUniqueDynamic(this, &ThisClass::HandleAPIDebugLogCleared);
 	}
+
+	Super::NativeConstruct();
 }
 
 void UWidget_APIDebugScreen::NativeDestruct()
