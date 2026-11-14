@@ -1,6 +1,7 @@
 // Diego Gallo All Rights Reserved
 
 #include "Backends/FrontendSessionBackend_GameLift.h"
+#include "FrontendLeaderboardEntryData.h"
 #include "FrontendMultiplayerLog.h"
 #include "FrontendMultiplayerSettings.h"
 #include "FrontendMultiplayerSubsystem.h"
@@ -340,6 +341,12 @@ namespace
 		return SchemeEnd != INDEX_NONE && Url.Len() > SchemeEnd && !FChar::IsWhitespace(Url[SchemeEnd]) && Url[SchemeEnd] != TEXT('/');
 	}
 
+	/** "Main": the enum value's name, which is also what the proxy calls the board (leaderboard_boards). */
+	FString LeaderboardBoardName(ELeaderboardCategory Category)
+	{
+		return StaticEnum<ELeaderboardCategory>()->GetNameStringByValue(static_cast<int64>(Category));
+	}
+
 	FString ResolveSettingWithOverrides(
 		const TCHAR* CommandLineKey,
 		const TCHAR* PrimaryEnvVar,
@@ -545,6 +552,7 @@ void UFrontendSessionBackend_GameLift::Initialize(UFrontendMultiplayerSubsystem*
 void UFrontendSessionBackend_GameLift::Shutdown()
 {
 	CancelPendingClientRequests();
+	CancelLeaderboardRequest();
 
 	// Engine is exiting (docker stop / SIGTERM, fleet scale-in, window closed). Tell GameLift
 	// now so the game session ends immediately instead of after heartbeat loss. Best effort:
@@ -1326,16 +1334,195 @@ bool UFrontendSessionBackend_GameLift::CancelPendingOperation()
 
 void UFrontendSessionBackend_GameLift::FetchLeaderboard(ELeaderboardCategory Category)
 {
-	// GameLift places and hosts sessions; it has no leaderboard service. Same policy as FixedAddress.
+	// GameLift places and hosts sessions; it has no leaderboard service. The board is a table
+	// behind the proxy (Leaderboard.GetTop), so without a proxy there is nobody to ask.
+	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
+	const FString ProxyUrl = Settings->ResolveApiEndpointUrl();
+	if (ProxyUrl.IsEmpty())
+	{
+		ReportLeaderboardUnsupported(Category, TEXT("no ApiEndpointUrl (the leaderboard is served by the proxy)"));
+		return;
+	}
+
+	const FString BoardName = LeaderboardBoardName(Category);
+
+	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("Board"), BoardName);
+	Payload->SetNumberField(TEXT("Limit"), FMath::Clamp(Settings->LeaderboardMaxRows, 1, 100));
+	// Which row is ours. Only a hint, and only for a proxy without player auth: with auth the
+	// proxy marks the row of the verified account and ignores this.
+	Payload->SetStringField(TEXT("PlayerId"), BuildLocalPlayerId());
+
+	FString SerializedPayload;
+	{
+		TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+			TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&SerializedPayload);
+		FJsonSerializer::Serialize(Payload, Writer);
+	}
+
+	// Not SendGameLiftRequest: that one tracks the single session request (ActiveHttpRequest and
+	// its generation), and reading the board must not cancel a Host / Find / Join or be dropped
+	// by one. The newest fetch wins; an older one still in flight is cancelled.
+	CancelLeaderboardRequest();
+	const uint32 Serial = LeaderboardRequestSerial;
+
+	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = FHttpModule::Get().CreateRequest();
+	HttpRequest->SetVerb(TEXT("POST"));
+	HttpRequest->SetURL(ProxyUrl);
+	HttpRequest->SetHeader(TEXT("Content-Type"), TEXT("application/x-amz-json-1.1"));
+	HttpRequest->SetHeader(TEXT("X-Amz-Target"), TEXT("Leaderboard.GetTop"));
+	const FString BearerToken = GetClientAuthToken();
+	if (!BearerToken.IsEmpty())
+	{
+		HttpRequest->SetHeader(TEXT("Authorization"), TEXT("Bearer ") + BearerToken);
+	}
+	HttpRequest->SetContentAsString(SerializedPayload);
+
+	LeaderboardHttpRequest = HttpRequest;
+	TWeakObjectPtr<ThisClass> WeakThis(this);
+	HttpRequest->OnProcessRequestComplete().BindLambda(
+		[WeakThis, Category, BoardName, Serial](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully)
+		{
+			ThisClass* Self = WeakThis.Get();
+			// Superseded by a newer fetch or cancelled by Shutdown (CancelRequest completes with a
+			// failure): whoever asked has already been, or will be, answered by the newer one.
+			if (!Self || Self->LeaderboardRequestSerial != Serial)
+			{
+				return;
+			}
+			Self->LeaderboardHttpRequest.Reset();
+
+			if (!bConnectedSuccessfully || !Response.IsValid())
+			{
+				Self->LogDebug(FString::Printf(TEXT("[gamelift] Leaderboard.GetTop(%s): no response (network error)"), *BoardName));
+				Self->ReportLeaderboard(Category, TArray<UFrontendLeaderboardEntryData*>());
+				return;
+			}
+
+			Self->HandleLeaderboardResponse(Category, Response->GetResponseCode(), Response->GetContentAsString());
+		});
+
+	LogDebug(FString::Printf(TEXT("[gamelift] Leaderboard.GetTop(%s) limit=%d"), *BoardName, FMath::Clamp(Settings->LeaderboardMaxRows, 1, 100)));
+	HttpRequest->ProcessRequest();
+}
+
+void UFrontendSessionBackend_GameLift::HandleLeaderboardResponse(ELeaderboardCategory Category, int32 StatusCode, const FString& ResponseBody)
+{
+	const FString BoardName = LeaderboardBoardName(Category);
+
+	TSharedPtr<FJsonObject> ParsedJson;
+	{
+		TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ResponseBody);
+		FJsonSerializer::Deserialize(Reader, ParsedJson);
+	}
+
+	if (StatusCode < 200 || StatusCode >= 300)
+	{
+		FString ErrorType;
+		FString ErrorMessage;
+		if (ParsedJson.IsValid())
+		{
+			ParsedJson->TryGetStringField(TEXT("__type"), ErrorType);
+			ParsedJson->TryGetStringField(TEXT("message"), ErrorMessage);
+		}
+		if (ErrorMessage.IsEmpty())
+		{
+			ErrorMessage = ResponseBody.Left(240);
+		}
+
+		// A proxy without the leaderboard (not enabled, or deployed before it existed) answers
+		// as it does for any target it does not know. That is "no leaderboard service here".
+		if (ErrorType.EndsWith(TEXT("UnsupportedOperationException")))
+		{
+			ReportLeaderboardUnsupported(Category, TEXT("the proxy has no leaderboard"));
+			return;
+		}
+
+		// The service exists but did not answer this player (not signed in, token expired, table
+		// unavailable, throttled). An empty board says so; simulated rows would claim otherwise.
+		LogDebug(FString::Printf(TEXT("[gamelift] Leaderboard.GetTop(%s) failed: HTTP %d %s %s"), *BoardName, StatusCode, *ErrorType, *ErrorMessage));
+		ReportLeaderboard(Category, TArray<UFrontendLeaderboardEntryData*>());
+		return;
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* EntriesArray = nullptr;
+	if (!ParsedJson.IsValid() || !ParsedJson->TryGetArrayField(TEXT("Entries"), EntriesArray) || !EntriesArray)
+	{
+		LogDebug(FString::Printf(TEXT("[gamelift] Leaderboard.GetTop(%s): unexpected response (no Entries): %s"), *BoardName, *ResponseBody.Left(240)));
+		ReportLeaderboard(Category, TArray<UFrontendLeaderboardEntryData*>());
+		return;
+	}
+
+	const auto MakeRow = [this](const TSharedPtr<FJsonObject>& RowObject) -> UFrontendLeaderboardEntryData*
+	{
+		UFrontendLeaderboardEntryData* Row = NewObject<UFrontendLeaderboardEntryData>(this);
+		RowObject->TryGetNumberField(TEXT("Rank"), Row->Rank);
+		RowObject->TryGetStringField(TEXT("DisplayName"), Row->PlayerDisplayName);
+		RowObject->TryGetNumberField(TEXT("Score"), Row->Score);
+		RowObject->TryGetBoolField(TEXT("IsCaller"), Row->bIsLocalPlayer);
+		return Row;
+	};
+
+	// Rows arrive ranked by the proxy (competition ranks: 1, 2, 2, 4). The screen may reorder
+	// them for display but never renumbers, so Rank is taken as sent.
+	TArray<UFrontendLeaderboardEntryData*> Rows;
+	Rows.Reserve(EntriesArray->Num() + 1);
+	bool bOwnRowListed = false;
+	for (const TSharedPtr<FJsonValue>& Value : *EntriesArray)
+	{
+		const TSharedPtr<FJsonObject> RowObject = Value.IsValid() ? Value->AsObject() : nullptr;
+		if (!RowObject.IsValid())
+		{
+			continue;
+		}
+		UFrontendLeaderboardEntryData* Row = MakeRow(RowObject);
+		bOwnRowListed |= Row->bIsLocalPlayer;
+		Rows.Add(Row);
+	}
+
+	// "Caller" is this player's row wherever it ranks (null when they have none). Below the
+	// requested page it is not among Entries: add it, with its real rank, so the screen can
+	// still show and highlight it.
+	bool bOwnRowAppended = false;
+	const TSharedPtr<FJsonObject>* CallerObject = nullptr;
+	if (!bOwnRowListed && ParsedJson->TryGetObjectField(TEXT("Caller"), CallerObject) && CallerObject && CallerObject->IsValid())
+	{
+		UFrontendLeaderboardEntryData* Row = MakeRow(*CallerObject);
+		Row->bIsLocalPlayer = true;
+		Rows.Add(Row);
+		bOwnRowAppended = true;
+	}
+
+	LogDebug(FString::Printf(TEXT("[gamelift] Leaderboard.GetTop(%s) -> %d row(s), own row: %s"), *BoardName, Rows.Num(),
+		bOwnRowListed ? TEXT("in the list") : (bOwnRowAppended ? TEXT("below the list, appended") : TEXT("none"))));
+	ReportLeaderboard(Category, Rows);
+}
+
+void UFrontendSessionBackend_GameLift::ReportLeaderboardUnsupported(ELeaderboardCategory Category, const TCHAR* Reason)
+{
+	// Same policy as FixedAddress.
 	if (UFrontendMultiplayerSettings::Get()->bSimulateLeaderboardWhenUnsupported)
 	{
-		LogDebug(FString::Printf(TEXT("[gamelift] FetchLeaderboard(%s): no leaderboard service, returning simulated rows"), *UEnum::GetDisplayValueAsText(Category).ToString()));
+		LogDebug(FString::Printf(TEXT("[gamelift] FetchLeaderboard(%s): %s, returning simulated rows"), *UEnum::GetDisplayValueAsText(Category).ToString(), Reason));
 		ReportLeaderboard(Category, FFrontendSimulatedData::MakeLeaderboard(this, Category));
 	}
 	else
 	{
-		LogDebug(FString::Printf(TEXT("[gamelift] FetchLeaderboard(%s): no leaderboard service"), *UEnum::GetDisplayValueAsText(Category).ToString()));
+		LogDebug(FString::Printf(TEXT("[gamelift] FetchLeaderboard(%s): %s"), *UEnum::GetDisplayValueAsText(Category).ToString(), Reason));
 		ReportLeaderboard(Category, TArray<UFrontendLeaderboardEntryData*>());
+	}
+}
+
+void UFrontendSessionBackend_GameLift::CancelLeaderboardRequest()
+{
+	// Serial first: if CancelRequest completes the request synchronously, the completion must
+	// already see itself as superseded.
+	++LeaderboardRequestSerial;
+	if (LeaderboardHttpRequest.IsValid())
+	{
+		const TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> Request = LeaderboardHttpRequest;
+		LeaderboardHttpRequest.Reset();
+		Request->CancelRequest();
 	}
 }
 

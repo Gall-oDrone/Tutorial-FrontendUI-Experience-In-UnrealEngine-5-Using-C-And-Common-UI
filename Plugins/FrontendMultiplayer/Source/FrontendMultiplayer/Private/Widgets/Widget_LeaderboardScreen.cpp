@@ -55,11 +55,6 @@ void UWidget_LeaderboardScreen::NativeOnInitialized()
 	CommonButton_Refresh->OnClicked().AddUObject(this, &ThisClass::OnRefreshClicked);
 	CommonButton_PageUp->OnClicked().AddUObject(this, &ThisClass::OnPageUpClicked);
 	CommonButton_PageDown->OnClicked().AddUObject(this, &ThisClass::OnPageDownClicked);
-
-	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
-	{
-		MultiplayerSubsystem->OnLeaderboardUpdated.AddDynamic(this, &ThisClass::HandleLeaderboardUpdated);
-	}
 }
 
 void UWidget_LeaderboardScreen::NativeDestruct()
@@ -76,6 +71,15 @@ void UWidget_LeaderboardScreen::NativeDestruct()
 void UWidget_LeaderboardScreen::NativeOnActivated()
 {
 	Super::NativeOnActivated();
+
+	// Subscribed here, not in NativeOnInitialized: NativeDestruct unsubscribes every time the
+	// screen leaves the stack, and the stack re-activates the same cached instance without
+	// initializing it again. Must precede the tab selection below, which starts the fetch
+	// (a backend may answer synchronously).
+	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
+	{
+		MultiplayerSubsystem->OnLeaderboardUpdated.AddUniqueDynamic(this, &ThisClass::HandleLeaderboardUpdated);
+	}
 
 	// After construction, so the button's own PreConstruct cannot overwrite it with
 	// the placeholder Button Display Text authored in the Blueprint.
