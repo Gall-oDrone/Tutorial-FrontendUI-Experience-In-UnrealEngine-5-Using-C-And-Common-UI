@@ -118,7 +118,11 @@ REM nothing. Needs GAMELIFT_ENDPOINT_URL (scores are kept behind the proxy). Nev
 REM passed to the server through the environment only - never on its command line, which is logged.
 :gamelift_server_key
 if defined GAMELIFT_SERVER_KEY exit /b 0
-if "%GAMELIFT_ENDPOINT_URL%"=="" exit /b 0
+if "%GAMELIFT_ENDPOINT_URL%"=="" (
+	echo Leaderboard: GAMELIFT_ENDPOINT_URL is not set in this window; this server will not add scores.
+	echo              Set it before starting ^(or in Scripts\GameLiftEnv.bat^): the server reports scores through the proxy.
+	exit /b 0
+)
 set "GL_KEY_REGION=%GAMELIFT_REGION%"
 if "%GL_KEY_REGION%"=="" set "GL_KEY_REGION=%AWS_REGION%"
 if "%GL_KEY_REGION%"=="" set "GL_KEY_REGION=us-east-1"
