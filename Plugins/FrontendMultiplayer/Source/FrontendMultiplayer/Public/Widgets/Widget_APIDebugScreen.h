@@ -21,6 +21,7 @@ class FRONTENDMULTIPLAYER_API UWidget_APIDebugScreen : public UWidget_Activatabl
 protected:
 	//~ Begin UUserWidget Interface
 	virtual void NativeOnInitialized() override;
+	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	//~ End UUserWidget Interface
 

@@ -89,6 +89,7 @@ if not exist "%SERVER_EXE%" (
 REM ---- single run (DEDICATED, or GAMELIFT with NO_RESTART=1) ------------------------
 REM Note: inside ( ) blocks, parentheses in echo text must be escaped as ^( ^) or they end the block.
 if not defined LOOP (
+	if /i "%MODE%"=="GAMELIFT" call :gamelift_server_key
 	if /i "%MODE%"=="GAMELIFT" call :gamelift_token || exit /b 1
 	echo Starting dedicated server ^(%MODE%, %BUILD%^) on port %PORT%.
 	start "FrontendUI dedicated server (%MODE%, %BUILD%, %PORT%)" "%SERVER_EXE%" %SERVER_ARGS%
@@ -97,6 +98,7 @@ if not defined LOOP (
 
 REM ---- GAMELIFT restart loop (runs inside the window opened above) -------------------
 set RUN=0
+call :gamelift_server_key
 :loop
 set /a RUN+=1
 call :gamelift_token || goto :loop_wait
@@ -108,6 +110,34 @@ echo [%TIME%] Server exited with code %ERRORLEVEL%.
 echo Restarting in 3 seconds (close this window to stop)...
 timeout /t 3 /nobreak >nul
 goto :loop
+
+REM ---- subroutine: GAMELIFT_SERVER_KEY (leaderboard score submission) from SSM unless the caller set one ----
+REM With the key the server adds leaderboard points through the proxy when a player finishes a
+REM match (Docs/GameLift.md section 6). Optional: without it the server runs as before and adds
+REM nothing. Needs GAMELIFT_ENDPOINT_URL (scores are kept behind the proxy). Never echoed, and
+REM passed to the server through the environment only - never on its command line, which is logged.
+:gamelift_server_key
+if defined GAMELIFT_SERVER_KEY exit /b 0
+if "%GAMELIFT_ENDPOINT_URL%"=="" (
+	echo Leaderboard: GAMELIFT_ENDPOINT_URL is not set in this window; this server will not add scores.
+	echo              Set it before starting ^(or in Scripts\GameLiftEnv.bat^): the server reports scores through the proxy.
+	exit /b 0
+)
+set "GL_KEY_REGION=%GAMELIFT_REGION%"
+if "%GL_KEY_REGION%"=="" set "GL_KEY_REGION=%AWS_REGION%"
+if "%GL_KEY_REGION%"=="" set "GL_KEY_REGION=us-east-1"
+if "%GAMELIFT_SERVER_KEY_PARAM%"=="" set "GAMELIFT_SERVER_KEY_PARAM=/frontendui/leaderboard/server-key"
+set "GL_KEY_FILE=%TEMP%\frontendui_gamelift_server_key.txt"
+aws ssm get-parameter --name "%GAMELIFT_SERVER_KEY_PARAM%" --with-decryption --region "%GL_KEY_REGION%" --query Parameter.Value --output text > "%GL_KEY_FILE%" 2>nul
+if errorlevel 1 (
+	del "%GL_KEY_FILE%" >nul 2>&1
+	echo Leaderboard: no server key ^(%GAMELIFT_SERVER_KEY_PARAM% is not readable^); this server will not add scores.
+	exit /b 0
+)
+set /p GAMELIFT_SERVER_KEY=<"%GL_KEY_FILE%"
+del "%GL_KEY_FILE%" >nul 2>&1
+if defined GAMELIFT_SERVER_KEY echo Leaderboard: server key loaded from SSM ^(not shown^); finished matches add points.
+exit /b 0
 
 REM ---- subroutine: GAMELIFT_SDK_AUTH_TOKEN from the AWS CLI unless the caller set one ----
 :gamelift_token

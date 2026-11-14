@@ -208,6 +208,12 @@ public:
 	FString ResolveServerHostId() const;
 	FString ResolveServerProcessId() const;
 	FString ResolveServerAuthToken() const;
+	/**
+	 * Key a dedicated server presents to the proxy to add leaderboard points (Leaderboard.AddScore).
+	 * Environment only (GAMELIFT_SERVER_KEY): not a Config property, because an .ini is packaged
+	 * into client builds, and not a command-line switch, because the command line is logged.
+	 */
+	FString ResolveLeaderboardServerKey() const;
 
 	/** True on a Managed Container Fleet (GAMELIFT_COMPUTE_TYPE=CONTAINER with ECS task credentials available). */
 	static bool IsContainerCompute();
@@ -254,6 +260,8 @@ struct FFrontendGameLiftSessionSummary
  *     no player joined within SessionNoPlayerExitDelaySeconds of activation, so the fleet can
  *     hand the recycled process a new session
  *   - Handles RefreshConnection and TerminateProcess cleanly
+ *   - AwardLeaderboardPoints: Leaderboard.AddScore on ApiEndpointUrl with the server key, for
+ *     players whose identity it verified (the proxy credits the account GameLift holds for the slot)
  */
 UCLASS()
 class FRONTENDMULTIPLAYER_API UFrontendSessionBackend_GameLift : public UFrontendSessionBackend
@@ -277,6 +285,7 @@ public:
 	virtual void RemovePlayerSession(const FString& PlayerSessionId) override;
 	virtual bool HandleServerSessionEmpty() override;
 	virtual void VerifyPlayerSession(const FString& PlayerSessionId, const FString& UniqueNetIdString, FOnFrontendPlayerSessionVerified OnVerified) override;
+	virtual void AwardLeaderboardPoints(const FString& PlayerSessionId, const FString& PlayerDisplayName, int32 Points, ELeaderboardCategory Category) override;
 	//~ End UFrontendSessionBackend Interface
 
 protected:
@@ -431,6 +440,11 @@ private:
 	 * VerifyPlayerSession), for a refusal that arrives after the login completed. Cleared by RemovePlayerSession.
 	 */
 	TMap<FString, FOnFrontendPlayerSessionVerified> PlayerSessionKickers;
+	/**
+	 * PlayerSessionIds whose player passed the identity check (GameLift's PlayerId matched who
+	 * connected), until RemovePlayerSession. Only these can earn leaderboard points.
+	 */
+	TSet<FString> VerifiedPlayerSessionIds;
 	int32 ServerReconnectAttempts = 0;
 	FString ServerProcessId;
 	FString ServerHostId;

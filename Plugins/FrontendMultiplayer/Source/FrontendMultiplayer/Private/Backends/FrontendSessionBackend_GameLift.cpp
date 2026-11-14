@@ -513,6 +513,12 @@ FString UFrontendGameLiftSettings::ResolveServerAuthToken() const
 		ServerAuthToken);
 }
 
+FString UFrontendGameLiftSettings::ResolveLeaderboardServerKey() const
+{
+	// No command-line key on purpose: the command line is written to the log.
+	return ResolveSettingWithOverrides(nullptr, TEXT("GAMELIFT_SERVER_KEY"), nullptr, FString());
+}
+
 bool UFrontendGameLiftSettings::IsContainerCompute()
 {
 	// Managed Container Fleets set GAMELIFT_COMPUTE_TYPE=CONTAINER and hand out ECS task
@@ -577,6 +583,7 @@ void UFrontendSessionBackend_GameLift::Shutdown()
 	PendingPlayerSessionAccepts.Empty();
 	RejectedPlayerSessionIds.Empty();
 	PlayerSessionKickers.Empty();
+	VerifiedPlayerSessionIds.Empty();
 	CloseServerWebSocket();
 	RetiredServerWebSocket.Reset();
 	if (ServerBootstrapHttpRequest.IsValid())
@@ -1599,6 +1606,7 @@ void UFrontendSessionBackend_GameLift::RemovePlayerSession(const FString& Player
 {
 	// The player is gone either way: forget what was kept in order to remove them.
 	PlayerSessionKickers.Remove(PlayerSessionId);
+	VerifiedPlayerSessionIds.Remove(PlayerSessionId);
 	const bool bRefusedByGameLift = RejectedPlayerSessionIds.Remove(PlayerSessionId) > 0;
 
 	if (!ServerWebSocket.IsValid() || !ServerWebSocket->IsConnected() || ServerGameSessionId.IsEmpty() || PlayerSessionId.IsEmpty())
@@ -1620,6 +1628,108 @@ void UFrontendSessionBackend_GameLift::RemovePlayerSession(const FString& Player
 	SendServerWebSocketMessage(Message);
 
 	LogDebug(FString::Printf(TEXT("[gamelift] RemovePlayerSession %s"), *PlayerSessionId));
+}
+
+void UFrontendSessionBackend_GameLift::AwardLeaderboardPoints(const FString& PlayerSessionId, const FString& PlayerDisplayName, int32 Points, ELeaderboardCategory Category)
+{
+	if (Points <= 0 || PlayerSessionId.IsEmpty())
+	{
+		return;
+	}
+
+	// Only a player this server verified (VerifyPlayerSession) can earn points: not one who was
+	// refused or kicked, and not anybody when the identity check is switched off.
+	if (!VerifiedPlayerSessionIds.Contains(PlayerSessionId))
+	{
+		LogDebug(FString::Printf(TEXT("[gamelift] no leaderboard points for %s: its player was not verified"), *PlayerSessionId));
+		return;
+	}
+
+	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
+	const FString ProxyUrl = Settings->ResolveApiEndpointUrl();
+	const FString ServerKey = Settings->ResolveLeaderboardServerKey();
+	if (ProxyUrl.IsEmpty() || ServerKey.IsEmpty())
+	{
+		LogDebug(FString::Printf(TEXT("[gamelift] no leaderboard points for %s: %s"), *PlayerSessionId,
+			ProxyUrl.IsEmpty() ? TEXT("no ApiEndpointUrl (scores are kept behind the proxy)") : TEXT("no server key (GAMELIFT_SERVER_KEY is not set)")));
+		return;
+	}
+
+	// The proxy takes the player from GameLift's record of the slot, so only the slot is named
+	// here; the display name is what the board will show for that player.
+	const FString BoardName = LeaderboardBoardName(Category);
+	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("Board"), BoardName);
+	Payload->SetStringField(TEXT("PlayerSessionId"), PlayerSessionId);
+	Payload->SetNumberField(TEXT("Points"), Points);
+	Payload->SetStringField(TEXT("DisplayName"), PlayerDisplayName);
+
+	FString SerializedPayload;
+	{
+		TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+			TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&SerializedPayload);
+		FJsonSerializer::Serialize(Payload, Writer);
+	}
+
+	// A request of its own (not SendGameLiftRequest, the client's single session request). It is
+	// not tracked: the HTTP module keeps it alive until it completes, and nothing waits for it.
+	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = FHttpModule::Get().CreateRequest();
+	HttpRequest->SetVerb(TEXT("POST"));
+	HttpRequest->SetURL(ProxyUrl);
+	HttpRequest->SetHeader(TEXT("Content-Type"), TEXT("application/x-amz-json-1.1"));
+	HttpRequest->SetHeader(TEXT("X-Amz-Target"), TEXT("Leaderboard.AddScore"));
+	HttpRequest->SetHeader(TEXT("X-Server-Key"), ServerKey); // never logged
+	HttpRequest->SetContentAsString(SerializedPayload);
+
+	TWeakObjectPtr<ThisClass> WeakThis(this);
+	HttpRequest->OnProcessRequestComplete().BindLambda(
+		[WeakThis, PlayerSessionId, BoardName, Points](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully)
+		{
+			ThisClass* Self = WeakThis.Get();
+			if (!Self)
+			{
+				return;
+			}
+			if (!bConnectedSuccessfully || !Response.IsValid())
+			{
+				Self->LogDebug(FString::Printf(TEXT("[gamelift] Leaderboard.AddScore %s: no response (network error); the points were not recorded"), *PlayerSessionId));
+				return;
+			}
+
+			const int32 StatusCode = Response->GetResponseCode();
+			const FString ResponseBody = Response->GetContentAsString();
+			TSharedPtr<FJsonObject> ParsedJson;
+			{
+				TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ResponseBody);
+				FJsonSerializer::Deserialize(Reader, ParsedJson);
+			}
+
+			if (StatusCode < 200 || StatusCode >= 300)
+			{
+				FString ErrorType;
+				FString ErrorMessage;
+				if (ParsedJson.IsValid())
+				{
+					ParsedJson->TryGetStringField(TEXT("__type"), ErrorType);
+					ParsedJson->TryGetStringField(TEXT("message"), ErrorMessage);
+				}
+				Self->LogDebug(FString::Printf(TEXT("[gamelift] Leaderboard.AddScore %s failed: HTTP %d %s %s"), *PlayerSessionId, StatusCode, *ErrorType,
+					ErrorMessage.IsEmpty() ? *ResponseBody.Left(240) : *ErrorMessage));
+				return;
+			}
+
+			bool bAwarded = false;
+			if (ParsedJson.IsValid())
+			{
+				ParsedJson->TryGetBoolField(TEXT("Awarded"), bAwarded);
+			}
+			Self->LogDebug(bAwarded
+				? FString::Printf(TEXT("[gamelift] Leaderboard.AddScore %s -> +%d on %s"), *PlayerSessionId, Points, *BoardName)
+				: FString::Printf(TEXT("[gamelift] Leaderboard.AddScore %s -> nothing added (this player session was already rewarded)"), *PlayerSessionId));
+		});
+
+	LogDebug(FString::Printf(TEXT("[gamelift] Leaderboard.AddScore %s +%d (%s)"), *PlayerSessionId, Points, *BoardName));
+	HttpRequest->ProcessRequest();
 }
 
 bool UFrontendSessionBackend_GameLift::HandleServerSessionEmpty()
@@ -1886,6 +1996,7 @@ void UFrontendSessionBackend_GameLift::HandlePlayerSessionVerificationReply(cons
 	if (PlayerIdMatchesUniqueNetId(ReservedFor, Pending.UniqueNetIdString))
 	{
 		LogDebug(FString::Printf(TEXT("[gamelift] player session %s verified: reserved for %s"), *Pending.PlayerSessionId, *ReservedFor));
+		VerifiedPlayerSessionIds.Add(Pending.PlayerSessionId);
 		Pending.OnVerified.ExecuteIfBound(true, FString());
 		return;
 	}

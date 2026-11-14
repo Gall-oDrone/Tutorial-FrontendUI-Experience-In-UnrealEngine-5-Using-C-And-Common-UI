@@ -715,12 +715,50 @@ limit is **Leaderboard Max Rows** (`LeaderboardMaxRows`, 1-100).
   sign-in fails the board is empty.
 - The read uses its own HTTP request: opening the screen does not cancel a Host / Find / Join
   in flight, and those do not cancel it.
-- **Clients cannot write.** There is no score submission yet - the game has no score - so rows
-  come from the operator script (`infrastructure/scripts/gamelift/leaderboard.sh seed | put |
-  clear-seed`). A server-side write path is the next step.
+- **Clients cannot write.** Scores are added by the dedicated server (next subsection); the
+  operator script (`infrastructure/scripts/gamelift/leaderboard.sh seed | put | clear-seed`) is
+  for test data.
 
 Debug panel on a good read: `[gamelift] Leaderboard.GetTop(Main) limit=50` →
 `[gamelift] Leaderboard.GetTop(Main) -> 25 row(s), own row: in the list`.
+
+### Score submission (`Leaderboard.AddScore`, dedicated server only)
+
+**The rule is a placeholder**: the match has no outcome yet (no score, winner or end), so a player
+who was in a match that has **started** and then leaves it has "finished" it and gets *Match
+Completion Leaderboard Points* (Project Settings → Game → Game UI Settings → Match, default 100, 0 = off)
+added to their running total. Leaving the lobby before the start earns nothing. Replace the call
+in `AGameUIMatchGameMode::Logout` when the game has something real to reward; everything below
+stays.
+
+```
+AGameUIMatchGameMode::Logout (dedicated server, match InProgress)
+  -> UFrontendMultiplayerSubsystem::AwardLeaderboardPoints(PlayerSessionId, name, points)
+  -> UFrontendSessionBackend_GameLift: POST ApiEndpointUrl, X-Amz-Target: Leaderboard.AddScore, X-Server-Key
+  -> proxy: who owns that player session? (GameLift) -> one transaction: marker + score
+```
+
+| Guard | Where |
+|---|---|
+| Only a player whose identity this server **verified** (`player session … verified`) is reported; refused and kicked players, and everybody when *Verify Player Session Identity* is off, earn nothing | game server |
+| The request needs the **server key** (`GAMELIFT_SERVER_KEY`); a player's token does not open it | proxy |
+| The points go to the account **GameLift holds for the player session** - with `auth_mode = eos` the Epic account the proxy verified when the slot was created - not to anything the server names | proxy |
+| The slot must have been accepted by a server on this fleet (`ACTIVE` / `COMPLETED`) | proxy |
+| A player session is rewarded **once**; a repeat answers `Awarded: false` | proxy (DynamoDB transaction) |
+| At most 1000 points per award | proxy |
+
+**The server key** lives in SSM (`/frontendui/leaderboard/server-key`, created with
+`leaderboard.sh server-key create` in the companion repo). The server reads it from the
+environment variable `GAMELIFT_SERVER_KEY` only: not from an .ini (those are packaged into client
+builds) and not from the command line (that is written to the log). `LaunchDedicatedServer.bat
+7777 GAMELIFT` fetches it with the AWS CLI when `GAMELIFT_ENDPOINT_URL` is set and says
+`Leaderboard: server key loaded from SSM (not shown)`; a container fleet gets it as a container
+environment variable. Without the key the server runs as before and adds nothing.
+
+`Server.log` on a good award: `[gamelift] Leaderboard.AddScore psess-… +100 (Main)` →
+`[gamelift] Leaderboard.AddScore psess-… -> +100 on Main`. Limits of the placeholder: nothing
+stops a player from starting and leaving matches to collect points, and an award in flight when
+the process is killed (not the normal empty-session exit, which waits 5 s) is lost.
 
 ---
 
@@ -778,5 +816,6 @@ $40, e-mail at 50/80/100 % actual and 100 % forecast) is the safety net; the com
 | Client reaches the server, then `LogNet: Error: Server is incompatible with the local version of the game: RemoteNetworkVersion=… vs LocalNetworkVersion=…` / `OutdatedClient` | Client and server were built by different engine builds (Launcher editor vs. source-built 5.6.1 on the build box). The engine's default network version hashes the engine changelist. This project pins it to `ProjectVersion` instead (`FFrontendUIGameModule::GetProjectNetworkVersion`), so **both** sides must be built from a revision that has that override (≥ `v1.1.1`) and share the same `ProjectVersion` in `DefaultGame.ini`. If you bump `ProjectVersion`, rebuild the server artifacts. The flip side: with the pin, a client and a server of **different revisions but the same `ProjectVersion`** connect happily even if a replicated class changed between them, and RPC / property indices then land on the wrong functions - symptoms like buttons that do nothing or players missing from the lobby list. Rule: **any change to a replicated class (new RPC, new replicated property) bumps `ProjectVersion`**, so a stale packaged server is refused instead of half-working. |
 | Packaged client only (editor works): every Host / Find / Join fails at once with `Could not reach GameLift endpoint for …` and nothing reaches the API Gateway access log | Look at `LogHttp` in the client log (Shipping logs to `%LOCALAPPDATA%\FrontendUI\Saved\Logs\`). `POST https: completed with reason 'Other' after 0.00s` = the URL was cut at `//` by the ini parser: quote it (`ApiEndpointUrl="https://…/"`, section 4) - newer builds say *GameLift endpoint 'https:' is not a valid URL* outright. `libcurl error: 60 (SSL peer certificate …)` = no usable root certificate: make sure `Manifest_UFSFiles_Win64.txt` lists `FrontendUI/Content/Certificates/cacert.pem`. |
 | Leaderboard shows the simulated names (Valkyrie … You … Dusk, 40 rows) although the proxy is deployed | The debug panel says why: `no ApiEndpointUrl` (the client is on direct SigV4 - set `GAMELIFT_ENDPOINT_URL` / `ApiEndpointUrl`) or `the proxy has no leaderboard` (apply the proxy with `-var enable_leaderboard=true`). |
+| A finished match adds no points | `Server.log` says why. `no leaderboard points for psess-…: no server key (GAMELIFT_SERVER_KEY is not set)`: start the server with `LaunchDedicatedServer.bat 7777 GAMELIFT` and check for `Leaderboard: server key loaded from SSM`; `… no ApiEndpointUrl`: the server needs `GAMELIFT_ENDPOINT_URL` too. `… its player was not verified`: the identity check did not pass or is off. `Leaderboard.AddScore … failed: HTTP 403`: the key does not match the one in SSM (rotated? restart the server). `HTTP 400 UnsupportedOperationException`: the proxy has no server key configured (`-var leaderboard_server_key_ssm_parameter=…`). No `AddScore` line at all: the player left before the match started, or *Match Completion Leaderboard Points* is 0. |
 | Leaderboard is empty | `Leaderboard.GetTop(Main) failed: HTTP 401 …`: not signed in to Epic or the token expired (sign-in line just above it in the debug panel). `HTTP 502 LeaderboardUnavailableException`: the Lambda could not read the table, cause in `/aws/lambda/frontendui-gamelift-proxy`. `-> 0 row(s)`: the table has no rows for that board (`leaderboard.sh count`). |
 | Shipping client against a **Development** server: `LogNetPackageMap: Error: UPackageMapClient::SerializeNewActor. Unresolved Archetype GUID. Path: Default__GameplayDebuggerCategoryReplicator` + `LogNet: Warning: … SerializeNewActor failed to find/spawn actor` once per connection | Harmless. The Development server spawns and replicates the Gameplay Debugger's replicator actor, which does not exist in a Shipping client, so the client drops that one channel. Disappears with a Shipping server or with the GameplayDebugger plugin disabled in the `.uproject`. |
