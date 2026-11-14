@@ -191,6 +191,17 @@ cd ../../../scripts/build
 cd ../../terraform/environments/dev && terraform destroy
 ```
 
+The same session is one manual trigger in the companion repo (`.github/workflows/server-image.yml`,
+roadmap item 4): `gh workflow run server-image.yml -f ref=master` creates the box, runs the build over
+SSM, turns the Linux zip into `frontendui-server:<sha>` in ECR, publishes a new container group
+definition version (optionally rolling it onto a running fleet with `-f rollout_fleet_id=…`), destroys
+the box in an `always()` step and fails red if anything tagged for the dev environment is still alive.
+GitHub assumes a repository-scoped OIDC role (`environments/github-oidc`) - no AWS keys in GitHub;
+`-f also_windows=true -f windows_client=true` adds the Windows server and the Shipping client. First run
+(2026-11-13, `master` @ `2d1bb88`): 54 min from trigger to green, 43 of them the Linux build;
+`FrontendUI-LinuxServer-2d1bb88-20261113-181020.zip`, image `frontendui-server:2d1bb88`, CGD version 5,
+box time 51 min (~$0.6).
+
 `build-linux-server.ps1` (what runs on the box): brings the volume online, finds
 `D:\UE_5_6` (checks `Engine\Build\Build.version` is 5.6), verifies the Linux cross toolchain
 (`v25_clang-18.1.0-rockylinux8`, installs it from Epic's CDN if missing), clones/checks out the
