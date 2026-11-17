@@ -620,6 +620,12 @@ Two rules close what a raw `open <ip>:<port>?PlayerSessionId=…` could still do
   removing the player`. Tied to *Require Player Session Id On Server*. A player who drops and
   comes back needs a new player session (Join again), not the old id.
 
+A player who rejoins within a few minutes gets their previous `APlayerState` back (the engine's
+inactive-player list). `AGameUIMatchPlayerState::OverrideWith` takes the `PlayerSessionId` and the
+Ready flag from the **new** login; before that fix (2026-11-17) the server went on using the slot
+of the previous visit - it verified, rewarded and released the old id and left the new one
+`ACTIVE` until the game session ended.
+
 To ship: package a `Shipping` client (`BuildCookRun ... -clientconfig=Shipping`) with
 `ApiEndpointUrl` in `DefaultGame.ini` and no `AWS_*` variables on the machine — Host/Find/Join
 must work exactly as in Development, and a build without `ApiEndpointUrl` fails fast with
