@@ -784,8 +784,12 @@ Verified 2026-11-17 by running the entrypoint in the image's base (`ubuntu:22.04
 a stand-in for the engine and temporary credentials: key from environment credentials, from a
 credentials endpoint (`AWS_CONTAINER_CREDENTIALS_FULL_URI`), region taken from
 `GAMELIFT_SDK_WEBSOCKET_URL`; no credentials, wrong secret, missing parameter and missing proxy
-URL each start the server with the reason logged. **Not yet run on a real container fleet** (the
-fleet role's credentials and permission are the untested part).
+URL each start the server with the reason logged. Then the real image (`frontendui-server:a4a4ddf`,
+the container definition's two variables, credentials from the environment): the entrypoint's
+`server key loaded` is followed by the engine's `[gamelift] score submission: on`, and the key's
+text occurs nowhere in the container output; without credentials the engine says `off
+(GAMELIFT_SERVER_KEY is not set)`. **Not yet run on a real container fleet** (the fleet role's
+credentials and permission are the untested part).
 
 `Server.log` says at startup whether the server can submit at all -
 `[gamelift] score submission: on (server key present, not shown)` or `off (…)` with the reason -
