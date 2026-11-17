@@ -788,8 +788,15 @@ URL each start the server with the reason logged. Then the real image (`frontend
 the container definition's two variables, credentials from the environment): the entrypoint's
 `server key loaded` is followed by the engine's `[gamelift] score submission: on`, and the key's
 text occurs nowhere in the container output; without credentials the engine says `off
-(GAMELIFT_SERVER_KEY is not set)`. **Not yet run on a real container fleet** (the fleet role's
-credentials and permission are the untested part).
+(GAMELIFT_SERVER_KEY is not set)`.
+
+**On a real container fleet** (2026-11-17, `container-fleet.sh create --image-tag a4a4ddf`,
+`c6i.xlarge`, CGD v7, fleet role with the one-parameter read policy): all three containers logged
+`[entrypoint] leaderboard: server key loaded …` and `[gamelift] score submission: on`, then
+`ActivateServerProcess acknowledged`; none of the fleet's 2016 log events contains the key. So the
+fleet role's credentials (`AWS_CONTAINER_CREDENTIALS_*`) and permission work. Not exercised there:
+an actual `Leaderboard.AddScore` from a fleet server - that needs a match with signed-in players
+through the alias, which the test fleet was not behind.
 
 `Server.log` says at startup whether the server can submit at all -
 `[gamelift] score submission: on (server key present, not shown)` or `off (…)` with the reason -
