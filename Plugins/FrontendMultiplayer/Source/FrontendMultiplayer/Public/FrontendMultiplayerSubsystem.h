@@ -104,6 +104,8 @@ public:
 	void RemovePlayerSession(const FString& PlayerSessionId);
 	/** Post-login identity check of a PlayerSessionId against the session service; false in the callback = kick. */
 	void VerifyPlayerSession(const FString& PlayerSessionId, const FString& UniqueNetIdString, FOnFrontendPlayerSessionVerified OnVerified);
+	/** Leaderboard points for the player behind PlayerSessionId; call before RemovePlayerSession. No-op without a backend that keeps scores. */
+	void AwardLeaderboardPoints(const FString& PlayerSessionId, const FString& PlayerDisplayName, int32 Points, ELeaderboardCategory Category = ELeaderboardCategory::Main);
 	/** The last player left the dedicated server. True if the backend will recycle the process; false means keep running (reset to lobby). */
 	bool NotifyServerSessionEmpty();
 	//~ End dedicated-server hooks.

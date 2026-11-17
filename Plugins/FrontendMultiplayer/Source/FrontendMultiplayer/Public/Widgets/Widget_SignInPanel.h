@@ -27,6 +27,7 @@ class FRONTENDMULTIPLAYER_API UWidget_SignInPanel : public UUserWidget
 protected:
 	//~ Begin UUserWidget Interface
 	virtual void NativeOnInitialized() override;
+	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	//~ End UUserWidget Interface
 

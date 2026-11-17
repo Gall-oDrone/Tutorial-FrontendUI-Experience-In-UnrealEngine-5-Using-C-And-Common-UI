@@ -20,8 +20,11 @@ FROM ubuntu:22.04
 ARG DEBIAN_FRONTEND=noninteractive
 ARG SERVER_STAGE_DIR=Saved/StagedBuilds/LinuxServer
 
+# curl: entrypoint.sh reads the leaderboard server key from SSM at start (signed with
+# --aws-sigv4, so no AWS CLI in the image).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    curl \
     libatomic1 \
     && rm -rf /var/lib/apt/lists/*
 

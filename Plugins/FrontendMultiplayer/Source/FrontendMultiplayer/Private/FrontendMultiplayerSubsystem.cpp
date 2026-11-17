@@ -256,6 +256,14 @@ void UFrontendMultiplayerSubsystem::VerifyPlayerSession(const FString& PlayerSes
 	}
 }
 
+void UFrontendMultiplayerSubsystem::AwardLeaderboardPoints(const FString& PlayerSessionId, const FString& PlayerDisplayName, int32 Points, ELeaderboardCategory Category)
+{
+	if (ActiveBackend)
+	{
+		ActiveBackend->AwardLeaderboardPoints(PlayerSessionId, PlayerDisplayName, Points, Category);
+	}
+}
+
 void UFrontendMultiplayerSubsystem::RemovePlayerSession(const FString& PlayerSessionId)
 {
 	if (ActiveBackend)

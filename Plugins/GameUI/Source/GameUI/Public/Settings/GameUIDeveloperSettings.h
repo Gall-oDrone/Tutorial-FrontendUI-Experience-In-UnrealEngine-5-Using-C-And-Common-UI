@@ -35,6 +35,16 @@ public:
 	UPROPERTY(Config, EditAnywhere, Category = "Match")
 	int32 MatchMappingContextPriority = 0;
 
+	/**
+	 * Placeholder scoring, until a match has an outcome: leaderboard points a player gets for
+	 * finishing a started match on a dedicated server. Leaving while the match is in progress
+	 * counts as finishing it; leaving the lobby before the start earns nothing. The session
+	 * service adds the points to the player's running total (the GameLift proxy accepts up to
+	 * 1000 per award and rewards a player session once). 0 = no points.
+	 */
+	UPROPERTY(Config, EditAnywhere, Category = "Match", meta = (ClampMin = "0", ClampMax = "1000", UIMin = "0", UIMax = "1000"))
+	int32 MatchCompletionLeaderboardPoints = 100;
+
 	/** The map the frontend lives in. "Return to Main Menu" and network-failure recovery travel here. */
 	UPROPERTY(Config, EditAnywhere, Category = "Maps", meta = (AllowedClasses = "/Script/Engine.World"))
 	TSoftObjectPtr<UWorld> FrontendMap;

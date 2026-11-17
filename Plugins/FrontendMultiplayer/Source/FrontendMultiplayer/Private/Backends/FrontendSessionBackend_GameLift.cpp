@@ -513,6 +513,12 @@ FString UFrontendGameLiftSettings::ResolveServerAuthToken() const
 		ServerAuthToken);
 }
 
+FString UFrontendGameLiftSettings::ResolveLeaderboardServerKey() const
+{
+	// No command-line key on purpose: the command line is written to the log.
+	return ResolveSettingWithOverrides(nullptr, TEXT("GAMELIFT_SERVER_KEY"), nullptr, FString());
+}
+
 bool UFrontendGameLiftSettings::IsContainerCompute()
 {
 	// Managed Container Fleets set GAMELIFT_COMPUTE_TYPE=CONTAINER and hand out ECS task
@@ -536,6 +542,17 @@ void UFrontendSessionBackend_GameLift::Initialize(UFrontendMultiplayerSubsystem*
 		*Settings->ResolveLocation(),
 		*Settings->ResolveGameSessionQueueName(),
 		Proxy.IsEmpty() ? TEXT("direct (SigV4)") : *Proxy));
+
+	// A dedicated server reports leaderboard scores through the proxy, with a key from its
+	// environment. Say at startup whether it can, so "no points" is not the first sign that it
+	// cannot. The key itself is never logged.
+	if (IsRunningDedicatedServer())
+	{
+		const bool bHasServerKey = !Settings->ResolveLeaderboardServerKey().IsEmpty();
+		LogDebug(FString::Printf(TEXT("[gamelift] score submission: %s"),
+			Proxy.IsEmpty() ? TEXT("off (no ApiEndpointUrl; set GAMELIFT_ENDPOINT_URL for the server too)")
+			: (bHasServerKey ? TEXT("on (server key present, not shown)") : TEXT("off (GAMELIFT_SERVER_KEY is not set)"))));
+	}
 
 	// An unquoted URL in an .ini is cut at the "//" (the config parser reads it as a trailing
 	// comment), which leaves "https:" behind and every request failing with a bare network error.
@@ -577,6 +594,7 @@ void UFrontendSessionBackend_GameLift::Shutdown()
 	PendingPlayerSessionAccepts.Empty();
 	RejectedPlayerSessionIds.Empty();
 	PlayerSessionKickers.Empty();
+	VerifiedPlayerSessionIds.Empty();
 	CloseServerWebSocket();
 	RetiredServerWebSocket.Reset();
 	if (ServerBootstrapHttpRequest.IsValid())
@@ -1599,6 +1617,7 @@ void UFrontendSessionBackend_GameLift::RemovePlayerSession(const FString& Player
 {
 	// The player is gone either way: forget what was kept in order to remove them.
 	PlayerSessionKickers.Remove(PlayerSessionId);
+	VerifiedPlayerSessionIds.Remove(PlayerSessionId);
 	const bool bRefusedByGameLift = RejectedPlayerSessionIds.Remove(PlayerSessionId) > 0;
 
 	if (!ServerWebSocket.IsValid() || !ServerWebSocket->IsConnected() || ServerGameSessionId.IsEmpty() || PlayerSessionId.IsEmpty())
@@ -1620,6 +1639,111 @@ void UFrontendSessionBackend_GameLift::RemovePlayerSession(const FString& Player
 	SendServerWebSocketMessage(Message);
 
 	LogDebug(FString::Printf(TEXT("[gamelift] RemovePlayerSession %s"), *PlayerSessionId));
+}
+
+void UFrontendSessionBackend_GameLift::AwardLeaderboardPoints(const FString& PlayerSessionId, const FString& PlayerDisplayName, int32 Points, ELeaderboardCategory Category)
+{
+	if (Points <= 0 || PlayerSessionId.IsEmpty())
+	{
+		return;
+	}
+
+	// Only a player this server verified (VerifyPlayerSession) can earn points: not one who was
+	// refused or kicked, and not anybody when the identity check is switched off.
+	if (!VerifiedPlayerSessionIds.Contains(PlayerSessionId))
+	{
+		LogDebug(FString::Printf(TEXT("[gamelift] no leaderboard points for %s: its player was not verified"), *PlayerSessionId));
+		return;
+	}
+
+	const UFrontendGameLiftSettings* Settings = UFrontendGameLiftSettings::Get();
+	const FString ProxyUrl = Settings->ResolveApiEndpointUrl();
+	const FString ServerKey = Settings->ResolveLeaderboardServerKey();
+	if (ProxyUrl.IsEmpty() || ServerKey.IsEmpty())
+	{
+		LogDebug(FString::Printf(TEXT("[gamelift] no leaderboard points for %s: %s"), *PlayerSessionId,
+			ProxyUrl.IsEmpty() ? TEXT("no ApiEndpointUrl (scores are kept behind the proxy)") : TEXT("no server key (GAMELIFT_SERVER_KEY is not set)")));
+		return;
+	}
+
+	// The proxy takes the player from GameLift's record of the slot, so only the slot is named
+	// here; the display name is what the board will show for that player.
+	const FString BoardName = LeaderboardBoardName(Category);
+	TSharedRef<FJsonObject> Payload = MakeShared<FJsonObject>();
+	Payload->SetStringField(TEXT("Board"), BoardName);
+	Payload->SetStringField(TEXT("PlayerSessionId"), PlayerSessionId);
+	Payload->SetNumberField(TEXT("Points"), Points);
+	Payload->SetStringField(TEXT("DisplayName"), PlayerDisplayName);
+
+	FString SerializedPayload;
+	{
+		TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+			TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&SerializedPayload);
+		FJsonSerializer::Serialize(Payload, Writer);
+	}
+
+	// A request of its own (not SendGameLiftRequest, the client's single session request). It is
+	// not tracked: the HTTP module keeps it alive until it completes, and nothing waits for it.
+	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = FHttpModule::Get().CreateRequest();
+	HttpRequest->SetVerb(TEXT("POST"));
+	HttpRequest->SetURL(ProxyUrl);
+	HttpRequest->SetHeader(TEXT("Content-Type"), TEXT("application/x-amz-json-1.1"));
+	HttpRequest->SetHeader(TEXT("X-Amz-Target"), TEXT("Leaderboard.AddScore"));
+	HttpRequest->SetHeader(TEXT("X-Server-Key"), ServerKey); // never logged
+	HttpRequest->SetContentAsString(SerializedPayload);
+
+	TWeakObjectPtr<ThisClass> WeakThis(this);
+	HttpRequest->OnProcessRequestComplete().BindLambda(
+		[WeakThis, PlayerSessionId, BoardName, Points](FHttpRequestPtr Request, FHttpResponsePtr Response, bool bConnectedSuccessfully)
+		{
+			ThisClass* Self = WeakThis.Get();
+			if (!Self)
+			{
+				return;
+			}
+			// Answered, one way or the other: the empty-session exit no longer has to wait for it.
+			Self->PendingScoreSubmissions = FMath::Max(0, Self->PendingScoreSubmissions - 1);
+			if (!bConnectedSuccessfully || !Response.IsValid())
+			{
+				Self->LogDebug(FString::Printf(TEXT("[gamelift] Leaderboard.AddScore %s: no response (network error); the points were not recorded"), *PlayerSessionId));
+				return;
+			}
+
+			const int32 StatusCode = Response->GetResponseCode();
+			const FString ResponseBody = Response->GetContentAsString();
+			TSharedPtr<FJsonObject> ParsedJson;
+			{
+				TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ResponseBody);
+				FJsonSerializer::Deserialize(Reader, ParsedJson);
+			}
+
+			if (StatusCode < 200 || StatusCode >= 300)
+			{
+				FString ErrorType;
+				FString ErrorMessage;
+				if (ParsedJson.IsValid())
+				{
+					ParsedJson->TryGetStringField(TEXT("__type"), ErrorType);
+					ParsedJson->TryGetStringField(TEXT("message"), ErrorMessage);
+				}
+				Self->LogDebug(FString::Printf(TEXT("[gamelift] Leaderboard.AddScore %s failed: HTTP %d %s %s"), *PlayerSessionId, StatusCode, *ErrorType,
+					ErrorMessage.IsEmpty() ? *ResponseBody.Left(240) : *ErrorMessage));
+				return;
+			}
+
+			bool bAwarded = false;
+			if (ParsedJson.IsValid())
+			{
+				ParsedJson->TryGetBoolField(TEXT("Awarded"), bAwarded);
+			}
+			Self->LogDebug(bAwarded
+				? FString::Printf(TEXT("[gamelift] Leaderboard.AddScore %s -> +%d on %s"), *PlayerSessionId, Points, *BoardName)
+				: FString::Printf(TEXT("[gamelift] Leaderboard.AddScore %s -> nothing added (this player session was already rewarded)"), *PlayerSessionId));
+		});
+
+	LogDebug(FString::Printf(TEXT("[gamelift] Leaderboard.AddScore %s +%d (%s)"), *PlayerSessionId, Points, *BoardName));
+	++PendingScoreSubmissions;
+	HttpRequest->ProcessRequest();
 }
 
 bool UFrontendSessionBackend_GameLift::HandleServerSessionEmpty()
@@ -1648,6 +1772,31 @@ bool UFrontendSessionBackend_GameLift::HandleServerSessionEmpty()
 
 bool UFrontendSessionBackend_GameLift::HandleSessionEmptyExitTick(float /*DeltaTime*/)
 {
+	// The score of the player who left last may still be on its way to the proxy (2.7 s against a
+	// cold proxy on 2026-11-14, with a 5 s exit delay). Exiting would lose it: hold the exit until
+	// every submission has been answered, within a limit.
+	if (PendingScoreSubmissions > 0)
+	{
+		const double Now = FPlatformTime::Seconds();
+		if (ScoreSubmissionExitDeadlineSeconds <= 0.0)
+		{
+			const double MaxHoldSeconds = 10.0;
+			ScoreSubmissionExitDeadlineSeconds = Now + MaxHoldSeconds;
+			LogDebug(FString::Printf(TEXT("[gamelift] %d score submission(s) not answered yet; holding the exit for up to %.0fs"), PendingScoreSubmissions, MaxHoldSeconds));
+			// Poll from here on (the configured delay may be long). The poller takes over the
+			// handle, so a player who joins meanwhile still cancels the exit.
+			ServerSessionEmptyExitTickerHandle = FTSTicker::GetCoreTicker().AddTicker(
+				FTickerDelegate::CreateUObject(this, &ThisClass::HandleSessionEmptyExitTick), 0.25f);
+			return false; // the delayed ticker is done
+		}
+		if (Now < ScoreSubmissionExitDeadlineSeconds)
+		{
+			return true; // keep polling
+		}
+		LogDebug(FString::Printf(TEXT("[gamelift] %d score submission(s) still not answered; exiting anyway"), PendingScoreSubmissions));
+	}
+
+	ScoreSubmissionExitDeadlineSeconds = 0.0;
 	ServerSessionEmptyExitTickerHandle.Reset();
 	TerminateServerProcessAndExit(TEXT("game session empty"));
 	return false; // one-shot
@@ -1659,6 +1808,7 @@ void UFrontendSessionBackend_GameLift::CancelPendingServerExit()
 	{
 		FTSTicker::GetCoreTicker().RemoveTicker(ServerSessionEmptyExitTickerHandle);
 		ServerSessionEmptyExitTickerHandle.Reset();
+		ScoreSubmissionExitDeadlineSeconds = 0.0;
 		LogDebug(TEXT("[gamelift] player joined during the empty-session grace period; keeping the process"));
 	}
 }
@@ -1886,6 +2036,7 @@ void UFrontendSessionBackend_GameLift::HandlePlayerSessionVerificationReply(cons
 	if (PlayerIdMatchesUniqueNetId(ReservedFor, Pending.UniqueNetIdString))
 	{
 		LogDebug(FString::Printf(TEXT("[gamelift] player session %s verified: reserved for %s"), *Pending.PlayerSessionId, *ReservedFor));
+		VerifiedPlayerSessionIds.Add(Pending.PlayerSessionId);
 		Pending.OnVerified.ExecuteIfBound(true, FString());
 		return;
 	}

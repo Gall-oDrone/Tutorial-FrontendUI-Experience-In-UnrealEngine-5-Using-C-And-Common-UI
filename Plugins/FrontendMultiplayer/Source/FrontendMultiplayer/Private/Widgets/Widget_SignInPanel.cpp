@@ -13,13 +13,23 @@ void UWidget_SignInPanel::NativeOnInitialized()
 	Super::NativeOnInitialized();
 
 	CommonButton_SignIn->OnClicked().AddUObject(this, &ThisClass::OnSignInButtonClicked);
+}
 
+void UWidget_SignInPanel::NativeConstruct()
+{
+	// Paired with NativeDestruct. This panel sits inside screens the widget stack pools: it is
+	// destructed with its screen on every close and constructed again on every open, while
+	// NativeOnInitialized runs once per instance, so a subscription made there is gone after
+	// the first close.
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
 	{
-		MultiplayerSubsystem->OnLoginStateChanged.AddDynamic(this, &ThisClass::HandleLoginStateChanged);
-		MultiplayerSubsystem->OnSessionOperationChanged.AddDynamic(this, &ThisClass::HandleSessionOperationChanged);
+		MultiplayerSubsystem->OnLoginStateChanged.AddUniqueDynamic(this, &ThisClass::HandleLoginStateChanged);
+		MultiplayerSubsystem->OnSessionOperationChanged.AddUniqueDynamic(this, &ThisClass::HandleSessionOperationChanged);
 	}
 
+	Super::NativeConstruct();
+
+	// A sign-in or sign-out while the panel was not on screen was not heard: show the current state.
 	Refresh();
 }
 

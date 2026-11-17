@@ -28,6 +28,24 @@ void AGameUIMatchPlayerState::CopyProperties(APlayerState* PlayerState)
 	}
 }
 
+void AGameUIMatchPlayerState::OverrideWith(APlayerState* PlayerState)
+{
+	Super::OverrideWith(PlayerState);
+
+	// A player who leaves and comes back while the game mode still holds their inactive state
+	// (AGameMode::FindInactivePlayer, minutes) gets this, the state of their previous visit,
+	// back. PlayerState is the one that was created for the new login and is about to be
+	// destroyed. CopyProperties above put the old PlayerSessionId and Ready flag into the
+	// inactive copy, so without this the server kept using the slot of the previous visit: it
+	// checked the identity of, rewarded and released the old PlayerSessionId and never released
+	// the new one (seen 2026-11-17). Both belong to the connection, not to the player.
+	if (const AGameUIMatchPlayerState* NewLoginState = Cast<AGameUIMatchPlayerState>(PlayerState))
+	{
+		PlayerSessionId = NewLoginState->PlayerSessionId;
+		bIsReady = NewLoginState->bIsReady;
+	}
+}
+
 void AGameUIMatchPlayerState::SetReady(bool bInReady)
 {
 	if (!HasAuthority() || bIsReady == bInReady)

@@ -22,12 +22,22 @@ void UWidget_HostSessionScreen::NativeOnInitialized()
 	);
 
 	CommonButton_Create->OnClicked().AddUObject(this, &ThisClass::OnCreateButtonClicked);
+}
 
+void UWidget_HostSessionScreen::NativeConstruct()
+{
+	// Paired with NativeDestruct. The widget stack pools this screen: every close destructs it
+	// and every open constructs it again, while NativeOnInitialized runs once per instance, so
+	// a subscription made there is gone after the first close. Before Super, so a widget set to
+	// auto-activate is already listening when Super activates it.
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
 	{
-		MultiplayerSubsystem->OnSessionOperationChanged.AddDynamic(this, &ThisClass::HandleSessionOperationChanged);
+		MultiplayerSubsystem->OnSessionOperationChanged.AddUniqueDynamic(this, &ThisClass::HandleSessionOperationChanged);
+		// Whatever started or ended while the screen was closed was not heard: take the current state.
 		CommonButton_Create->SetIsEnabled(!MultiplayerSubsystem->IsSessionOperationInProgress());
 	}
+
+	Super::NativeConstruct();
 }
 
 void UWidget_HostSessionScreen::NativeDestruct()

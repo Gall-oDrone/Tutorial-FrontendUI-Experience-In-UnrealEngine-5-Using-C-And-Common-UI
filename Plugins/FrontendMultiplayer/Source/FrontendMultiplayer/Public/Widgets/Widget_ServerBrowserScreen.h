@@ -22,6 +22,7 @@ class FRONTENDMULTIPLAYER_API UWidget_ServerBrowserScreen : public UWidget_Activ
 protected:
 	//~ Begin UUserWidget Interface
 	virtual void NativeOnInitialized() override;
+	virtual void NativeConstruct() override;
 	virtual void NativeDestruct() override;
 	//~ End UUserWidget Interface
 

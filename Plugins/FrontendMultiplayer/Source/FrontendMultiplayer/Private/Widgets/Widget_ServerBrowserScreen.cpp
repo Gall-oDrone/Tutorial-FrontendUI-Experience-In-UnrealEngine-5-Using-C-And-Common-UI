@@ -35,12 +35,21 @@ void UWidget_ServerBrowserScreen::NativeOnInitialized()
 
 	CommonListView_Sessions->OnItemIsHoveredChanged().AddUObject(this, &ThisClass::OnListViewItemHovered);
 	CommonListView_Sessions->OnItemSelectionChanged().AddUObject(this, &ThisClass::OnListViewItemSelected);
+}
 
+void UWidget_ServerBrowserScreen::NativeConstruct()
+{
+	// Paired with NativeDestruct. The widget stack pools this screen: every close destructs it
+	// and every open constructs it again, while NativeOnInitialized runs once per instance, so
+	// a subscription made there is gone after the first close. Before Super, so a widget set to
+	// auto-activate is already listening when Super activates it.
 	if (UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UFrontendMultiplayerSubsystem::Get(this))
 	{
-		MultiplayerSubsystem->OnSessionListUpdated.AddDynamic(this, &ThisClass::HandleSessionListUpdated);
-		MultiplayerSubsystem->OnSessionOperationChanged.AddDynamic(this, &ThisClass::HandleSessionOperationChanged);
+		MultiplayerSubsystem->OnSessionListUpdated.AddUniqueDynamic(this, &ThisClass::HandleSessionListUpdated);
+		MultiplayerSubsystem->OnSessionOperationChanged.AddUniqueDynamic(this, &ThisClass::HandleSessionOperationChanged);
 	}
+
+	Super::NativeConstruct();
 }
 
 void UWidget_ServerBrowserScreen::NativeDestruct()

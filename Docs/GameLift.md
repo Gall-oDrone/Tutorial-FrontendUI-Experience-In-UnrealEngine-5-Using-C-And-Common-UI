@@ -246,7 +246,7 @@ Three things the first run taught (all handled in the scripts now):
 ### The Docker image
 
 `Dockerfile` copies `Saved/StagedBuilds/LinuxServer` into `ubuntu:22.04` (+ `ca-certificates`,
-`libatomic1`) as non-root user `ue`, exposes `7777/udp`, and uses `docker/entrypoint.sh` as
+`curl`, `libatomic1`) as non-root user `ue`, exposes `7777/udp`, and uses `docker/entrypoint.sh` as
 `ENTRYPOINT`. `.dockerignore` keeps `*.debug`, `*.sym` and the Vulkan validation layers out of
 the image (≈2 GB of the 2.6 GB stage; symbols stay in the S3 zip for crash symbolication).
 
@@ -258,6 +258,7 @@ variables but cannot override the container command:
 | `GAMELIFT_SDK_WEBSOCKET_URL` (injected by GameLift) | present → GameLift backend; absent → FixedAddress backend |
 | `SERVER_SESSION_BACKEND` | explicit backend class path, overrides the auto-pick |
 | `SERVER_MAP` / `SERVER_PORT` / `SERVER_EXTRA_ARGS` | defaults `/Game/Maps/L_MatchTest`, `7777`, empty |
+| `GAMELIFT_ENDPOINT_URL` + `GAMELIFT_SERVER_KEY_PARAM` | the proxy, and the **name** of the SSM parameter with the servers' leaderboard key: the entrypoint reads the key at start and hands it to the engine as `GAMELIFT_SERVER_KEY` (§6, *Score submission*). Neither set → no score submission, as before |
 
 It `exec`s the engine binary as PID 1 with
 `-log -stdout -FullStdOutLogOutput -unattended -NullRHI -port=$SERVER_PORT`, so SIGTERM from
@@ -418,14 +419,23 @@ aws iam create-role --role-name FrontendUI-GameLiftContainerFleetRole --assume-r
   '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"gamelift.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
 aws iam attach-role-policy --role-name FrontendUI-GameLiftContainerFleetRole \
   --policy-arn arn:aws:iam::aws:policy/GameLiftContainerFleetPolicy
+#    Only for leaderboard scores (§6): the role may read the one parameter with the servers' key.
+#    `container-fleet.sh create` / `key-access` in the companion repo do this.
+aws iam put-role-policy --role-name FrontendUI-GameLiftContainerFleetRole --policy-name read-leaderboard-server-key \
+  --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":"ssm:GetParameter",
+     "Resource":"arn:aws:ssm:us-east-1:'$ACCOUNT':parameter/frontendui/leaderboard/server-key"}]}'
 
 # 3. Container Group Definition (free; COPYING -> READY in ~2 min, it snapshots the image).
+#    EnvironmentOverride is only for leaderboard scores: the proxy URL and the NAME of the key
+#    parameter. Never the key - the definition is readable by whoever can read GameLift.
 aws gamelift create-container-group-definition --region us-east-1 --name frontendui-server \
   --container-group-type GAME_SERVER --operating-system AMAZON_LINUX_2023 \
   --total-vcpu-limit 1 --total-memory-limit-mebibytes 2048 \
   --game-server-container-definition '{"ContainerName":"frontendui",
      "ImageUri":"'$ECR'/frontendui-server:<sha>","ServerSdkVersion":"5.2.0",
-     "PortConfiguration":{"ContainerPortRanges":[{"FromPort":7777,"ToPort":7777,"Protocol":"UDP"}]}}'
+     "PortConfiguration":{"ContainerPortRanges":[{"FromPort":7777,"ToPort":7777,"Protocol":"UDP"}]},
+     "EnvironmentOverride":[{"Name":"GAMELIFT_ENDPOINT_URL","Value":"https://<api-id>.execute-api.us-east-1.amazonaws.com/"},
+                            {"Name":"GAMELIFT_SERVER_KEY_PARAM","Value":"/frontendui/leaderboard/server-key"}]}'
 
 # 4. Fleet (billable). c6i.large ≈ $0.09/h; PENDING -> ACTIVE takes 10-20 min.
 #    Pass the port range as JSON: the FromPort=..,ToPort=.. shorthand was silently ignored
@@ -620,6 +630,12 @@ Two rules close what a raw `open <ip>:<port>?PlayerSessionId=…` could still do
   removing the player`. Tied to *Require Player Session Id On Server*. A player who drops and
   comes back needs a new player session (Join again), not the old id.
 
+A player who rejoins within a few minutes gets their previous `APlayerState` back (the engine's
+inactive-player list). `AGameUIMatchPlayerState::OverrideWith` takes the `PlayerSessionId` and the
+Ready flag from the **new** login; before that fix (2026-11-17) the server went on using the slot
+of the previous visit - it verified, rewarded and released the old id and left the new one
+`ACTIVE` until the game session ended.
+
 To ship: package a `Shipping` client (`BuildCookRun ... -clientconfig=Shipping`) with
 `ApiEndpointUrl` in `DefaultGame.ini` and no `AWS_*` variables on the machine — Host/Find/Join
 must work exactly as in Development, and a build without `ApiEndpointUrl` fails fast with
@@ -715,12 +731,78 @@ limit is **Leaderboard Max Rows** (`LeaderboardMaxRows`, 1-100).
   sign-in fails the board is empty.
 - The read uses its own HTTP request: opening the screen does not cancel a Host / Find / Join
   in flight, and those do not cancel it.
-- **Clients cannot write.** There is no score submission yet - the game has no score - so rows
-  come from the operator script (`infrastructure/scripts/gamelift/leaderboard.sh seed | put |
-  clear-seed`). A server-side write path is the next step.
+- **Clients cannot write.** Scores are added by the dedicated server (next subsection); the
+  operator script (`infrastructure/scripts/gamelift/leaderboard.sh seed | put | clear-seed`) is
+  for test data.
 
 Debug panel on a good read: `[gamelift] Leaderboard.GetTop(Main) limit=50` →
 `[gamelift] Leaderboard.GetTop(Main) -> 25 row(s), own row: in the list`.
+
+### Score submission (`Leaderboard.AddScore`, dedicated server only)
+
+**The rule is a placeholder**: the match has no outcome yet (no score, winner or end), so a player
+who was in a match that has **started** and then leaves it has "finished" it and gets *Match
+Completion Leaderboard Points* (Project Settings → Game → Game UI Settings → Match, default 100, 0 = off)
+added to their running total. Leaving the lobby before the start earns nothing. Replace the call
+in `AGameUIMatchGameMode::Logout` when the game has something real to reward; everything below
+stays.
+
+```
+AGameUIMatchGameMode::Logout (dedicated server, match InProgress)
+  -> UFrontendMultiplayerSubsystem::AwardLeaderboardPoints(PlayerSessionId, name, points)
+  -> UFrontendSessionBackend_GameLift: POST ApiEndpointUrl, X-Amz-Target: Leaderboard.AddScore, X-Server-Key
+  -> proxy: who owns that player session? (GameLift) -> one transaction: marker + score
+```
+
+| Guard | Where |
+|---|---|
+| Only a player whose identity this server **verified** (`player session … verified`) is reported; refused and kicked players, and everybody when *Verify Player Session Identity* is off, earn nothing | game server |
+| The request needs the **server key** (`GAMELIFT_SERVER_KEY`); a player's token does not open it | proxy |
+| The points go to the account **GameLift holds for the player session** - with `auth_mode = eos` the Epic account the proxy verified when the slot was created - not to anything the server names | proxy |
+| The slot must have been accepted by a server on this fleet (`ACTIVE` / `COMPLETED`) | proxy |
+| A player session is rewarded **once**; a repeat answers `Awarded: false` | proxy (DynamoDB transaction) |
+| At most 1000 points per award | proxy |
+
+**The server key** lives in SSM (`/frontendui/leaderboard/server-key`, created with
+`leaderboard.sh server-key create` in the companion repo). The server reads it from the
+environment variable `GAMELIFT_SERVER_KEY` only: not from an .ini (those are packaged into client
+builds) and not from the command line (that is written to the log). Whoever starts the server
+fetches the key at that moment, with the AWS identity it already has:
+
+| Server | Who fetches | Says |
+|---|---|---|
+| PC (Anywhere) | `LaunchDedicatedServer.bat 7777 GAMELIFT`, with the AWS CLI, when `GAMELIFT_ENDPOINT_URL` is set | `Leaderboard: server key loaded from SSM (not shown)` |
+| Container | `docker/entrypoint.sh`, when `GAMELIFT_ENDPOINT_URL` and `GAMELIFT_SERVER_KEY_PARAM` (the parameter's *name*) are set: one SigV4-signed `GetParameter` with `curl`, using the **fleet role** (`AWS_CONTAINER_CREDENTIALS_*`) on a container fleet or `AWS_ACCESS_KEY_ID…` when run by hand | `[entrypoint] leaderboard: server key loaded from /frontendui/leaderboard/server-key (not shown)` |
+
+The key is therefore in neither the image nor the fleet's container definition - both can be read
+by anybody with read access to ECR or GameLift - only the parameter's name is. The fleet role
+needs `ssm:GetParameter` on that one parameter (§5 step 2). Whatever goes wrong - no credentials,
+no permission (`AccessDeniedException`), no such parameter - the entrypoint says so in one line
+and the server starts anyway, without score submission.
+
+Verified 2026-11-17 by running the entrypoint in the image's base (`ubuntu:22.04`, curl 7.81) with
+a stand-in for the engine and temporary credentials: key from environment credentials, from a
+credentials endpoint (`AWS_CONTAINER_CREDENTIALS_FULL_URI`), region taken from
+`GAMELIFT_SDK_WEBSOCKET_URL`; no credentials, wrong secret, missing parameter and missing proxy
+URL each start the server with the reason logged. Then the real image (`frontendui-server:a4a4ddf`,
+the container definition's two variables, credentials from the environment): the entrypoint's
+`server key loaded` is followed by the engine's `[gamelift] score submission: on`, and the key's
+text occurs nowhere in the container output; without credentials the engine says `off
+(GAMELIFT_SERVER_KEY is not set)`. **Not yet run on a real container fleet** (the fleet role's
+credentials and permission are the untested part).
+
+`Server.log` says at startup whether the server can submit at all -
+`[gamelift] score submission: on (server key present, not shown)` or `off (…)` with the reason -
+and on a good award: `[gamelift] Leaderboard.AddScore psess-… +100 (Main)` →
+`[gamelift] Leaderboard.AddScore psess-… -> +100 on Main`. The server restarts after every game
+session, so these lines are in the `Server-backup-…log` of the run that hosted the match, not in
+the fresh `Server.log`.
+
+When the last player leaves, their submission may still be on its way (2.7 s against a cold
+proxy, measured 2026-11-14) while the empty-session exit is due after 5 s: the exit is held until
+every submission has been answered, for at most 10 more seconds (`… not answered yet; holding
+the exit …`). Limits of the placeholder: nothing stops a player from starting and leaving
+matches to collect points, and an award in flight when the process is killed outright is lost.
 
 ---
 
@@ -778,5 +860,6 @@ $40, e-mail at 50/80/100 % actual and 100 % forecast) is the safety net; the com
 | Client reaches the server, then `LogNet: Error: Server is incompatible with the local version of the game: RemoteNetworkVersion=… vs LocalNetworkVersion=…` / `OutdatedClient` | Client and server were built by different engine builds (Launcher editor vs. source-built 5.6.1 on the build box). The engine's default network version hashes the engine changelist. This project pins it to `ProjectVersion` instead (`FFrontendUIGameModule::GetProjectNetworkVersion`), so **both** sides must be built from a revision that has that override (≥ `v1.1.1`) and share the same `ProjectVersion` in `DefaultGame.ini`. If you bump `ProjectVersion`, rebuild the server artifacts. The flip side: with the pin, a client and a server of **different revisions but the same `ProjectVersion`** connect happily even if a replicated class changed between them, and RPC / property indices then land on the wrong functions - symptoms like buttons that do nothing or players missing from the lobby list. Rule: **any change to a replicated class (new RPC, new replicated property) bumps `ProjectVersion`**, so a stale packaged server is refused instead of half-working. |
 | Packaged client only (editor works): every Host / Find / Join fails at once with `Could not reach GameLift endpoint for …` and nothing reaches the API Gateway access log | Look at `LogHttp` in the client log (Shipping logs to `%LOCALAPPDATA%\FrontendUI\Saved\Logs\`). `POST https: completed with reason 'Other' after 0.00s` = the URL was cut at `//` by the ini parser: quote it (`ApiEndpointUrl="https://…/"`, section 4) - newer builds say *GameLift endpoint 'https:' is not a valid URL* outright. `libcurl error: 60 (SSL peer certificate …)` = no usable root certificate: make sure `Manifest_UFSFiles_Win64.txt` lists `FrontendUI/Content/Certificates/cacert.pem`. |
 | Leaderboard shows the simulated names (Valkyrie … You … Dusk, 40 rows) although the proxy is deployed | The debug panel says why: `no ApiEndpointUrl` (the client is on direct SigV4 - set `GAMELIFT_ENDPOINT_URL` / `ApiEndpointUrl`) or `the proxy has no leaderboard` (apply the proxy with `-var enable_leaderboard=true`). |
+| A finished match adds no points | `Server.log` says why. `no leaderboard points for psess-…: no server key (GAMELIFT_SERVER_KEY is not set)`: start the server with `LaunchDedicatedServer.bat 7777 GAMELIFT` and check for `Leaderboard: server key loaded from SSM`; `… no ApiEndpointUrl`: the server needs `GAMELIFT_ENDPOINT_URL` too. `… its player was not verified`: the identity check did not pass or is off. `Leaderboard.AddScore … failed: HTTP 403`: the key does not match the one in SSM (rotated? restart the server). `HTTP 400 UnsupportedOperationException`: the proxy has no server key configured (`-var leaderboard_server_key_ssm_parameter=…`). No `AddScore` line at all: the player left before the match started, or *Match Completion Leaderboard Points* is 0. **Container**: the first lines of the container log say what the entrypoint did - `[entrypoint] leaderboard: could not read … (AccessDeniedException)`: the fleet role may not read the parameter (`container-fleet.sh key-access`); `no AWS credentials in this container`: run by hand without `AWS_ACCESS_KEY_ID…`; no `[entrypoint] leaderboard:` line at all: the container definition has no `GAMELIFT_SERVER_KEY_PARAM` (make the CGD version with `GAMELIFT_ENDPOINT_URL` set), or the image predates the startup fetch. |
 | Leaderboard is empty | `Leaderboard.GetTop(Main) failed: HTTP 401 …`: not signed in to Epic or the token expired (sign-in line just above it in the debug panel). `HTTP 502 LeaderboardUnavailableException`: the Lambda could not read the table, cause in `/aws/lambda/frontendui-gamelift-proxy`. `-> 0 row(s)`: the table has no rows for that board (`leaderboard.sh count`). |
 | Shipping client against a **Development** server: `LogNetPackageMap: Error: UPackageMapClient::SerializeNewActor. Unresolved Archetype GUID. Path: Default__GameplayDebuggerCategoryReplicator` + `LogNet: Warning: … SerializeNewActor failed to find/spawn actor` once per connection | Harmless. The Development server spawns and replicates the Gameplay Debugger's replicator actor, which does not exist in a Shipping client, so the client drops that one channel. Disappears with a Shipping server or with the GameplayDebugger plugin disabled in the `.uproject`. |
