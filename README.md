@@ -196,7 +196,8 @@ The dedicated-server and Amazon GameLift path is complete end to end: `FrontendU
 - ~~CI for the server image~~ - done: companion `.github/workflows/server-image.yml` (`workflow_dispatch` → EC2 box → ECR → new CGD version → optional fleet roll-out → destroy + audit, GitHub OIDC role, no keys), [Docs/GameLift.md](Docs/GameLift.md) §4.
 - ~~Leaderboard backed by DynamoDB, read path~~ - done (`v1.7-leaderboard`): `Leaderboard.GetTop` through the same proxy and EOS identity ([Docs/GameLift.md §6](Docs/GameLift.md)).
 - ~~Leaderboard score submission~~ - done (`v1.8-score-submission`): the dedicated server reports a finished match (`Leaderboard.AddScore`, server key fetched at start, the account comes from GameLift's record of the player session, one reward per player session). Open ends: the rule is a placeholder - fixed points for leaving a started match, which can be farmed - until the game has an outcome to reward; the rejoin fix has not been run for real, and no match has been played on a container fleet since (see the release row).
-- Studio logo as `FPreLoadScreenBase` so it precedes the loading screen; reconnect flow and match-specific HUD content.
+- **Reconnect flow and match HUD content** - on a branch (`feat/reconnect-and-match-hud`), not built or run yet: a dropped match connection becomes *Reconnect to the match?* (a new player session in the same GameLift game session), a kick shows the server's reason, the HUD base fills optional session / player-count / match-clock / ping texts ([Plugins/GameUI/Docs/InGameUI.md](Plugins/GameUI/Docs/InGameUI.md)).
+- Studio logo as `FPreLoadScreenBase` so it precedes the loading screen - parked: it needs the logo as a plain image file, which the repository does not have.
 - Later, when there is a reason: FlexMatch on top of the queue, a second region, Spot fleets.
 
 ## License

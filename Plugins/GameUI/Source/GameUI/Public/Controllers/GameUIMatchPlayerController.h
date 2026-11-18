@@ -77,6 +77,8 @@ protected:
 
 	//~ Begin APlayerController Interface
 	virtual void SetupInputComponent() override;
+	/** The server's reason for removing this player, handed to UGameUIFlowSubsystem so the frontend can show it. */
+	virtual void ClientWasKicked_Implementation(const FText& KickReason) override;
 	//~ End APlayerController Interface
 
 	UFUNCTION(Server, Reliable, WithValidation)

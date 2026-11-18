@@ -495,10 +495,21 @@ void AGameUIMatchPlayerController::PushMatchInfoToHUD()
 		return;
 	}
 
-	HUD->BP_OnMatchInfoChanged(
+	HUD->SetMatchInfo(
 		FText::FromString(MatchGameState->GetSessionDisplayName()),
 		MatchGameState->PlayerArray.Num(),
 		MatchGameState->GetMaxPlayers());
+}
+
+void AGameUIMatchPlayerController::ClientWasKicked_Implementation(const FText& KickReason)
+{
+	// Sent by AGameSession::KickPlayer right before the server closes this connection. The
+	// engine's implementation does nothing, which is why a kicked player only ever saw a generic
+	// "connection lost". The flow subsystem attaches the reason to the failure that follows.
+	if (UGameUIFlowSubsystem* FlowSubsystem = UGameInstance::GetSubsystem<UGameUIFlowSubsystem>(GetGameInstance()))
+	{
+		FlowSubsystem->NotifyKickedFromMatch(KickReason);
+	}
 }
 
 void AGameUIMatchPlayerController::SetReady(bool bReady)

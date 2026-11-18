@@ -10,9 +10,9 @@ the Blueprints below only provide layout and styling. Conventions follow
 |---|---|
 | `AGameUIMatchPlayerController` | On BeginPlay: adds the match mapping context, creates the primary layout, pushes the HUD onto `GameHud` under a loading-screen hold. Binds the pause action. `OpenPauseMenu` / `ClosePauseMenu` / `TogglePauseMenu` are BlueprintCallable. |
 | `AGameUIMatchGameMode` | Sets the controller above; an `AGameMode` whose `WaitingToStart` phase is the lobby (see `Lobby.md`). Pawn and rules are yours. |
-| `UWidget_HUDBase` | Non-focusable, `Game` input mode. `BP_OnPauseMenuVisibilityChanged(bool)` fires when the pause menu opens/closes; `BP_OnMatchInfoChanged(SessionName, Players, Max)` on arrival and on join/leave. |
+| `UWidget_HUDBase` | Non-focusable, `Game` input mode. `BP_OnPauseMenuVisibilityChanged(bool)` fires when the pause menu opens/closes. Match content, each as an **optional** text block and as an event: session name and player count (`BP_OnMatchInfoChanged`, on arrival and on join/leave), match clock (`BP_OnMatchClockChanged`, once a second while the match runs), the local player's ping (`BP_OnPingChanged`). |
 | `UWidget_PauseMenu` | Resume / Options / Return to Main Menu / Quit. Back = Resume. Options pushes the framework Options screen onto `GameMenu`. Destructive actions confirm on `Modal`. |
-| `UGameUIFlowSubsystem` | `ReturnToFrontend()`; listens to network/travel failures, travels home and stores a message for `ShowPendingDisconnectMessage()`. |
+| `UGameUIFlowSubsystem` | `ReturnToFrontend()`; listens to network/travel failures, travels home and stores a message for `ShowPendingDisconnectMessage()`. A match connection that drops becomes a **Reconnect?** question when the session backend can rejoin (see *Reconnect* below); a kick shows the server's reason. |
 | `UGameUIDeveloperSettings` | **Project Settings → Game → Game UI Settings**: layout class, match mapping context, frontend map, pause action, pause-the-world toggle. |
 
 Pausing the world is the controller's job (`bPauseGameWhileMenuOpen`), triggered when the
@@ -41,15 +41,34 @@ CommonUI's job — Back (Escape / B) always works, and to make **the same key** 
 
 ### 2. `WBP_HUD` — `GameUI/Content/UI/Screens`
 
-Parent class `Widget_HUDBase`. No `BindWidget` properties; put whatever your game needs.
+Parent class `Widget_HUDBase`. No required widgets; put whatever your game needs.
 
 ```
 [WBP_HUD]
 └─ Overlay
-   └─ Common Text Block   "HUD"  (Style_Text_Default) — top-left, for the test
+   ├─ Common Text Block   "HUD"  (Style_Text_Default) — top-left, for the test
+   └─ Vertical Box        top-right                    — optional match content
+      ├─ CommonText_SessionName   [BIND, optional]  the session's title
+      ├─ CommonText_PlayerCount   [BIND, optional]  "2 / 4"
+      ├─ CommonText_MatchClock    [BIND, optional]  "1:23", "--:--" in the lobby
+      └─ CommonText_Ping          [BIND, optional]  "42 ms"
 ```
 
 - Class defaults: **Is Focusable** off (set by C++), **Is Back Handler** off.
+- The four `CommonText_*` blocks are **Common Text Blocks named exactly so** (tick *Is Variable*);
+  the C++ fills in the ones that exist and ignores the rest, so add only what the game wants.
+  The same values arrive as events for anything that is not a plain text:
+
+  | Event | When | Values |
+  |---|---|---|
+  | `BP On Match Info Changed` | arrival, a player joins or leaves | `SessionName`, `CurrentPlayers`, `MaxPlayers` (0 = unknown) |
+  | `BP On Match Clock Changed` | once a second while the match runs; once when it starts or stops | `bIsMatchInProgress`, `ElapsedSeconds`, `ClockText` |
+  | `BP On Ping Changed` | when the value changes (checked twice a second) | `PingInMilliseconds` |
+
+  The clock is `AGameState::ElapsedTime`: it counts from the moment the match leaves the lobby,
+  on the server and on each client, and a late joiner starts from the server's value. The ping
+  is the local player's `APlayerState` ping, i.e. what the server measured, so it trails by a
+  few seconds and is 0 without a network.
 - Graph (optional): implement **Event BP On Pause Menu Visibility Changed** → set the
   Overlay's Render Opacity to `0.3` when open, `1.0` when closed, so you can see the hook work.
 
@@ -83,7 +102,7 @@ level should stay visible behind a pause menu), `WBP_Template_Layout` root.
 | Blueprint | Required widget names |
 |---|---|
 | `WBP_CAW_PauseMenu` | `CommonButton_Resume`, `CommonButton_Options`, `CommonButton_ReturnToMainMenu`, `CommonButton_Quit` |
-| `WBP_HUD` | none |
+| `WBP_HUD` | none (optional: `CommonText_SessionName`, `CommonText_PlayerCount`, `CommonText_MatchClock`, `CommonText_Ping`) |
 
 ### 4. `BP_MatchGameMode` — `GameUI/Content/Core`
 
@@ -130,3 +149,43 @@ New level with lighting (Env. Light Mixer) and a floor. World Settings → GameM
 | Quit → No | back to pause menu |
 | Gamepad: Start opens, B closes, D-pad navigates | focus and input routing |
 | Simulated failure (console: `disconnect` while in a networked PIE session) | back at the frontend with a *Disconnected* confirm after the first screen appears |
+| HUD with the four `CommonText_*` blocks, in a session | title and "n / max" on arrival; clock `--:--` in the lobby, counting from `0:00` when the match starts; ping in ms after a few seconds |
+
+## Reconnect
+
+When the connection to a running match drops, `UGameUIFlowSubsystem` still takes the player
+back to the frontend, but the dialog it leaves for `ShowPendingDisconnectMessage()` becomes a
+question - *Disconnected: … Reconnect to the match?* - and **Yes** calls
+`UFrontendMultiplayerSubsystem::RejoinLastSession()`. The loading screen covers the request; a
+refusal (session gone, full) is the usual *Could Not Join* dialog. Nothing to wire in Blueprint:
+`BP_FrontendController` already calls `ShowPendingDisconnectMessage`.
+
+| Offered | Not offered |
+|---|---|
+| `ConnectionLost` / `ConnectionTimeout` on the connection of a client that was in the match, with a backend that can rejoin: GameLift (a new player session in the same game session) and FixedAddress | a join that never got in (refused, timed out on the way); a `FailureReceived` (the server ending things); travel failures; a **kick** - the server's reason is shown instead, under *Removed From Match*; listen-server sessions (the OnlineSubsystem backend does not rejoin) |
+
+On the server nothing is special about a returning player: it is a new login. If it comes while
+the game mode still holds the player's inactive state (minutes), the engine hands that state
+back and `AGameUIMatchPlayerState::OverrideWith` takes the `PlayerSessionId` and Ready flag from
+the new login. The match-completion points are given **once per account and match**
+(`no leaderboard points for …: already rewarded in this match`), so dropping and returning does
+not multiply them.
+
+**Testing it** (Development / editor builds): in a match, open the console (`~`) on a client and
+run `GameUI.SimulateConnectionLost`. The client reports a lost connection the way the engine
+would; the server sees that client disconnect. Do it with **two players in the session and from
+the one who did not host**: a GameLift server whose last player has left ends the session after
+*Session Empty Exit Delay Seconds* (5 s), which is less than the trip to the frontend takes.
+
+| Step | Expected |
+|---|---|
+| `GameUI.SimulateConnectionLost` in a GameLift match | client log `network failure ConnectionLost - Simulated connection loss … Returning to the frontend with a reconnect offer`; frontend; *Disconnected … Reconnect to the match?* |
+| **Yes** | loading screen; `[gamelift] RejoinLastSession -> …`, `CreatePlayerSession -> psess-…` (a new id), travel; back in the match (or the lobby) with the others |
+| Server log | the first visit's `RemovePlayerSession` on the disconnect; `player session psess-… verified` for the **new** id; when the player finally leaves: `no leaderboard points for …: already rewarded in this match` |
+| **No** | stays on the main menu; the server browser still lists the session |
+| Reconnect after the session ended | *Could Not Join* with GameLift's reason |
+
+Not covered: a real outage. There the server only notices the lost player when its own
+connection timeout runs out; until then the old slot is still taken (a full session answers the
+rejoin with `GameSessionFullException`) and a rejoin that does get in meets the old entry as a
+second player with the same name until the timeout removes it.

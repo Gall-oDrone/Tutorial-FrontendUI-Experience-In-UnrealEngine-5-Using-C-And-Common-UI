@@ -247,6 +247,8 @@ struct FFrontendGameLiftSessionSummary
  *   - Find:  GameLift.DescribeGameSessions (StatusFilter=ACTIVE) -> ReportSessionsFound
  *   - Join:  GameLift.CreatePlayerSession -> ReportSessionJoined(true, "ip:port?PlayerSessionId=...")
  *   - Leave: clears local session state -> ReportSessionLeft
+ *   - Rejoin: after a lost connection, GameLift.CreatePlayerSession again for the game session
+ *            the player was last in (the old player session cannot be reused)
  *   - Leaderboard: Leaderboard.GetTop on ApiEndpointUrl (a table behind the proxy; GameLift has
  *            no leaderboard). Without a proxy, or with one that has no leaderboard, the policy
  *            is UFrontendMultiplayerSettings::bSimulateLeaderboardWhenUnsupported
@@ -278,6 +280,8 @@ public:
 	virtual void JoinSession(int32 SessionIndex) override;
 	virtual void LeaveSession() override;
 	virtual bool CancelPendingOperation() override;
+	virtual bool CanRejoinLastSession() const override;
+	virtual void RejoinLastSession() override;
 	virtual void FetchLeaderboard(ELeaderboardCategory Category) override;
 	virtual FString GetBackendDisplayName() const override;
 	virtual bool GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const override;
@@ -315,6 +319,8 @@ private:
 	/** bIsJoinRequest selects which Report* answers on failure: ReportSessionJoined (Join) or ReportSessionCreated (Host). */
 	void RequestPlayerSessionForGameSession(const FString& GameSessionId, const FString& DisplayName, int32 MaxPlayers, bool bIsJoinRequest);
 	void CancelPendingClientRequests();
+	/** Keep what RejoinLastSession needs; called wherever a host or join produced a connect address. */
+	void RememberJoinedSession(const FString& GameSessionId, const FString& DisplayName, int32 MaxPlayers);
 	/** What GameLift knows this player as: the local unique net id (EOS "<account>|<puid>", Null machine id), or the display name without one. */
 	FString BuildLocalPlayerId() const;
 	/** What other players see in the browser's host column. */
@@ -410,6 +416,13 @@ private:
 	int32 ActiveSessionMaxPlayers = 0;
 	FString ActiveGameSessionId;
 	FString ActivePlayerSessionId;
+
+	/**
+	 * Client: the game session this player was last sent to. Unlike Active*, it survives
+	 * LeaveSession - the return to the frontend after a lost connection leaves the session first
+	 * and offers the reconnect afterwards. Empty GameSessionId = none.
+	 */
+	FFrontendGameLiftSessionSummary LastJoinedSession;
 
 	/** Server-side WebSocket state. */
 	TSharedPtr<IWebSocket> ServerWebSocket;

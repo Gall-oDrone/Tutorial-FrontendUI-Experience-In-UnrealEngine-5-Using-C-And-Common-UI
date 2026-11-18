@@ -636,6 +636,18 @@ Ready flag from the **new** login; before that fix (2026-11-17) the server went 
 of the previous visit - it verified, rewarded and released the old id and left the new one
 `ACTIVE` until the game session ended.
 
+**Reconnect.** A client whose connection to the match drops is taken to the frontend and asked
+*Reconnect to the match?* (`UGameUIFlowSubsystem`, `GameUI/Docs/InGameUI.md`). Yes is
+`RejoinLastSession`: `GameLift.CreatePlayerSession` for the game session the player was in - the
+backend keeps its id across `LeaveSession` - and a travel to the new `?PlayerSessionId=`. Through
+the proxy this is the same call as a Join, so the same checks apply (pinned fleet, verified
+account). GameLift's own answers are shown as *Could Not Join*: the session has ended
+(`TERMINATED`), or it is full because the server has not yet released the slot of the lost
+connection. A player the server removed gets the server's reason under *Removed From Match*
+instead of the question. The match-completion points are given once per account and match, so
+dropping and returning does not earn them twice. Not exercised with a real outage, only with
+the client-side `GameUI.SimulateConnectionLost`.
+
 To ship: package a `Shipping` client (`BuildCookRun ... -clientconfig=Shipping`) with
 `ApiEndpointUrl` in `DefaultGame.ini` and no `AWS_*` variables on the machine — Host/Find/Join
 must work exactly as in Development, and a build without `ApiEndpointUrl` fails fast with

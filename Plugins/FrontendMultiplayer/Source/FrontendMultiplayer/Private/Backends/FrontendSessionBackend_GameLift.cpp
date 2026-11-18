@@ -607,6 +607,7 @@ void UFrontendSessionBackend_GameLift::Shutdown()
 	ActiveSessionMaxPlayers = 0;
 	ActiveGameSessionId.Reset();
 	ActivePlayerSessionId.Reset();
+	LastJoinedSession = FFrontendGameLiftSessionSummary();
 	Super::Shutdown();
 }
 
@@ -830,6 +831,7 @@ void UFrontendSessionBackend_GameLift::HandlePlacementObject(const TSharedPtr<FJ
 	ActivePlayerSessionId = PlayerSessionId;
 	ActiveSessionDisplayName = DisplayName;
 	ActiveSessionMaxPlayers = MaxPlayers;
+	RememberJoinedSession(GameSessionArn, DisplayName, MaxPlayers);
 
 	const FString ConnectAddress = PlayerSessionId.IsEmpty()
 		? FString::Printf(TEXT("%s:%d"), *IpAddress, Port)
@@ -1152,6 +1154,7 @@ void UFrontendSessionBackend_GameLift::RequestPlayerSessionForGameSession(const 
 			Self->ActivePlayerSessionId = PlayerSessionId;
 			Self->ActiveSessionDisplayName = DisplayName;
 			Self->ActiveSessionMaxPlayers = MaxPlayers;
+			Self->RememberJoinedSession(GameSessionId, DisplayName, MaxPlayers);
 
 			const FString ConnectAddress = PlayerSessionId.IsEmpty()
 				? FString::Printf(TEXT("%s:%d"), *IpAddress, Port)
@@ -1348,6 +1351,39 @@ bool UFrontendSessionBackend_GameLift::CancelPendingOperation()
 	LogDebug(TEXT("[gamelift] pending request cancelled by the player"));
 	CancelPendingClientRequests();
 	return true;
+}
+
+void UFrontendSessionBackend_GameLift::RememberJoinedSession(const FString& GameSessionId, const FString& DisplayName, int32 MaxPlayers)
+{
+	LastJoinedSession = FFrontendGameLiftSessionSummary();
+	LastJoinedSession.GameSessionId = GameSessionId;
+	LastJoinedSession.DisplayName = DisplayName;
+	LastJoinedSession.MaxPlayers = MaxPlayers;
+}
+
+bool UFrontendSessionBackend_GameLift::CanRejoinLastSession() const
+{
+	return !LastJoinedSession.GameSessionId.IsEmpty();
+}
+
+void UFrontendSessionBackend_GameLift::RejoinLastSession()
+{
+	if (!CanRejoinLastSession())
+	{
+		Super::RejoinLastSession();
+		return;
+	}
+
+	// A new player session in the same game session: the one of the lost connection is released
+	// by the server when it notices the player is gone, and cannot be used twice. Sent through
+	// JoinSession, as the only row of the list it indexes, so that a derived backend's sign-in
+	// gate and the usual answers (full, gone, refused) apply unchanged. The server browser asks
+	// for a fresh list whenever it is opened, so replacing the cached one here is not seen.
+	const FFrontendGameLiftSessionSummary Session = LastJoinedSession;
+	LogDebug(FString::Printf(TEXT("[gamelift] RejoinLastSession -> %s"), *Session.GameSessionId));
+	FoundSessions.Reset();
+	FoundSessions.Add(Session);
+	JoinSession(0);
 }
 
 void UFrontendSessionBackend_GameLift::FetchLeaderboard(ELeaderboardCategory Category)

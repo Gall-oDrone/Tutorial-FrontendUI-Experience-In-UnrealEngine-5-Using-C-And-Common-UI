@@ -64,4 +64,10 @@ private:
 	AGameUIMatchGameState* GetMatchGameState() const;
 
 	FTimerHandle StartCountdownTimerHandle;
+
+	/**
+	 * Server: unique net ids (or, without one, player session ids) already given the match
+	 * completion points in this match. Lives as long as the game mode, i.e. one match.
+	 */
+	TSet<FString> LeaderboardRewardedPlayers;
 };

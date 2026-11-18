@@ -170,7 +170,19 @@ void AGameUIMatchGameMode::Logout(AController* Exiting)
 					const int32 CompletionPoints = UGameUIDeveloperSettings::Get()->MatchCompletionLeaderboardPoints;
 					if (CompletionPoints > 0 && GetNetMode() == NM_DedicatedServer && GetMatchState() == MatchState::InProgress)
 					{
-						MultiplayerSubsystem->AwardLeaderboardPoints(PlayerSessionId, MatchPlayerState->GetPlayerName(), CompletionPoints, ELeaderboardCategory::Main);
+						// Once per account and match: a player who drops and reconnects leaves more
+						// than once, each time with a new player session the service would reward.
+						const FUniqueNetIdRepl& UniqueId = MatchPlayerState->GetUniqueId();
+						const FString RewardKey = UniqueId.IsValid() ? UniqueId.ToString() : PlayerSessionId;
+						if (LeaderboardRewardedPlayers.Contains(RewardKey))
+						{
+							UE_LOG(LogGameUI, Log, TEXT("no leaderboard points for %s: already rewarded in this match (left before and came back)."), *MatchPlayerState->GetPlayerName());
+						}
+						else
+						{
+							LeaderboardRewardedPlayers.Add(RewardKey);
+							MultiplayerSubsystem->AwardLeaderboardPoints(PlayerSessionId, MatchPlayerState->GetPlayerName(), CompletionPoints, ELeaderboardCategory::Main);
+						}
 					}
 					MultiplayerSubsystem->RemovePlayerSession(PlayerSessionId);
 				}
