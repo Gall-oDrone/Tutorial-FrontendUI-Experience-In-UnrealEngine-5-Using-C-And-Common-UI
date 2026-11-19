@@ -3,6 +3,7 @@
 
 #include "FrontendFunctionLibrary.h"
 #include "FrontendUILog.h"
+#include "FrontendUIStartup.h"
 #include "FrontendSettings/FrontendDeveloperSettings.h"
 
 TSoftClassPtr<UWidget_ActivatableBase> UFrontendFunctionLibrary::GetFrontendSoftWidgetClassByTag(UPARAM(meta = (Categories = "Frontend.Widget")) FGameplayTag InWidgetTag)
@@ -32,6 +33,13 @@ TSoftObjectPtr<UTexture2D> UFrontendFunctionLibrary::GetOptionsSoftImageByTag(FG
 
 bool UFrontendFunctionLibrary::IsLogoScreenEnabled()
 {
+	// The startup logo (FrontendUIStartup, an engine-loading pre-load screen) has already put
+	// the studio logo on screen while the engine loaded; the logo screen would repeat it.
+	if (FrontendUIStartup::WasStudioLogoShownAtStartup())
+	{
+		return false;
+	}
+
 #if UE_BUILD_SHIPPING
 	// The studio splash is a brand / legal requirement in shipped builds; the toggle is
 	// an iteration convenience and must not be able to turn it off there.

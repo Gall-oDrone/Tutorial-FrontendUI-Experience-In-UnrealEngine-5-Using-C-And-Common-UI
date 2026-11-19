@@ -20,7 +20,7 @@ GameUI  ──►  FrontendMultiplayer  ──►  FrontendUI  ──►  Common
 - **Unreal Engine 5.6** (`EngineAssociation` in `FrontendUI.uproject`)
 - A C++ toolchain for your platform (developed against Visual Studio 2022 on Windows)
 
-`FrontendUI.uplugin` declares two engine plugin dependencies, `CommonUI` and `EnhancedInput`, and links these modules (`FrontendUI.Build.cs`): `Core`, `CoreUObject`, `Engine`, `InputCore`, `EnhancedInput`, `GameplayTags`, `UMG`, `CommonUI`, `CommonInput`, `DeveloperSettings`, `PropertyPath`, and `PreLoadScreen`, plus `Slate` and `SlateCore` privately.
+`FrontendUI.uplugin` declares two engine plugin dependencies, `CommonUI` and `EnhancedInput`, and links these modules (`FrontendUI.Build.cs`): `Core`, `CoreUObject`, `Engine`, `InputCore`, `EnhancedInput`, `GameplayTags`, `UMG`, `CommonUI`, `CommonInput`, `DeveloperSettings`, `PropertyPath`, and `PreLoadScreen`, plus `Slate` and `SlateCore` privately. A second, tiny module, `FrontendUIStartup` (loading phase `PreEarlyLoadingScreen`, no UObject types), shows the studio logo while the engine starts.
 
 The demo project additionally enables `MediaMovieStreamer` for the startup movie and `ModelingToolsEditorMode` for the editor.
 
@@ -33,6 +33,7 @@ Source/FrontendUIGame/               Primary game module (empty by design; a pac
 Content/
   Maps/FrontEndTestMap, L_MatchTest  Frontend map and the match map the lobby/HUD run in
   Movies/                            Startup and loading movies (must stay under Content/)
+  Splash/T_StudioLogo.png            Startup logo: a plain image, shown before any asset can load
   Assets/                            LevelVisuals (mannequins), non-UI art
 Plugins/
   FrontendUI/                        The reusable framework
@@ -88,7 +89,7 @@ The framework is extended by subclassing, never by editing it. Each seam has a P
 | Screens | tag + `FrontendWidgetMap` entry | main menu, story, credits, logo |
 | Loading screen | `RegisterLoadingScreenHold` / `ClearLoadingScreenHold` from any system | controller holds until the first screen is pushed |
 
-Dev-only switches (`Show Logo Screen`, `Show API Debug Panel`) are compiled to fixed values in Shipping so configuration cannot ship a build without the splash or with debug UI.
+Dev-only switches (`Show Logo Screen`, `Show API Debug Panel`) are compiled to fixed values in Shipping so configuration cannot ship a build without the splash or with debug UI. When the startup logo (below) has been shown, the logo screen is skipped in every configuration: the logo has been on screen already.
 
 ## Screens included
 
@@ -98,6 +99,7 @@ Dev-only switches (`Show Logo Screen`, `Show API Debug Panel`) are compiled to f
 | FrontendUI | **Options** | tabbed, data-driven; **Controls** tab built on Enhanced Input user settings |
 | FrontendUI | **Confirm** | modal `Ok` / `YesNo` / `OkCancel` (`EConfirmScreenType`), result via `EConfirmScreenButtonType` |
 | FrontendUI | **Loading Screen** | `UFrontendLoadingScreenSubsystem` + `PreLoadScreen`, optional startup movie |
+| FrontendUI | **Startup logo** | `FrontendUIStartup`: an engine-loading pre-load screen (`FPreLoadScreenBase`) that shows `Content/Splash/T_StudioLogo.png` centred on a plain background from the moment the engine can draw until it has loaded, for at least *MinimumDisplaySeconds*. Settings in `DefaultGame.ini` `[FrontendUI.StartupLogo]` (read before any game object exists). The engine shows either such a screen or its startup movies while it loads, so the module holds the movies back and plays them right after the logo (`bPlayStartupMoviesAfterLogo`; False: no startup movies). The image needs real transparency around the logo. Game builds only: not in the editor / PIE, not on a server, not with `-NoLoadingScreen` |
 | FrontendMultiplayer | **Multiplayer hub**, **Host Session**, **Server Browser**, **Leaderboard**, **API Debug** | gated by *Enable Multiplayer*; backend-agnostic |
 | GameUI | **Main Menu**, **Story**, **Credits**, **Logo** | this game's screens |
 | GameUI | **HUD**, **Pause Menu** | in-match, on the `GameHud` / `GameMenu` stacks; pause reuses the framework Options screen |
@@ -197,8 +199,8 @@ The dedicated-server and Amazon GameLift path is complete end to end: `FrontendU
 - ~~CI for the server image~~ - done: companion `.github/workflows/server-image.yml` (`workflow_dispatch` → EC2 box → ECR → new CGD version → optional fleet roll-out → destroy + audit, GitHub OIDC role, no keys), [Docs/GameLift.md](Docs/GameLift.md) §4.
 - ~~Leaderboard backed by DynamoDB, read path~~ - done (`v1.7-leaderboard`): `Leaderboard.GetTop` through the same proxy and EOS identity ([Docs/GameLift.md §6](Docs/GameLift.md)).
 - ~~Leaderboard score submission~~ - done (`v1.8-score-submission`): the dedicated server reports a finished match (`Leaderboard.AddScore`, server key fetched at start, the account comes from GameLift's record of the player session, one reward per player session). Open ends: the rule is a placeholder - fixed points for leaving a started match, which can be farmed - until the game has an outcome to reward; no match has been played on a container fleet since (see the release row). The rejoin fix was seen working with `v1.9-reconnect-hud`.
-- ~~Reconnect flow and match HUD content~~ - done (`v1.9-reconnect-hud`): a dropped match connection becomes *Reconnect to the match?* (a new player session in the same GameLift game session), a kick shows the server's reason, the HUD base fills optional session / player-count / match-clock / ping texts ([Plugins/GameUI/Docs/InGameUI.md](Plugins/GameUI/Docs/InGameUI.md)). Open end: a real outage - the server should replace the stale connection of a player who is back (after the identity check), instead of waiting for its timeout.
-- Studio logo as `FPreLoadScreenBase` so it precedes the loading screen - parked: it needs the logo as a plain image file, which the repository does not have.
+- ~~Reconnect flow and match HUD content~~ - done (`v1.9-reconnect-hud`): a dropped match connection becomes *Reconnect to the match?* (a new player session in the same GameLift game session), a kick shows the server's reason, the HUD base fills optional session / player-count / match-clock / ping texts ([Plugins/GameUI/Docs/InGameUI.md](Plugins/GameUI/Docs/InGameUI.md)).
+- **Studio logo as `FPreLoadScreenBase`, and reconnect after a real outage** - on a branch (`feat/startup-logo-and-stale-connection`), not built or run yet: the logo is shown while the engine starts, before the startup movie and the loading screen (`FrontendUIStartup`, above); the server removes the old connection of an account as soon as the identity of its new login is confirmed, instead of keeping it until its connection timeout.
 - Later, when there is a reason: FlexMatch on top of the queue, a second region, Spot fleets.
 
 ## License
