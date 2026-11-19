@@ -185,6 +185,18 @@ the one who did not host**: a GameLift server whose last player has left ends th
 | **No** | stays on the main menu; the server browser still lists the session |
 | Reconnect after the session ended | *Could Not Join* with GameLift's reason |
 
+Verified 2026-11-19 (editor binaries, GameLift Anywhere, two Epic accounts, the non-host
+simulating the loss mid-match): `network failure ConnectionLost … Returning to the frontend with
+a reconnect offer`; the dialog 3 s later; Yes → `RejoinLastSession`, a new `psess-…` 0.25 s
+later, `Welcomed by server` after 1.4 s and the HUD back. Server: the first player session
+rewarded (+100, answered in 3 s) and removed at the disconnect; the **new** id accepted,
+`verified` and, at the end, the one removed - the returning player's state uses the new login's
+slot; `no leaderboard points for …: already rewarded in this match` on the final leave; two
+awards in the table for the match, one per account. In the same run the four `CommonText_*`
+blocks of `WBP_HUD` showed session name, player count, clock and ping. Not exercised: answering
+No, a rejoin that is refused, the kick reason dialog, the FixedAddress backend, a reconnect while
+still in the lobby (Ready flag).
+
 Not covered: a real outage. There the server only notices the lost player when its own
 connection timeout runs out; until then the old slot is still taken (a full session answers the
 rejoin with `GameSessionFullException`) and a rejoin that does get in meets the old entry as a

@@ -634,7 +634,9 @@ A player who rejoins within a few minutes gets their previous `APlayerState` bac
 inactive-player list). `AGameUIMatchPlayerState::OverrideWith` takes the `PlayerSessionId` and the
 Ready flag from the **new** login; before that fix (2026-11-17) the server went on using the slot
 of the previous visit - it verified, rewarded and released the old id and left the new one
-`ACTIVE` until the game session ended.
+`ACTIVE` until the game session ended. Seen working 2026-11-19: a player who dropped mid-match
+and came back was accepted and `verified` under the new id, and that id was the one removed when
+they left.
 
 **Reconnect.** A client whose connection to the match drops is taken to the frontend and asked
 *Reconnect to the match?* (`UGameUIFlowSubsystem`, `GameUI/Docs/InGameUI.md`). Yes is
@@ -645,8 +647,9 @@ account). GameLift's own answers are shown as *Could Not Join*: the session has 
 (`TERMINATED`), or it is full because the server has not yet released the slot of the lost
 connection. A player the server removed gets the server's reason under *Removed From Match*
 instead of the question. The match-completion points are given once per account and match, so
-dropping and returning does not earn them twice. Not exercised with a real outage, only with
-the client-side `GameUI.SimulateConnectionLost`.
+dropping and returning does not earn them twice. Verified 2026-11-19 on the Anywhere fleet with
+the client-side `GameUI.SimulateConnectionLost` (the new player session came back 0.25 s after
+Yes; details in `InGameUI.md`); not exercised with a real outage.
 
 To ship: package a `Shipping` client (`BuildCookRun ... -clientconfig=Shipping`) with
 `ApiEndpointUrl` in `DefaultGame.ini` and no `AWS_*` variables on the machine — Host/Find/Join
