@@ -54,6 +54,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Frontend Multiplayer")
 	void LeaveSession();
 
+	/**
+	 * True if the backend can put this player back into the session they were last in
+	 * (GameLift: a new player session in the same game session; FixedAddress: the same
+	 * server). Still true after LeaveSession - the reconnect is offered from the frontend.
+	 */
+	UFUNCTION(BlueprintPure, Category = "Frontend Multiplayer")
+	bool CanRejoinLastSession() const;
+
+	/**
+	 * Join the session this player was last in again, e.g. after a lost connection. Runs as a
+	 * Join: same progress events, same travel on success, same failure modal.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Frontend Multiplayer")
+	void RejoinLastSession();
+
 	UFUNCTION(BlueprintCallable, Category = "Frontend Multiplayer")
 	void FetchLeaderboard(ELeaderboardCategory Category = ELeaderboardCategory::Main);
 

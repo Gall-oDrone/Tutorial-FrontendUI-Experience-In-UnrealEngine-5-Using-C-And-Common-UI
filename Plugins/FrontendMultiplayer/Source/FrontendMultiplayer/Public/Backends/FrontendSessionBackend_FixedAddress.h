@@ -62,6 +62,8 @@ public:
 	virtual void FindSessions() override;
 	virtual void JoinSession(int32 SessionIndex) override;
 	virtual void LeaveSession() override;
+	virtual bool CanRejoinLastSession() const override;
+	virtual void RejoinLastSession() override;
 	virtual void FetchLeaderboard(ELeaderboardCategory Category) override;
 	virtual FString GetBackendDisplayName() const override;
 	virtual bool GetActiveSessionInfo(FString& OutDisplayName, int32& OutMaxPlayers) const override;
@@ -70,4 +72,7 @@ public:
 private:
 	/** True while this process is connected to, or is, the dedicated server. */
 	bool IsInNetworkedWorld() const;
+
+	/** This player has been sent to the server at least once (Host or Join), so there is something to rejoin. */
+	bool bHasJoinedServer = false;
 };

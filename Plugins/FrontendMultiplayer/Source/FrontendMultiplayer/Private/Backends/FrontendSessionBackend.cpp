@@ -9,6 +9,14 @@ void UFrontendSessionBackend::Initialize(UFrontendMultiplayerSubsystem* InOwning
 	OwningSubsystem = InOwningSubsystem;
 }
 
+void UFrontendSessionBackend::RejoinLastSession()
+{
+	// Answered like a Join so the subsystem is never left busy by a backend without rejoin.
+	ReportOperationStarted(EFrontendSessionOperation::Joining);
+	ReportSessionJoined(false, FString(), NSLOCTEXT("FrontendMultiplayer", "RejoinUnsupported",
+		"This session cannot be rejoined directly. Look for it in the server browser."));
+}
+
 void UFrontendSessionBackend::ReportOperationStarted(EFrontendSessionOperation Operation) const
 {
 	if (UFrontendMultiplayerSubsystem* Subsystem = OwningSubsystem.Get())

@@ -144,3 +144,12 @@ the dedicated-server counterpart of `AcceptPlayerSession`: after login, confirm 
 that the slot was reserved for the identity that connected and answer through the delegate
 (false = the game mode kicks). The GameLift backend implements both; the defaults are "cannot
 cancel" and "always matches".
+
+Reconnect: `CanRejoinLastSession()` / `RejoinLastSession()` let a player whose match connection
+dropped go back without the browser (`UGameUIFlowSubsystem` asks the first when the connection
+is lost and calls the second when the player says Yes; see `GameUI/Docs/InGameUI.md`). Remember
+what identifies the session when a Host or Join succeeds, keep it across `LeaveSession` (the
+player is taken to the frontend, which leaves the session, before the question is asked), and
+treat the rejoin as a Join: `ReportOperationStarted(Joining)`, then `ReportSessionJoined`. The
+GameLift backend asks for a new player session in the same game session, the FixedAddress
+backend connects to its server again; the default is "cannot rejoin".

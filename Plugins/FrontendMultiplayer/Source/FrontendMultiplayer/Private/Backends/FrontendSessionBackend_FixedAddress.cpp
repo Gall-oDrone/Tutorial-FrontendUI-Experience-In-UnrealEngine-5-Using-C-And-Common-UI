@@ -51,6 +51,7 @@ void UFrontendSessionBackend_FixedAddress::CreateSession(FName SessionName, int3
 		return;
 	}
 
+	bHasJoinedServer = true;
 	ReportSessionCreatedRemote(Address);
 }
 
@@ -97,6 +98,7 @@ void UFrontendSessionBackend_FixedAddress::JoinSession(int32 SessionIndex)
 		return;
 	}
 
+	bHasJoinedServer = true;
 	ReportSessionJoined(true, Address);
 }
 
@@ -105,6 +107,18 @@ void UFrontendSessionBackend_FixedAddress::LeaveSession()
 	// Nothing is registered anywhere; the travel back to the frontend drops the connection.
 	LogDebug(TEXT("[fixed] LeaveSession"));
 	ReportSessionLeft();
+}
+
+bool UFrontendSessionBackend_FixedAddress::CanRejoinLastSession() const
+{
+	return bHasJoinedServer && !UFrontendFixedAddressSettings::Get()->ResolveServerAddress().IsEmpty();
+}
+
+void UFrontendSessionBackend_FixedAddress::RejoinLastSession()
+{
+	// There is one server and one row: rejoining is joining it again.
+	LogDebug(TEXT("[fixed] RejoinLastSession"));
+	JoinSession(0);
 }
 
 void UFrontendSessionBackend_FixedAddress::FetchLeaderboard(ELeaderboardCategory Category)

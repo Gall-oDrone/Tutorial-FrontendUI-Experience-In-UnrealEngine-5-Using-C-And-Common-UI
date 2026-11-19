@@ -73,6 +73,19 @@ public:
 	 */
 	virtual bool CancelPendingOperation() { return false; }
 
+	/**
+	 * True if the session this player was last in can be joined again without the browser.
+	 * Asked when a match connection is lost, to decide whether to offer a reconnect.
+	 * Default: this backend does not remember a session.
+	 */
+	virtual bool CanRejoinLastSession() const { return false; }
+
+	/**
+	 * Join the session this player was last in again. A Join like any other: mark the
+	 * operation started and answer with ReportSessionJoined. Default: fails.
+	 */
+	virtual void RejoinLastSession();
+
 	/** Answer with ReportLeaderboard. */
 	virtual void FetchLeaderboard(ELeaderboardCategory Category) PURE_VIRTUAL(UFrontendSessionBackend::FetchLeaderboard, );
 

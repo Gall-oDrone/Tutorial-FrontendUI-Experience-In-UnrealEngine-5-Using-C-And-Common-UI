@@ -172,6 +172,19 @@ void UFrontendMultiplayerSubsystem::LeaveSession()
 	}
 }
 
+bool UFrontendMultiplayerSubsystem::CanRejoinLastSession() const
+{
+	return ActiveBackend ? ActiveBackend->CanRejoinLastSession() : false;
+}
+
+void UFrontendMultiplayerSubsystem::RejoinLastSession()
+{
+	if (ActiveBackend && CanStartOperation(EFrontendSessionOperation::Joining))
+	{
+		ActiveBackend->RejoinLastSession();
+	}
+}
+
 bool UFrontendMultiplayerSubsystem::CancelSessionOperation()
 {
 	if (CurrentOperation == EFrontendSessionOperation::None || !ActiveBackend)
