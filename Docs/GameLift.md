@@ -649,7 +649,11 @@ connection. A player the server removed gets the server's reason under *Removed 
 instead of the question. The match-completion points are given once per account and match, so
 dropping and returning does not earn them twice. Verified 2026-11-19 on the Anywhere fleet with
 the client-side `GameUI.SimulateConnectionLost` (the new player session came back 0.25 s after
-Yes; details in `InGameUI.md`); not exercised with a real outage.
+Yes; details in `InGameUI.md`). After a real outage the lost connection is still logged in on
+the server until its timeout: when the returning login's identity is confirmed
+(`DescribePlayerSessions`), the server removes that older connection of the same account and
+releases its player session (`… is back on a new connection; removing the previous one.`); a
+full session still refuses the rejoin until the timeout. Not exercised with a real outage.
 
 To ship: package a `Shipping` client (`BuildCookRun ... -clientconfig=Shipping`) with
 `ApiEndpointUrl` in `DefaultGame.ini` and no `AWS_*` variables on the machine — Host/Find/Join

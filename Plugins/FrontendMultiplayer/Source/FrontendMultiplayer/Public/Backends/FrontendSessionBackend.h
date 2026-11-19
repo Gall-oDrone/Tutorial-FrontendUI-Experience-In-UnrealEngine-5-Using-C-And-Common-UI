@@ -144,6 +144,13 @@ public:
 	virtual void VerifyPlayerSession(const FString& PlayerSessionId, const FString& UniqueNetIdString, FOnFrontendPlayerSessionVerified OnVerified) { OnVerified.ExecuteIfBound(true, FString()); }
 
 	/**
+	 * True only if the service confirmed that PlayerSessionId belongs to the identity that
+	 * connected with it. VerifyPlayerSession also answers true when the check is off or could
+	 * not be made; this does not. Default: nothing is ever confirmed.
+	 */
+	virtual bool IsPlayerSessionVerified(const FString& PlayerSessionId) const { return false; }
+
+	/**
 	 * The player who logged in with PlayerSessionId earned Points on the leaderboard Category
 	 * (call it before RemovePlayerSession). Who that player is, and whether the slot counts, is
 	 * the session service's decision, not the caller's; PlayerDisplayName is only what the board

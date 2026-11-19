@@ -269,6 +269,11 @@ void UFrontendMultiplayerSubsystem::VerifyPlayerSession(const FString& PlayerSes
 	}
 }
 
+bool UFrontendMultiplayerSubsystem::IsPlayerSessionVerified(const FString& PlayerSessionId) const
+{
+	return ActiveBackend ? ActiveBackend->IsPlayerSessionVerified(PlayerSessionId) : false;
+}
+
 void UFrontendMultiplayerSubsystem::AwardLeaderboardPoints(const FString& PlayerSessionId, const FString& PlayerDisplayName, int32 Points, ELeaderboardCategory Category)
 {
 	if (ActiveBackend)

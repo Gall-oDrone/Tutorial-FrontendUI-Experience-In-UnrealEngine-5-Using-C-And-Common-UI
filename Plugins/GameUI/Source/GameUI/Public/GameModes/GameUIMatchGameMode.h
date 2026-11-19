@@ -59,6 +59,12 @@ protected:
 
 private:
 	void RefreshSessionInfoFromSubsystem();
+	/**
+	 * VerifiedPlayer's identity was just confirmed by the session service: remove every other
+	 * connection of the same account (the one the player lost, which this server would otherwise
+	 * keep until its connection timeout). Does nothing for an identity that is only claimed.
+	 */
+	void RemoveStaleConnectionsOf(APlayerController* VerifiedPlayer);
 	void BeginStartCountdown();
 	void OnStartCountdownFinished();
 	AGameUIMatchGameState* GetMatchGameState() const;

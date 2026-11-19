@@ -143,7 +143,10 @@ the subsystem clears the operation on `true`; a call that will still complete (a
 the dedicated-server counterpart of `AcceptPlayerSession`: after login, confirm with the service
 that the slot was reserved for the identity that connected and answer through the delegate
 (false = the game mode kicks). The GameLift backend implements both; the defaults are "cannot
-cancel" and "always matches".
+cancel" and "always matches". A backend that really checks should also override
+`IsPlayerSessionVerified()` (default `false`): the game mode removes an older connection of the
+same account only when it returns `true` for the new login, so a check that was skipped or
+failed open never knocks anybody off the server.
 
 Reconnect: `CanRejoinLastSession()` / `RejoinLastSession()` let a player whose match connection
 dropped go back without the browser (`UGameUIFlowSubsystem` asks the first when the connection

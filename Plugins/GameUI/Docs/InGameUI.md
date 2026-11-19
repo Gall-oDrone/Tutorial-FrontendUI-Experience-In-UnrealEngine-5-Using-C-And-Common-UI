@@ -197,7 +197,37 @@ blocks of `WBP_HUD` showed session name, player count, clock and ping. Not exerc
 No, a rejoin that is refused, the kick reason dialog, the FixedAddress backend, a reconnect while
 still in the lobby (Ready flag).
 
-Not covered: a real outage. There the server only notices the lost player when its own
-connection timeout runs out; until then the old slot is still taken (a full session answers the
-rejoin with `GameSessionFullException`) and a rejoin that does get in meets the old entry as a
-second player with the same name until the timeout removes it.
+### A real outage: the connection the player lost
+
+After a real outage (cable, Wi-Fi, a crashed client) the server does not know the player is
+gone: the old connection stays logged in until the server's own connection timeout runs out.
+A rejoin that gets in before that used to meet the old entry as a second player with the same
+name. Now the game mode removes it: once the session service has confirmed the identity of a
+login (`VerifyPlayerSession` answered *matches* and
+`UFrontendMultiplayerSubsystem::IsPlayerSessionVerified` is true), every **other** connection of
+the same account is kicked - `AGameUIMatchGameMode::RemoveStaleConnectionsOf`, server log
+`<name> is back on a new connection; removing the previous one.` The old connection goes through
+the normal `Logout`, so its player session is released at GameLift like any leaver's.
+
+- Only on the service's word. A unique id is what the client claims until the check confirms
+  it; with a backend that does not verify (FixedAddress, a skipped check) nothing is removed and
+  the old entry leaves with the timeout, as before.
+- The returning player gets a fresh player state. The engine only hands back the state of a
+  player who has **left**, and the old connection had not.
+- Unchanged: a **full** session still answers the rejoin with `GameSessionFullException` until
+  the timeout frees the slot - the refusal comes from GameLift, before the server sees a login.
+- If the old connection is in fact alive (the same account signed in on a second machine), that
+  one is told *Removed From Match: This account joined the match again from another connection.*
+  The newest login wins.
+
+**Testing it** without pulling a cable: with two players in a GameLift match (session size 3 or
+more), start a **third** client signed in as the account of the player who did not host and join
+the same session from the browser.
+
+| Step | Expected |
+|---|---|
+| Third client joins | server log `player session psess-… verified`, then `<name> is back on a new connection; removing the previous one.` |
+| The window that had that account | back in the frontend with *Removed From Match: This account joined the match again from another connection.* (no reconnect question - it was a kick) |
+| Player list / HUD count | the account once, not twice |
+
+Not run yet (2026-11-19): this path, and a rejoin after a real outage.

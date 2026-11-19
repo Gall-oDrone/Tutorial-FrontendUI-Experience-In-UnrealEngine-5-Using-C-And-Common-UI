@@ -139,8 +139,15 @@ void AGameUIMatchGameMode::PostLogin(APlayerController* NewPlayer)
 				FOnFrontendPlayerSessionVerified::CreateWeakLambda(this, [this, WeakPlayer, PlayerName](bool bMatches, const FString& Reason)
 				{
 					APlayerController* Player = WeakPlayer.Get();
-					if (bMatches || !Player)
+					if (!Player)
 					{
+						return;
+					}
+					if (bMatches)
+					{
+						// The account is who it says it is. If it is also still "here" on an older
+						// connection, that one is the connection the player lost.
+						RemoveStaleConnectionsOf(Player);
 						return;
 					}
 					UE_LOG(LogGameUI, Warning, TEXT("kicking %s: %s"), *PlayerName, *Reason);
@@ -150,6 +157,45 @@ void AGameUIMatchGameMode::PostLogin(APlayerController* NewPlayer)
 					}
 				}));
 		}
+	}
+}
+
+void AGameUIMatchGameMode::RemoveStaleConnectionsOf(APlayerController* VerifiedPlayer)
+{
+	const AGameUIMatchPlayerState* VerifiedState = VerifiedPlayer ? VerifiedPlayer->GetPlayerState<AGameUIMatchPlayerState>() : nullptr;
+	const UFrontendMultiplayerSubsystem* MultiplayerSubsystem = UGameInstance::GetSubsystem<UFrontendMultiplayerSubsystem>(GetGameInstance());
+	UWorld* World = GetWorld();
+	if (!VerifiedState || !MultiplayerSubsystem || !GameSession || !World)
+	{
+		return;
+	}
+
+	// Only on the service's word. The unique id of a login is what the client claims until the
+	// identity check confirms it; acting on the claim alone would let anybody who knows a
+	// player's id knock that player off the server by connecting with it.
+	const FUniqueNetIdRepl& VerifiedId = VerifiedState->GetUniqueId();
+	if (!VerifiedId.IsValid() || !MultiplayerSubsystem->IsPlayerSessionVerified(VerifiedState->GetPlayerSessionId()))
+	{
+		return;
+	}
+
+	// A player whose connection dropped without a goodbye (an outage, a crash) stays logged in
+	// here until the connection times out, holding the slot and a row in every player list.
+	// Collected first: the kick logs the player out, which changes the list being walked.
+	TArray<APlayerController*> StalePlayers;
+	for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+	{
+		APlayerController* Other = It->Get();
+		if (Other && Other != VerifiedPlayer && !Other->IsLocalController() && Other->PlayerState && Other->PlayerState->GetUniqueId() == VerifiedId)
+		{
+			StalePlayers.Add(Other);
+		}
+	}
+
+	for (APlayerController* StalePlayer : StalePlayers)
+	{
+		UE_LOG(LogGameUI, Log, TEXT("%s is back on a new connection; removing the previous one."), *VerifiedState->GetPlayerName());
+		GameSession->KickPlayer(StalePlayer, LOCTEXT("ReplacedByNewConnection", "This account joined the match again from another connection."));
 	}
 }
 
