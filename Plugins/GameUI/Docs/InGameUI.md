@@ -230,4 +230,6 @@ the same session from the browser.
 | The window that had that account | back in the frontend with *Removed From Match: This account joined the match again from another connection.* (no reconnect question - it was a kick) |
 | Player list / HUD count | the account once, not twice |
 
-Compiled, not run yet (2026-11-19): this path, and a rejoin after a real outage.
+Compiled, not run (as of 2026-11-20): this path, and a rejoin after a real outage. The one
+attempt ended before the join - the third client crashed while starting on a PC that was out of
+memory.
