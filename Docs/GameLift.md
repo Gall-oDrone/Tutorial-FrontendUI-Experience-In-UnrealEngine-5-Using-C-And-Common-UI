@@ -408,7 +408,9 @@ the Container Group Definition (free) stay.
 ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 ECR=$ACCOUNT.dkr.ecr.us-east-1.amazonaws.com
 
-# 1. Push the image (once per build). Lifecycle policy keeps the last 5 tags.
+# 1. Push the image (once per build). A lifecycle policy on the repository keeps the last build only:
+#    one build is three entries (image index, image, attestation), so the rule is "any tag status,
+#    imageCountMoreThan 3" (aws ecr put-lifecycle-policy). Container group definitions keep their own copy.
 aws ecr create-repository --repository-name frontendui-server --region us-east-1
 aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR
 docker tag frontendui-server:<sha> $ECR/frontendui-server:<sha>
