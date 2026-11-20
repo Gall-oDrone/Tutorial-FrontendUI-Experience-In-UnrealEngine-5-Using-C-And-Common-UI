@@ -23,6 +23,7 @@ public class FrontendUI : ModuleRules
 			"PreLoadScreen"
 		});
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
+		// FrontendUIStartup: the startup logo (pre-load screen); asked whether the logo was already shown.
+		PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore", "FrontendUIStartup" });
 	}
 }

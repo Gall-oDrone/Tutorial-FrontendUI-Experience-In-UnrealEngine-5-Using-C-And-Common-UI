@@ -58,7 +58,11 @@ ships with.
 In order of visibility:
 
 1. **Brand**: replace `Plugins/GameUI/Content/Brand/T_StudioLogo` and the logo screen
-   timing in `WBP_CAW_LogoScreen`.
+   timing in `WBP_CAW_LogoScreen`, and replace `Content/Splash/T_StudioLogo.png` - the same
+   logo as a plain PNG, shown while the engine starts (`[FrontendUI.StartupLogo]` in
+   `DefaultGame.ini`: path, minimum time, size, background). The texture asset cannot be used
+   there: nothing can load an asset that early. In game builds the startup logo replaces the
+   logo screen; the editor (PIE) still shows the logo screen.
 2. **Main menu**: `WBP_CAW_MainMenu` buttons and their target screens. The Frontend
    Widget Map in Project Settings → Game → Frontend UI Settings decides which Blueprint
    answers each `Frontend.Widget.*` tag; add your own tags in

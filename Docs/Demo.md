@@ -63,4 +63,6 @@ Each instance writes `Saved/Logs/Instance1.log` / `Instance2.log` (editor builds
 | Second window shows black in OBS | Window Capture → *Capture Method* **Windows 10 (1903 and up)** |
 | Mouse cursor disappears in the host after Start | Expected: the HUD captures the mouse (`CapturePermanently`). P brings it back. |
 | Server Browser empty | Wait the full 5 s LAN query; check the firewall prompt was accepted |
-| Logo plays twice | You pressed Return to Main Menu twice; the flow restarts from the logo by design (`bShowLogoScreen`) |
+| Logo plays twice | In the editor (PIE): you pressed Return to Main Menu twice; the flow restarts from the logo screen by design (`bShowLogoScreen`). In game builds the startup logo (shown while the engine starts) replaces the logo screen, so it appears once per launch |
+| No logo / startup movie wanted for a take | Launch with `-NoLoadingScreen` (Development builds): no startup logo and no startup movie; the Blueprint logo screen shows instead. Only the startup logo off: `-ini:Game:[FrontendUI.StartupLogo]:bEnabled=False` |
+| A client window crashes while it starts (access violation in the render thread) | Seen once, with five editor-binary processes on a PC with 8 GB of RAM and no free video memory. Start the windows one at a time; add `-NoLoadingScreen` to extra windows so nothing is drawn while the engine starts |

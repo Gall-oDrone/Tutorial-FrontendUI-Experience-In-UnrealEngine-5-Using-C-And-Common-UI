@@ -289,6 +289,7 @@ public:
 	virtual void RemovePlayerSession(const FString& PlayerSessionId) override;
 	virtual bool HandleServerSessionEmpty() override;
 	virtual void VerifyPlayerSession(const FString& PlayerSessionId, const FString& UniqueNetIdString, FOnFrontendPlayerSessionVerified OnVerified) override;
+	virtual bool IsPlayerSessionVerified(const FString& PlayerSessionId) const override { return VerifiedPlayerSessionIds.Contains(PlayerSessionId); }
 	virtual void AwardLeaderboardPoints(const FString& PlayerSessionId, const FString& PlayerDisplayName, int32 Points, ELeaderboardCategory Category) override;
 	//~ End UFrontendSessionBackend Interface
 
